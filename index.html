@@ -176,6 +176,30 @@
   .marcas-lista li::after { content: "✦"; color: var(--verde-texto); font-size: .8rem; }
   @keyframes deslizar { to { transform: translateX(-50%); } }
 
+  /* ============ CARROSSEL DE LOGOS ============ */
+  .logos-secao { background: var(--gelo); border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); padding: 52px 0; overflow: hidden; }
+  .logos-titulo { text-align: center; font-size: .82rem; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: var(--suave); margin-bottom: 28px; }
+  .logos {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  }
+  .logos-trilho { display: flex; width: max-content; animation: deslizar 55s linear infinite; }
+  .logos:hover .logos-trilho { animation-play-state: paused; }
+  .logos-lista { display: flex; gap: 20px; padding: 6px 20px 10px 0; list-style: none; margin: 0; }
+  .logo-circulo {
+    flex: none; width: 112px; height: 112px; border-radius: 50%; background: #fff; border: 1px solid var(--borda);
+    box-shadow: var(--sombra); display: grid; place-items: center; padding: 20px; overflow: hidden;
+  }
+  .logo-circulo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo-nome { display: none; font-weight: 800; font-size: .78rem; line-height: 1.2; text-align: center; color: var(--tinta); }
+  .logo-circulo.sem-imagem img { display: none; }
+  .logo-circulo.sem-imagem .logo-nome { display: block; }
+  @media (max-width: 620px) {
+    .logo-circulo { width: 90px; height: 90px; padding: 16px; }
+    .logos-lista { gap: 14px; padding-right: 14px; }
+  }
+
   /* ============ SOBRE ============ */
   .sobre-grade { display: grid; grid-template-columns: .9fr 1.1fr; gap: 64px; align-items: center; }
   .sobre-foto { aspect-ratio: 4 / 5; box-shadow: var(--sombra-forte); background: linear-gradient(160deg, #f6e3d3 0%, #e0a072 40%, #98a869 100%); }
@@ -380,6 +404,10 @@
     .marcas-lista { flex-wrap: wrap; justify-content: center; gap: 12px 28px; padding: 0 16px; }
     .marcas-lista li { gap: 28px; }
     .marcas-lista[aria-hidden="true"] { display: none; }
+    .logos { -webkit-mask-image: none; mask-image: none; }
+    .logos-trilho { animation: none; width: auto; justify-content: center; }
+    .logos-lista { flex-wrap: wrap; justify-content: center; padding: 0 16px; }
+    .logos-lista[aria-hidden="true"] { display: none; }
     .js .revelar { opacity: 1; transform: none; }
   }
 </style>
@@ -469,6 +497,17 @@
         <p class="assinatura">Letícia Gabrielly</p>
         <p class="assinatura-sub">UGC Creator · Paraisópolis, MG</p>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ CARROSSEL DE LOGOS ============
+       As logos ficam na pasta "logos", ao lado do index.html.
+       A lista de arquivos está no script, no array LOGOS_EXTRAS e no array MARCAS.
+       Veja o passo a passo no arquivo logos/LEIA-ME.txt -->
+  <section class="logos-secao" aria-labelledby="logos-titulo">
+    <h2 class="logos-titulo" id="logos-titulo">Marcas que já confiaram no meu trabalho</h2>
+    <div class="logos">
+      <div class="logos-trilho" id="logos-trilho"></div>
     </div>
   </section>
 
@@ -652,6 +691,17 @@ const MARCAS = [
   "B&G Camas", "Pharmanectar", "Garnier", "Mamamais", "Boi da Cara Preta", "Elseve"
 ];
 
+/* LOGOS DO CARROSSEL (entre Sobre mim e Conteúdos de destaque)
+   Cada marca do array MARCAS procura sozinha a sua logo na pasta "logos".
+   O nome do arquivo é o nome da marca em minúsculas, sem acento e com hífen no lugar de espaço e símbolo.
+   Exemplos: "L'Oréal" vira logos/l-oreal.png | "Boi da Cara Preta" vira logos/boi-da-cara-preta.png
+   Se a imagem ainda não estiver na pasta, o círculo mostra o nome da marca escrito.
+   Para colocar uma logo de uma marca que não está em MARCAS, adicione aqui embaixo. */
+const PASTA_LOGOS = "logos/";
+const LOGOS_EXTRAS = [
+  // { nome: "Nome da Marca", arquivo: "nome-da-marca.png" },
+];
+
 /* DESTAQUES: os três vídeos grandes.
    link   = ONDE ENTRA O LINK DO VÍDEO (abre ao clicar no card)
    capa   = ONDE ENTRA A CAPA: coloque o nome do arquivo (ex: "capa1.jpg", formato 9:16) ou deixe "" para o degradê
@@ -743,6 +793,25 @@ $("#capa-numeros").innerHTML = METRICAS.slice(0, 3).map((m) =>
 /* Faixa de marcas (duplicada para o movimento contínuo; a cópia fica escondida do leitor de tela) */
 const listaMarcas = MARCAS.map((m) => `<li>${esc(m)}</li>`).join("");
 $("#marcas-trilho").innerHTML = `<ul class="marcas-lista">${listaMarcas}</ul><ul class="marcas-lista" aria-hidden="true">${listaMarcas}</ul>`;
+
+/* Carrossel de logos: monta os círculos e mostra o nome quando a imagem não existe */
+const nomeArquivo = (nome) => nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".png";
+const LOGOS = MARCAS.map((nome) => ({ nome, arquivo: nomeArquivo(nome) })).concat(LOGOS_EXTRAS);
+const circulos = LOGOS.map((l) => `
+  <li class="logo-circulo">
+    <img src="${esc(PASTA_LOGOS + l.arquivo)}" alt="Logo ${esc(l.nome)}" loading="lazy" decoding="async">
+    <span class="logo-nome">${esc(l.nome)}</span>
+  </li>`).join("");
+const trilhoLogos = $("#logos-trilho");
+trilhoLogos.innerHTML = `<ul class="logos-lista">${circulos}</ul><ul class="logos-lista" aria-hidden="true">${circulos}</ul>`;
+trilhoLogos.querySelectorAll("img").forEach((img) => {
+  const semImagem = () => {
+    img.closest(".logo-circulo").classList.add("sem-imagem");
+    img.alt = "";
+  };
+  img.addEventListener("error", semImagem);
+  if (img.complete && img.naturalWidth === 0) semImagem();
+});
 
 /* Destaques */
 const iconePlay = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5Z"/></svg>';

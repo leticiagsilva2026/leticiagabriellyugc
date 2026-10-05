@@ -1,0 +1,34 @@
+PASTA DAS LOGOS DO CARROSSEL
+
+Coloque aqui as logos em PNG (de preferência com fundo transparente).
+Cada arquivo precisa ter EXATAMENTE o nome abaixo, tudo em letra minúscula e terminando em .png.
+Se o nome estiver diferente, o círculo mostra só o nome da marca escrito.
+
+L'Oréal ............... l-oreal.png
+Pantene ............... pantene.png
+Mercado Livre ......... mercado-livre.png
+Agora Sou Mãe ......... agora-sou-mae.png
+Zulu Perfumes ......... zulu-perfumes.png
+Coala ................. coala.png
+Vinagreen ............. vinagreen.png
+SunKids ............... sunkids.png
+Cartão de Todos ....... cartao-de-todos.png
+Kinedu ................ kinedu.png
+Secret ................ secret.png
+Méliuz ................ meliuz.png
+Dove .................. dove.png
+B&G Camas ............. b-g-camas.png
+Pharmanectar .......... pharmanectar.png
+Garnier ............... garnier.png
+Mamamais .............. mamamais.png
+Boi da Cara Preta ..... boi-da-cara-preta.png
+Elseve ................ elseve.png
+
+MARCA NOVA
+Abra o index.html, procure por LOGOS_EXTRAS e adicione uma linha assim:
+  { nome: "Nome da Marca", arquivo: "nome-da-marca.png" },
+Depois salve a imagem aqui com esse mesmo nome.
+
+DICAS
+- Tamanho bom: uns 300 x 300 px, menos de 100 KB por logo, para o site continuar rápido.
+- Depois de colocar as imagens, me avise que eu envio tudo para o site.
