@@ -798,19 +798,17 @@ $("#marcas-trilho").innerHTML = `<ul class="marcas-lista">${listaMarcas}</ul><ul
 const nomeArquivo = (nome) => nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".png";
 const LOGOS = MARCAS.map((nome) => ({ nome, arquivo: nomeArquivo(nome) })).concat(LOGOS_EXTRAS);
 const circulos = LOGOS.map((l) => `
-  <li class="logo-circulo">
-    <img src="${esc(PASTA_LOGOS + l.arquivo)}" alt="Logo ${esc(l.nome)}" loading="lazy" decoding="async">
+  <li class="logo-circulo sem-imagem">
+    <img src="${esc(PASTA_LOGOS + l.arquivo)}" alt="Logo ${esc(l.nome)}" decoding="async">
     <span class="logo-nome">${esc(l.nome)}</span>
   </li>`).join("");
 const trilhoLogos = $("#logos-trilho");
 trilhoLogos.innerHTML = `<ul class="logos-lista">${circulos}</ul><ul class="logos-lista" aria-hidden="true">${circulos}</ul>`;
+/* o nome da marca aparece até a logo carregar; se o arquivo não existir, o nome fica */
 trilhoLogos.querySelectorAll("img").forEach((img) => {
-  const semImagem = () => {
-    img.closest(".logo-circulo").classList.add("sem-imagem");
-    img.alt = "";
-  };
-  img.addEventListener("error", semImagem);
-  if (img.complete && img.naturalWidth === 0) semImagem();
+  const comImagem = () => img.closest(".logo-circulo").classList.remove("sem-imagem");
+  if (img.complete && img.naturalWidth > 0) comImagem();
+  else img.addEventListener("load", comImagem);
 });
 
 /* Destaques */
