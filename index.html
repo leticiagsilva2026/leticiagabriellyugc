@@ -214,29 +214,41 @@
   /* ============ DESTAQUES ============ */
   .destaques-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
   .destaque {
-    display: flex; flex-direction: column; text-decoration: none; background: #fff; border-radius: var(--raio);
+    display: flex; flex-direction: column; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; background: #fff; border-radius: var(--raio);
     padding: 12px; box-shadow: var(--sombra); border: 1px solid var(--borda); transition: transform .3s ease, box-shadow .3s ease;
   }
   .destaque:hover { transform: translateY(-6px); box-shadow: var(--sombra-forte); }
-  .destaque .midia { aspect-ratio: 9 / 16; border-radius: 20px; }
-  .destaque:nth-child(2) .midia { background: linear-gradient(160deg, #ffe7a8 0%, #f6b98d 50%, #b6537a 100%); }
-  .destaque:nth-child(3) .midia { background: linear-gradient(160deg, #e2ecff 0%, #9cc3e8 50%, #2f5f8a 100%); }
+  .destaque .video-capa { border-radius: 20px; }
   .play {
-    position: absolute; inset: 0; margin: auto; width: 76px; height: 76px; border-radius: 50%;
+    position: absolute; inset: 0; margin: auto; width: 76px; height: 76px; border-radius: 50%; z-index: 1;
     background: rgba(255, 255, 255, .95); display: grid; place-items: center; box-shadow: 0 12px 30px -8px rgba(0, 0, 0, .35);
-    transition: transform .3s ease;
+    transition: transform .3s ease, opacity .3s ease;
   }
   .play svg { width: 28px; height: 28px; margin-left: 4px; fill: var(--verde-texto); }
   .destaque:hover .play { transform: scale(1.1); }
-  .destaque-info { padding: 18px 8px 8px; }
-  .destaque-numero { font-size: 2.4rem; font-weight: 800; color: var(--verde-texto); letter-spacing: -.04em; line-height: 1; }
+  .destaque-info { display: block; padding: 18px 8px 8px; }
+  .destaque-numero { display: block; font-size: 2.4rem; font-weight: 800; color: var(--verde-texto); letter-spacing: -.04em; line-height: 1; }
   .destaque-rotulo { display: inline-block; margin-top: 6px; background: var(--amarelo); color: #fff; font-size: .78rem; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
-  .destaque h3 { font-size: 1.15rem; margin-top: 14px; }
-  .destaque-contexto { font-size: .92rem; color: var(--suave); margin-top: 4px; }
-  .destaque-ver { margin-top: 12px; font-weight: 700; font-size: .9rem; color: var(--verde-texto); }
+  .destaque-titulo { display: block; font-size: 1.15rem; font-weight: 800; color: var(--tinta); letter-spacing: -.02em; line-height: 1.2; }
+  .destaque-numero ~ .destaque-titulo { margin-top: 14px; }
+  .destaque-contexto { display: block; font-size: .92rem; color: var(--suave); margin-top: 4px; }
+  .destaque-ver { display: block; margin-top: 12px; font-weight: 700; font-size: .9rem; color: var(--verde-texto); }
+
+  /* ============ VÍDEOS (capa, prévia e carrosséis) ============ */
+  .video-capa { position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 18px; overflow: hidden; background: #1b221e; }
+  .video-capa img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
+  .video-previa { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; opacity: 0; transition: opacity .4s ease; z-index: 2; }
+  .video-previa.pronta { opacity: 1; }
+  .tocando .play, .tocando .play-mini { opacity: 0; }
+  .play-mini {
+    position: absolute; inset: 0; margin: auto; width: 50px; height: 50px; border-radius: 50%; z-index: 1;
+    background: rgba(255, 255, 255, .92); display: grid; place-items: center; box-shadow: 0 8px 20px -6px rgba(0, 0, 0, .4);
+    transition: transform .3s ease, opacity .3s ease;
+  }
+  .play-mini svg { width: 20px; height: 20px; margin-left: 3px; fill: var(--verde-texto); }
 
   /* ============ TRABALHOS ============ */
-  .filtros { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
+  .filtros { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
   .chip {
     border: 1px solid var(--borda); background: #fff; color: var(--texto); border-radius: 999px; padding: 10px 18px;
     font: 700 .92rem/1 var(--sans); cursor: pointer; transition: all .2s ease;
@@ -244,20 +256,53 @@
   .chip:hover { border-color: var(--verde-texto); color: var(--verde-texto); }
   .chip[aria-pressed="true"] { background: var(--verde); border-color: var(--verde-texto); color: var(--tinta); }
   .chip .qtd { opacity: .7; margin-left: 4px; font-weight: 600; }
-  .produtos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; margin: 0; }
-  .produto { background: #fff; border-radius: 24px; box-shadow: var(--sombra); padding: 10px; display: flex; flex-direction: column; transition: transform .3s ease, box-shadow .3s ease; }
-  .produto:hover { transform: translateY(-4px); box-shadow: var(--sombra-forte); }
-  .produto[hidden] { display: none; }
-  .produto .midia { aspect-ratio: 4 / 5; border-radius: 18px; }
-  .produto-nicho { position: absolute; top: 12px; left: 12px; background: #fff; color: var(--tinta); font-size: .72rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; text-transform: capitalize; }
-  .produto-corpo { padding: 14px 8px 8px; display: flex; flex-direction: column; flex: 1; }
-  .produto h3 { font-size: 1rem; margin-top: 8px; font-weight: 700; }
-  .produto-marca { font-size: .85rem; color: var(--suave); margin-top: 2px; }
-  .produto-rodape { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 14px; flex-wrap: wrap; }
+  .prateleira { margin-top: 40px; }
+  .prateleira[hidden] { display: none; }
+  .prateleira-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .prateleira h3 { font-size: 1.5rem; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .prateleira-qtd { font-size: .85rem; font-weight: 700; color: var(--suave); letter-spacing: 0; }
+  .setas { display: flex; align-items: center; gap: 8px; }
+  .seta {
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--borda); background: #fff; color: var(--tinta);
+    font: 700 1.5rem/1 var(--sans); cursor: pointer; display: grid; place-items: center; padding: 0 0 3px; transition: background-color .2s, border-color .2s, opacity .2s;
+  }
+  .seta:hover:not(:disabled) { background: var(--verde); border-color: var(--verde); }
+  .seta:disabled { opacity: .35; cursor: default; }
+  .carrossel {
+    display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; list-style: none; margin: 0; padding: 4px 2px 18px;
+    scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .carrossel::-webkit-scrollbar { display: none; }
+  .video-card { flex: 0 0 clamp(150px, 19vw, 205px); scroll-snap-align: start; }
+  .video-botao { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; color: inherit; border-radius: 18px; }
+  .video-botao:hover .video-capa img { transform: scale(1.04); }
+  .video-botao:hover .play-mini { transform: scale(1.1); }
+  .video-titulo { display: block; margin-top: 10px; font-weight: 700; font-size: .92rem; color: var(--tinta); line-height: 1.3; }
   .etiqueta { background: var(--amarelo); color: #fff; font-size: .76rem; font-weight: 800; padding: 5px 12px; border-radius: 999px; }
-  .contratar { font-weight: 800; font-size: .88rem; color: var(--tinta); background: var(--verde); padding: 8px 14px; border-radius: 999px; text-decoration: none; transition: background-color .2s; }
+  .contratar { font-weight: 800; font-size: .88rem; color: var(--tinta); background: var(--verde); padding: 8px 14px; border-radius: 999px; text-decoration: none; transition: background-color .2s; margin-right: 4px; }
   .contratar:hover { background: var(--verde-escuro); }
-  .vazio { text-align: center; color: var(--suave); padding: 32px; }
+
+  /* ============ PLAYER DE VÍDEO ============ */
+  .player-fundo {
+    position: fixed; inset: 0; z-index: 320; background: rgba(10, 14, 12, .88);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 64px 16px 24px;
+  }
+  .player-fundo[hidden] { display: none; }
+  .player {
+    width: min(calc(100vw - 32px), calc((100vh - 150px) * 9 / 16), 420px); aspect-ratio: 9 / 16;
+    border-radius: 24px; overflow: hidden; background: #000; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .6);
+  }
+  .player-quadro, .player-quadro iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .player-titulo { color: #fff; font-weight: 700; text-align: center; margin: 0; }
+  .player-fechar, .player-seta {
+    position: fixed; width: 48px; height: 48px; border-radius: 50%; border: 0; background: #fff; color: var(--tinta);
+    font: 700 1.6rem/1 var(--sans); cursor: pointer; display: grid; place-items: center; padding: 0 0 3px; box-shadow: var(--sombra-forte); z-index: 1;
+  }
+  .player-fechar { top: 16px; right: 16px; }
+  .player-seta { top: 50%; transform: translateY(-50%); }
+  .player-seta.anterior { left: max(16px, calc(50% - 300px)); }
+  .player-seta.proximo { right: max(16px, calc(50% - 300px)); }
+  .player-seta[hidden] { display: none; }
 
   /* ============ SERVIÇOS ============ */
   .servicos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; list-style: none; padding: 0; margin: 0; }
@@ -357,7 +402,6 @@
 
   /* ============ RESPONSIVO ============ */
   @media (max-width: 1060px) {
-    .produtos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 900px) {
@@ -380,8 +424,6 @@
     .secao { padding: 72px 0; }
   }
   @media (max-width: 620px) {
-    .produtos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .produto-rodape { flex-direction: column; align-items: stretch; text-align: center; }
     .servicos, .resultados, .depoimentos { grid-template-columns: 1fr; }
     .capa-numeros { gap: 8px; }
     .capa-numeros li { padding: 12px 10px; border-radius: 16px; }
@@ -389,10 +431,17 @@
     .capa-botoes .btn { flex: 1 1 100%; }
     .selo-novo { width: 78px; height: 78px; font-size: 1rem; right: -4px; }
     .faixa-entrega { font-size: .78rem; }
+    .prateleira h3 { font-size: 1.25rem; }
+    .video-card { flex-basis: 148px; }
+    .carrossel { gap: 12px; }
+    .player-seta { top: auto; bottom: 16px; transform: none; }
+    .player-seta.anterior { left: calc(50% - 64px); }
+    .player-seta.proximo { right: calc(50% - 64px); }
+    .player-fundo { padding-bottom: 84px; }
+    .player { width: min(calc(100vw - 32px), calc((100vh - 220px) * 9 / 16)); }
     .logo { font-size: 1rem; }
   }
   @media (max-width: 400px) {
-    .produtos { grid-template-columns: 1fr; }
     .metricas { grid-template-columns: 1fr; }
   }
 
@@ -517,7 +566,7 @@
       <div class="cabeca cabeca-centro revelar">
         <span class="sobretitulo">Mais vendidos da vitrine</span>
         <h2 class="titulo" id="destaques-titulo">Conteúdos de <span class="serif">destaque</span></h2>
-        <p>Os vídeos que mais rodaram. Toque no card para assistir no Instagram.</p>
+        <p>Os vídeos que mais rodaram. Clique para assistir aqui mesmo.</p>
       </div>
       <!-- Os três cards são criados pelo script a partir do array DESTAQUES -->
       <div class="destaques-grade" id="destaques-grade"></div>
@@ -530,10 +579,11 @@
       <div class="cabeca revelar">
         <span class="sobretitulo">Catálogo</span>
         <h2 class="titulo" id="trabalhos-titulo">Trabalhos por <span class="serif">nicho</span></h2>
-        <p>Escolha a prateleira da sua marca e veja o que eu já criei nela.</p>
+        <p>Passe o mouse em cima de um vídeo para ver uma prévia. Clique ou toque para assistir aqui mesmo.</p>
       </div>
-      <div class="filtros revelar" id="filtros" role="group" aria-label="Filtrar trabalhos por nicho"></div>
-      <ul class="produtos" id="produtos"></ul>
+      <div class="filtros revelar" id="filtros" role="group" aria-label="Filtrar vídeos por nicho"></div>
+      <!-- Os carrosséis são criados pelo script a partir do array NICHOS_VIDEOS -->
+      <div id="prateleiras"></div>
       <p class="sr-only" id="aviso-filtro" aria-live="polite"></p>
     </div>
   </section>
@@ -639,6 +689,15 @@
   </div>
 </footer>
 
+<!-- ============ PLAYER DE VÍDEO (abre ao clicar em qualquer vídeo) ============ -->
+<div class="player-fundo" id="player-fundo" role="dialog" aria-modal="true" aria-labelledby="player-titulo" hidden>
+  <button class="player-fechar" id="player-fechar" type="button" aria-label="Fechar vídeo">×</button>
+  <button class="player-seta anterior" id="player-anterior" type="button" aria-label="Vídeo anterior">‹</button>
+  <div class="player"><div class="player-quadro" id="player-quadro"></div></div>
+  <p class="player-titulo" id="player-titulo"></p>
+  <button class="player-seta proximo" id="player-proximo" type="button" aria-label="Próximo vídeo">›</button>
+</div>
+
 <!-- ============ CARD DE CAPTURA (mídia kit) ============ -->
 <div class="modal-fundo" id="modal-fundo" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
@@ -702,43 +761,90 @@ const LOGOS_EXTRAS = [
   // { nome: "Nome da Marca", arquivo: "nome-da-marca.png" },
 ];
 
-/* DESTAQUES: os três vídeos grandes.
-   link   = ONDE ENTRA O LINK DO VÍDEO (abre ao clicar no card)
-   capa   = ONDE ENTRA A CAPA: coloque o nome do arquivo (ex: "capa1.jpg", formato 9:16) ou deixe "" para o degradê
-   titulo e contexto = troque pelos textos reais de cada vídeo */
+/* DESTAQUES: os três vídeos grandes da seção Conteúdos de destaque.
+   link     = ONDE ENTRA O LINK DO VÍDEO (pode colar o link do YouTube do jeito que vem)
+   capa     = vem sozinha do YouTube, não precisa colocar
+   numero e rotulo = opcional, ex: numero: "124 mil", rotulo: "views no reels" (deixe "" para esconder)
+   titulo e contexto = textos do card */
 const DESTAQUES = [
-  { link: "https://www.instagram.com/reel/DYkb8puERhp/", capa: "", numero: "124 mil", rotulo: "views no reels",
-    titulo: "TÍTULO DO VÍDEO 01", contexto: "Marca e objetivo da campanha aqui" },
-  { link: "https://www.instagram.com/p/DTpwZWYgII0/", capa: "", numero: "+74 mil", rotulo: "views no post",
-    titulo: "TÍTULO DO VÍDEO 02", contexto: "Marca e objetivo da campanha aqui" },
-  { link: "https://www.instagram.com/reel/DVzPDM9idLy/", capa: "", numero: "+9 mil", rotulo: "views no reels",
-    titulo: "TÍTULO DO VÍDEO 03", contexto: "Marca e objetivo da campanha aqui" }
+  { link: "https://youtube.com/shorts/rxExdXnbWcQ", titulo: "Reforma da cômoda",      contexto: "Casa",          numero: "", rotulo: "" },
+  { link: "https://youtube.com/shorts/Rp9FK_UuuFM", titulo: "App Méliuz",             contexto: "Tech",          numero: "", rotulo: "" },
+  { link: "https://youtube.com/shorts/eUaibcvSHlw", titulo: "Flotador Zulu Perfumes", contexto: "Zulu Perfumes", numero: "", rotulo: "" }
 ];
 
-/* NICHOS: viram os botões de filtro. Use exatamente estes nomes no campo "nicho" dos trabalhos. */
-const NICHOS = ["beleza", "skincare", "moda", "comida", "casa e decoração", "maternidade", "tech"];
-
-/* TRABALHOS: cada item vira um "produto" na vitrine.
-   Confira a marca e o nicho de cada um; os pares abaixo são um ponto de partida.
-   formato = legenda do espaço da imagem | capa = nome do arquivo da imagem ("" usa o degradê)
-   link = opcional, link do vídeo daquele trabalho ("" deixa sem link) */
-const TRABALHOS = [
-  { nicho: "beleza",           titulo: "Rotina de cabelo",            marca: "Pantene",           formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "beleza",           titulo: "Finalização do dia a dia",    marca: "Elseve",            formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "beleza",           titulo: "Perfume favorito",            marca: "Zulu Perfumes",     formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "skincare",         titulo: "Skincare de 3 passos",        marca: "Garnier",           formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "skincare",         titulo: "Cuidado com a pele",          marca: "Pharmanectar",      formato: "foto 4:5",   capa: "", link: "" },
-  { nicho: "moda",             titulo: "Provador em casa",            marca: "Marca 01",          formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "moda",             titulo: "Look da semana",              marca: "Marca 02",          formato: "foto 4:5",   capa: "", link: "" },
-  { nicho: "comida",           titulo: "Receita prática",             marca: "Boi da Cara Preta", formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "comida",           titulo: "Tempero da cozinha",          marca: "Vinagreen",         formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "casa e decoração", titulo: "Quarto renovado",             marca: "B&G Camas",         formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "casa e decoração", titulo: "Achadinhos para casa",        marca: "Mercado Livre",     formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "maternidade",      titulo: "Rotina com o bebê",           marca: "Kinedu",            formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "maternidade",      titulo: "Proteção solar infantil",     marca: "SunKids",           formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "maternidade",      titulo: "Dia a dia de mãe",            marca: "Agora Sou Mãe",     formato: "foto 4:5",   capa: "", link: "" },
-  { nicho: "tech",             titulo: "Cashback nas compras",        marca: "Méliuz",            formato: "vídeo 9:16", capa: "", link: "" },
-  { nicho: "tech",             titulo: "Gadget que eu uso",           marca: "Marca 03",          formato: "vídeo 9:16", capa: "", link: "" }
+/* VÍDEOS POR NICHO: cada nicho vira um carrossel na seção Trabalhos, nesta mesma ordem.
+   Para adicionar um vídeo: copie uma linha e troque o link (e o título, se quiser).
+   Sem título, o card mostra o nome do nicho com o número do vídeo (ex: Casa 03).
+   Para criar um nicho novo: copie um bloco inteiro { nome: ..., videos: [ ... ] }. */
+const NICHOS_VIDEOS = [
+  { nome: "Casa", videos: [
+    { link: "https://youtube.com/shorts/OY8Mr0gsC-o", titulo: "Damare" },
+    { link: "https://youtube.com/shorts/yjLx4nqDAFg", titulo: "" },
+    { link: "https://youtube.com/shorts/kZgwNArRhZc", titulo: "" },
+    { link: "https://youtube.com/shorts/GU-t4J8wm2s", titulo: "" },
+    { link: "https://youtube.com/shorts/8Gvx-b5_qRo", titulo: "" },
+    { link: "https://youtube.com/shorts/QHO0Eq0Goi0", titulo: "" },
+    { link: "https://youtube.com/shorts/eUaibcvSHlw", titulo: "" },
+    { link: "https://youtube.com/shorts/f2_yon7q5zo", titulo: "" },
+    { link: "https://youtube.com/shorts/4q3ew4HK5lE", titulo: "Vinagreen" },
+    { link: "https://youtube.com/shorts/_FElDrbqPjg", titulo: "Coala" },
+    { link: "https://youtube.com/shorts/tKrXrd4nh9c", titulo: "" }
+  ]},
+  { nome: "Experiência", videos: [
+    { link: "https://youtube.com/shorts/01UCPqb_JnA", titulo: "" },
+    { link: "https://youtube.com/shorts/Apr5VM44fbE", titulo: "" },
+    { link: "https://youtube.com/shorts/ER6xSwRWnZc", titulo: "" },
+    { link: "https://youtube.com/shorts/OOXmmcokD3M", titulo: "" }
+  ]},
+  { nome: "Culinária", videos: [
+    { link: "https://youtube.com/shorts/b5Qe5SX0fc4", titulo: "" },
+    { link: "https://youtube.com/shorts/iLLnoWZNj6U", titulo: "" },
+    { link: "https://youtube.com/shorts/7DPIuRV82Pk", titulo: "" },
+    { link: "https://youtube.com/shorts/7n1W8SAwqnE", titulo: "" }
+  ]},
+  { nome: "Skincare", videos: [
+    { link: "https://youtube.com/shorts/UdeBqtZiLYk", titulo: "" },
+    { link: "https://youtube.com/shorts/tMXQnpe-owI", titulo: "" },
+    { link: "https://youtube.com/shorts/IYfx31PL6_0", titulo: "" },
+    { link: "https://youtube.com/shorts/M8VDNHOdi0I", titulo: "" }
+  ]},
+  { nome: "Maternidade", videos: [
+    { link: "https://youtube.com/shorts/Q_I4kHl-Jwc", titulo: "" },
+    { link: "https://youtube.com/shorts/EdfNHKsF36g", titulo: "" },
+    { link: "https://youtube.com/shorts/iG9o0omqaiI", titulo: "" },
+    // o YouTube diz que o vídeo abaixo não existe ou está privado; tire as duas barras quando ele voltar
+    // { link: "https://youtube.com/shorts/35HTVpczRK0", titulo: "" },
+    { link: "https://youtube.com/shorts/qP6SP8P-SLE", titulo: "" },
+    { link: "https://youtube.com/shorts/Rz5ormqY_-U", titulo: "" },
+    { link: "https://youtube.com/shorts/B-fjWs3VW4U", titulo: "" },
+    { link: "https://youtube.com/shorts/d07yjH_MxT4", titulo: "" },
+    { link: "https://youtube.com/shorts/Vz_GWMr0Hek", titulo: "" }
+  ]},
+  { nome: "Clips", videos: [
+    { link: "https://youtube.com/shorts/qW1nVCsWGp8", titulo: "" },
+    { link: "https://youtube.com/shorts/Z8RXmpdtTYs", titulo: "" },
+    { link: "https://youtube.com/shorts/J2wCj0hjBmk", titulo: "" },
+    { link: "https://youtube.com/shorts/f9RRECk_KuY", titulo: "" }
+  ]},
+  { nome: "Beleza", videos: [
+    { link: "https://youtube.com/shorts/Q1GhalG1BbU", titulo: "" },
+    { link: "https://youtube.com/shorts/OW4dC1jxUWI", titulo: "" },
+    { link: "https://youtube.com/shorts/BSL4wRQsCa4", titulo: "" },
+    { link: "https://youtube.com/shorts/cEigudUOjj8", titulo: "" }
+  ]},
+  { nome: "Haircare", videos: [
+    { link: "https://youtube.com/shorts/G_mr650pyag", titulo: "" },
+    { link: "https://youtube.com/shorts/l2RepuFBX9o", titulo: "" },
+    { link: "https://youtube.com/shorts/Bl1TyWtkE0g", titulo: "" },
+    { link: "https://youtube.com/shorts/z01AETwV_W8", titulo: "" }
+  ]},
+  { nome: "Projeto reforma", videos: [
+    { link: "https://youtube.com/shorts/i66FhFRsFVw", titulo: "Episódio 1" },
+    { link: "https://youtube.com/shorts/ahUloqqh-b4", titulo: "Episódio 2" },
+    { link: "https://youtube.com/shorts/ppST11xAQAc", titulo: "Episódio 3" },
+    { link: "https://youtube.com/shorts/C7ZUW-8rQFs", titulo: "Episódio 4" },
+    { link: "https://youtube.com/shorts/wJFbR0qqeys", titulo: "Achado cortina" }
+  ]}
 ];
 
 /* SERVIÇOS: os seis cards da seção Como eu te ajudo */
@@ -765,17 +871,6 @@ const DEPOIMENTOS = [
   { nome: "Cliente 03", empresa: "Empresa do cliente 03", texto: "Espaço para o depoimento do cliente 03, de preferência citando prazo, qualidade ou resultado." },
   { nome: "Cliente 04", empresa: "Empresa do cliente 04", texto: "Espaço para o depoimento do cliente 04. Pode ser trecho de mensagem no WhatsApp ou e-mail." }
 ];
-
-/* Degradê usado no espaço da imagem de cada nicho (quando não tem capa) */
-const CORES_NICHO = {
-  "beleza": "linear-gradient(160deg,#ffe3ec,#f4a6bd 55%,#b84a72)",
-  "skincare": "linear-gradient(160deg,#eef8f3,#bfe3d3 55%,#3f9d80)",
-  "moda": "linear-gradient(160deg,#f3eefc,#c9b8ef 55%,#6a4fb3)",
-  "comida": "linear-gradient(160deg,#f8e6d8,#e3a275 55%,#c96a25)",
-  "casa e decoração": "linear-gradient(160deg,#f5efe6,#dcc6a6 55%,#8a6a45)",
-  "maternidade": "linear-gradient(160deg,#e9f4ff,#b4d5f2 55%,#4b84b8)",
-  "tech": "linear-gradient(160deg,#e9eef2,#a9b9c6 55%,#2f4554)"
-};
 
 /* =====================================================================
    DAQUI PARA BAIXO É O FUNCIONAMENTO DA PÁGINA (não precisa mexer)
@@ -811,60 +906,187 @@ trilhoLogos.querySelectorAll("img").forEach((img) => {
   else img.addEventListener("load", comImagem);
 });
 
-/* Destaques */
+/* Vídeos do YouTube: lê o código do vídeo a partir do link */
+const idYT = (link) => (String(link).match(/(?:shorts\/|[?&]v=|youtu\.be\/|embed\/)([\w-]{11})/) || [])[1] || "";
+const capaYT = (id) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 const iconePlay = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5Z"/></svg>';
-$("#destaques-grade").innerHTML = DESTAQUES.map((d, i) => `
-  <a class="destaque revelar" href="${esc(d.link)}" target="_blank" rel="noopener"
-     aria-label="Assistir ${esc(d.titulo)} no Instagram: ${esc(d.numero)} ${esc(d.rotulo)}">
-    <div class="midia" ${d.capa ? "" : `role="img" aria-label="Capa do vídeo de destaque ${i + 1}"`}>
-      ${d.capa ? `<img src="${esc(d.capa)}" alt="Capa do vídeo ${esc(d.titulo)}" loading="lazy">` : `<span class="legenda-midia">capa do vídeo 9:16</span>`}
-      <span class="play">${iconePlay}</span>
-    </div>
-    <div class="destaque-info">
-      <div class="destaque-numero">${esc(d.numero)}</div>
-      <span class="destaque-rotulo">${esc(d.rotulo)}</span>
-      <h3>${esc(d.titulo)}</h3>
-      <p class="destaque-contexto">${esc(d.contexto)}</p>
-      <p class="destaque-ver" aria-hidden="true">Assistir agora →</p>
-    </div>
-  </a>`).join("");
+const capaVideo = (id, alt, classePlay) => `
+  <span class="video-capa" data-id="${id}">
+    <img src="${capaYT(id)}" alt="${esc(alt)}" loading="lazy" decoding="async">
+    <span class="${classePlay}" aria-hidden="true">${iconePlay}</span>
+  </span>`;
 
-/* Trabalhos: produtos da vitrine */
-$("#produtos").innerHTML = TRABALHOS.map((t) => `
-  <li class="produto revelar" data-nicho="${esc(t.nicho)}">
-    <div class="midia" style="background:${CORES_NICHO[t.nicho] || ""}" ${t.capa ? "" : `role="img" aria-label="Espaço para a imagem do trabalho ${esc(t.titulo)}"`}>
-      ${t.capa ? `<img src="${esc(t.capa)}" alt="${esc(t.titulo)} para ${esc(t.marca)}" loading="lazy">` : `<span class="legenda-midia">${esc(t.formato)}</span>`}
-      <span class="produto-nicho">${esc(t.nicho)}</span>
-    </div>
-    <div class="produto-corpo">
-      <span class="estrelas" role="img" aria-label="Avaliação cinco estrelas">★★★★★</span>
-      <h3>${t.link ? `<a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.titulo)}</a>` : esc(t.titulo)}</h3>
-      <p class="produto-marca">${esc(t.marca)}</p>
-      <div class="produto-rodape">
-        <span class="etiqueta">sob consulta</span>
+/* Listas usadas pelo player (destaques + uma por nicho) */
+const LISTAS = {};
+
+/* Destaques */
+const destaquesProntos = DESTAQUES.map((d) => ({ ...d, id: idYT(d.link) })).filter((d) => d.id);
+LISTAS.destaques = destaquesProntos.map((d) => ({ id: d.id, titulo: d.titulo }));
+$("#destaques-grade").innerHTML = destaquesProntos.map((d, i) => `
+  <button class="destaque revelar" type="button" data-lista="destaques" data-indice="${i}" aria-label="Assistir ${esc(d.titulo)}">
+    ${capaVideo(d.id, "Capa do vídeo " + d.titulo, "play")}
+    <span class="destaque-info">
+      ${d.numero ? `<span class="destaque-numero">${esc(d.numero)}</span>` : ""}
+      ${d.rotulo ? `<span class="destaque-rotulo">${esc(d.rotulo)}</span>` : ""}
+      <span class="destaque-titulo">${esc(d.titulo)}</span>
+      ${d.contexto ? `<span class="destaque-contexto">${esc(d.contexto)}</span>` : ""}
+      <span class="destaque-ver" aria-hidden="true">Assistir agora →</span>
+    </span>
+  </button>`).join("");
+
+/* Trabalhos: uma prateleira (carrossel) por nicho, na ordem do array NICHOS_VIDEOS */
+const nichosProntos = NICHOS_VIDEOS.map((n) => ({
+  nome: n.nome,
+  videos: n.videos
+    .map((v, vi) => ({ id: idYT(v.link), titulo: v.titulo || `${n.nome} ${String(vi + 1).padStart(2, "0")}` }))
+    .filter((v) => v.id)
+})).filter((n) => n.videos.length);
+nichosProntos.forEach((n, ni) => { LISTAS[ni] = n.videos; });
+
+$("#prateleiras").innerHTML = nichosProntos.map((n, ni) => `
+  <div class="prateleira revelar" data-prateleira="${ni}" role="region" aria-labelledby="prateleira-${ni}">
+    <div class="prateleira-topo">
+      <h3 id="prateleira-${ni}">${esc(n.nome)}<span class="prateleira-qtd">${n.videos.length} vídeo${n.videos.length === 1 ? "" : "s"}</span></h3>
+      <div class="setas">
         <a class="contratar" href="#contato">contratar →</a>
+        <button class="seta" type="button" data-dir="-1" aria-label="Vídeos anteriores de ${esc(n.nome)}">‹</button>
+        <button class="seta" type="button" data-dir="1" aria-label="Próximos vídeos de ${esc(n.nome)}">›</button>
       </div>
     </div>
-  </li>`).join("");
+    <ul class="carrossel">
+      ${n.videos.map((v, vi) => `
+      <li class="video-card">
+        <button class="video-botao" type="button" data-lista="${ni}" data-indice="${vi}" aria-label="Assistir ${esc(v.titulo)}">
+          ${capaVideo(v.id, "Capa do vídeo " + v.titulo, "play-mini")}
+          <span class="video-titulo">${esc(v.titulo)}</span>
+        </button>
+      </li>`).join("")}
+    </ul>
+  </div>`).join("");
 
-/* Filtros por nicho */
+/* Setas dos carrosséis */
+document.querySelectorAll(".prateleira").forEach((p) => {
+  const trilho = p.querySelector(".carrossel");
+  const [voltar, avancar] = p.querySelectorAll(".seta");
+  const atualizar = () => {
+    voltar.disabled = trilho.scrollLeft <= 2;
+    avancar.disabled = trilho.scrollLeft + trilho.clientWidth >= trilho.scrollWidth - 2;
+  };
+  [voltar, avancar].forEach((s) => s.addEventListener("click", () => {
+    trilho.scrollBy({ left: Number(s.dataset.dir) * trilho.clientWidth * 0.85, behavior: reduzMovimento ? "auto" : "smooth" });
+  }));
+  trilho.addEventListener("scroll", atualizar, { passive: true });
+  window.addEventListener("resize", atualizar);
+  atualizar();
+});
+
+/* Filtros por nicho: mostra só a prateleira escolhida */
 const filtros = $("#filtros");
-const contar = (n) => TRABALHOS.filter((t) => t.nicho === n).length;
-filtros.innerHTML = [`<button class="chip" type="button" data-filtro="todos" aria-pressed="true">Todos<span class="qtd">${TRABALHOS.length}</span></button>`]
-  .concat(NICHOS.map((n) => `<button class="chip" type="button" data-filtro="${esc(n)}" aria-pressed="false">${esc(n.charAt(0).toUpperCase() + n.slice(1))}<span class="qtd">${contar(n)}</span></button>`))
+const totalVideos = nichosProntos.reduce((s, n) => s + n.videos.length, 0);
+filtros.innerHTML = [`<button class="chip" type="button" data-filtro="todos" aria-pressed="true">Todos<span class="qtd">${totalVideos}</span></button>`]
+  .concat(nichosProntos.map((n, ni) => `<button class="chip" type="button" data-filtro="${ni}" aria-pressed="false">${esc(n.nome)}<span class="qtd">${n.videos.length}</span></button>`))
   .join("");
 filtros.addEventListener("click", (e) => {
   const botao = e.target.closest(".chip");
   if (!botao) return;
   const escolhido = botao.dataset.filtro;
   filtros.querySelectorAll(".chip").forEach((b) => b.setAttribute("aria-pressed", String(b === botao)));
-  let visiveis = 0;
-  document.querySelectorAll(".produto").forEach((p) => {
-    const mostra = escolhido === "todos" || p.dataset.nicho === escolhido;
+  document.querySelectorAll(".prateleira").forEach((p) => {
+    const mostra = escolhido === "todos" || p.dataset.prateleira === escolhido;
     p.hidden = !mostra;
-    if (mostra) { visiveis++; p.classList.add("visivel"); }
+    if (mostra) p.classList.add("visivel");
   });
-  $("#aviso-filtro").textContent = `${visiveis} trabalho${visiveis === 1 ? "" : "s"} em ${escolhido === "todos" ? "todos os nichos" : escolhido}`;
+  window.dispatchEvent(new Event("resize"));
+  $("#aviso-filtro").textContent = escolhido === "todos"
+    ? `Mostrando todos os ${totalVideos} vídeos`
+    : `Mostrando ${nichosProntos[escolhido].videos.length} vídeos de ${nichosProntos[escolhido].nome}`;
+});
+
+/* Prévia ao passar o mouse: toca o vídeo sem som enquanto o mouse estiver em cima */
+const podePrevia = window.matchMedia("(hover: hover) and (pointer: fine)").matches && !reduzMovimento;
+let previaAtual = null;
+function pararPrevia() {
+  if (!previaAtual) return;
+  clearTimeout(previaAtual.espera);
+  const quadro = previaAtual.capa.querySelector(".video-previa");
+  if (quadro) quadro.remove();
+  previaAtual.capa.classList.remove("tocando");
+  previaAtual = null;
+}
+function iniciarPrevia(capa) {
+  pararPrevia();
+  const id = capa.dataset.id;
+  previaAtual = { capa, espera: setTimeout(() => {
+    const quadro = document.createElement("iframe");
+    quadro.className = "video-previa";
+    quadro.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&controls=0&playsinline=1&loop=1&playlist=${id}&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0`;
+    quadro.title = "Prévia do vídeo";
+    quadro.tabIndex = -1;
+    quadro.setAttribute("aria-hidden", "true");
+    quadro.allow = "autoplay; encrypted-media";
+    const mostrar = () => quadro.classList.add("pronta");
+    quadro.addEventListener("load", () => setTimeout(mostrar, 900));
+    setTimeout(mostrar, 3000); /* se o YouTube demorar, mostra assim mesmo */
+    capa.appendChild(quadro);
+    capa.classList.add("tocando");
+  }, 250) };
+}
+if (podePrevia) {
+  document.querySelectorAll(".video-capa").forEach((capa) => {
+    capa.addEventListener("mouseenter", () => iniciarPrevia(capa));
+    capa.addEventListener("mouseleave", pararPrevia);
+  });
+}
+
+/* Player: abre o vídeo com som dentro do próprio site */
+const playerFundo = $("#player-fundo");
+let listaAtual = [];
+let indiceAtual = 0;
+let focoPlayer = null;
+function mostrarVideo(i) {
+  indiceAtual = (i + listaAtual.length) % listaAtual.length;
+  const v = listaAtual[indiceAtual];
+  $("#player-quadro").innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1" title="${esc(v.titulo)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+  $("#player-titulo").textContent = listaAtual.length > 1 ? `${v.titulo} · ${indiceAtual + 1} de ${listaAtual.length}` : v.titulo;
+}
+function abrirPlayer(lista, indice) {
+  if (!lista || !lista.length) return;
+  pararPrevia();
+  listaAtual = lista;
+  focoPlayer = document.activeElement;
+  mostrarVideo(indice);
+  const varios = lista.length > 1;
+  $("#player-anterior").hidden = !varios;
+  $("#player-proximo").hidden = !varios;
+  playerFundo.hidden = false;
+  document.body.style.overflow = "hidden";
+  $("#player-fechar").focus();
+}
+function fecharPlayer() {
+  $("#player-quadro").innerHTML = "";
+  playerFundo.hidden = true;
+  document.body.style.overflow = "";
+  if (focoPlayer && focoPlayer.focus) focoPlayer.focus();
+}
+document.addEventListener("click", (e) => {
+  const botao = e.target.closest("[data-lista]");
+  if (botao) abrirPlayer(LISTAS[botao.dataset.lista], Number(botao.dataset.indice));
+});
+$("#player-fechar").addEventListener("click", fecharPlayer);
+$("#player-anterior").addEventListener("click", () => mostrarVideo(indiceAtual - 1));
+$("#player-proximo").addEventListener("click", () => mostrarVideo(indiceAtual + 1));
+playerFundo.addEventListener("click", (e) => { if (e.target === playerFundo) fecharPlayer(); });
+document.addEventListener("keydown", (e) => {
+  if (playerFundo.hidden) return;
+  if (e.key === "Escape") fecharPlayer();
+  else if (e.key === "ArrowLeft" && listaAtual.length > 1) mostrarVideo(indiceAtual - 1);
+  else if (e.key === "ArrowRight" && listaAtual.length > 1) mostrarVideo(indiceAtual + 1);
+  else if (e.key === "Tab") {
+    const focaveis = [...playerFundo.querySelectorAll("button:not([hidden]), iframe")];
+    const primeiro = focaveis[0], ultimo = focaveis[focaveis.length - 1];
+    if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+  }
 });
 
 /* Serviços */
@@ -966,6 +1188,7 @@ function jaMostrou() { try { return sessionStorage.getItem(CHAVE_KIT) === "1"; }
 function marcarMostrado() { try { sessionStorage.setItem(CHAVE_KIT, "1"); } catch (err) { /* navegador sem armazenamento: segue sem guardar */ } }
 function abrirModal() {
   if (jaMostrou()) return;
+  if (!playerFundo.hidden) { setTimeout(abrirModal, 5000); return; } /* espera o vídeo fechar */
   marcarMostrado();
   focoAnterior = document.activeElement;
   fundo.hidden = false;
