@@ -18,12 +18,13 @@
     --verde-claro: #eef1e4;
     --amarelo: #c96a25;          /* terracota: etiquetas, selo "novo" e detalhes */
     --terracota-claro: #e8955a;  /* terracota mais clara para texto em fundo escuro */
-    --gelo: #f6f7f5;
+    --fundo: #f1eee8;            /* bege acinzentado: fundo do site inteiro */
+    --gelo: #e9e5dd;             /* bege um pouco mais fundo: seções alternadas */
     --branco: #ffffff;
     --tinta: #15201b;
     --texto: #3b4842;
     --suave: #5d6b64;
-    --borda: #e2e7e3;
+    --borda: #ded8cd;
     --estrela: #c96a25;
     --raio: 28px;
     --raio-p: 16px;
@@ -40,7 +41,7 @@
     margin: 0;
     font-family: var(--sans);
     color: var(--texto);
-    background: var(--branco);
+    background: var(--fundo);
     line-height: 1.6;
     font-size: 1rem;
     overflow-x: hidden;
@@ -86,7 +87,7 @@
   }
   .faixa-entrega strong { color: #fff; font-weight: 800; text-decoration: underline; text-decoration-color: var(--amarelo); text-decoration-thickness: 3px; text-underline-offset: 3px; }
   .barra {
-    background: rgba(255, 255, 255, .92);
+    background: rgba(241, 238, 232, .6); /* barra do menu com transparência */
     backdrop-filter: saturate(1.6) blur(12px);
     -webkit-backdrop-filter: saturate(1.6) blur(12px);
     border-bottom: 1px solid var(--borda);
@@ -139,7 +140,7 @@
   }
 
   /* ============ CAPA ============ */
-  .capa { background: linear-gradient(180deg, var(--gelo) 0%, #fff 100%); padding-top: 64px; overflow: hidden; }
+  .capa { background: linear-gradient(180deg, var(--gelo) 0%, var(--fundo) 100%); padding-top: 64px; overflow: hidden; }
   .capa-grade { display: grid; grid-template-columns: 1.15fr .85fr; gap: 56px; align-items: center; }
   .capa-etiqueta { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--borda); padding: 6px 14px 6px 8px; border-radius: 999px; font-size: .88rem; font-weight: 600; box-shadow: var(--sombra); }
   .capa-etiqueta b { background: var(--amarelo); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: .78rem; }
@@ -167,7 +168,7 @@
   .capa-cartao .estrelas { font-size: .95rem; }
   .estrelas { color: var(--estrela); letter-spacing: 2px; font-size: .9rem; line-height: 1; }
 
-  .marcas { margin-top: 72px; border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); background: #fff; padding: 16px 0; overflow: hidden; }
+  .marcas { margin-top: 72px; border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); background: var(--fundo); padding: 16px 0; overflow: hidden; }
   .marcas-titulo { text-align: center; font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: var(--suave); margin-bottom: 10px; }
   .marcas-trilho { display: flex; width: max-content; animation: deslizar 45s linear infinite; }
   .marcas:hover .marcas-trilho { animation-play-state: paused; }
@@ -408,7 +409,7 @@
     .sanduiche { display: inline-flex; }
     .menu {
       position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 2px;
-      background: #fff; padding: 12px 16px 20px; border-bottom: 1px solid var(--borda); box-shadow: var(--sombra-forte);
+      background: var(--fundo); padding: 12px 16px 20px; border-bottom: 1px solid var(--borda); box-shadow: var(--sombra-forte);
       display: none;
     }
     .menu.aberto { display: flex; }
