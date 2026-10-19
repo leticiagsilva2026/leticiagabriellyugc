@@ -12,7 +12,7 @@
    Para tirar um feedback, apague a linha inteira dele.
    ===================================================================== */
 window.FEEDBACKS_CAPA = [
-  { marca: "Marca 01", logo: "", texto: "Escreva aqui o que a marca te mandou" },
-  { marca: "Marca 02", logo: "", texto: "Outro feedback curto aqui" },
-  { marca: "Marca 03", logo: "", texto: "Mais um feedback de marca" }
+  { marca: "Coala", logo: "coala.png", texto: "Nos surpreendeu mais uma vez com seu trabalho, adoramos a experiência! Otimos conteúdos." },
+  { marca: "Vinagreen", logo: "vinagreen.png", texto: "Você entregou um conteúdo que superou as expectativas! Ótimos trabalhos." },
+  { marca: "Zulu Perfumes", logo: "zulu-perfumes.png", texto: "Parabéns! Você entregou ótimos conteúdos. Criativos e bem alinhado com o briefing. Nota 10" }
 ];

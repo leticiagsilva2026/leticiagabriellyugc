@@ -176,14 +176,15 @@
 
   /* feedbacks das marcas em volta da foto (dados em feedbacks/feedbacks.js) */
   .feedback-capa {
-    position: absolute; z-index: 2; display: flex; align-items: center; gap: 10px; max-width: 250px;
+    position: absolute; z-index: 2; display: flex; align-items: center; gap: 10px; max-width: 270px;
     background: #fff; border-radius: 14px; padding: 10px 16px 10px 10px; box-shadow: var(--sombra-forte);
     animation: flutuar 6s ease-in-out infinite;
   }
   .feedback-logo { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--borda); background: var(--fundo); display: grid; place-items: center; overflow: hidden; padding: 4px; font-weight: 800; color: var(--verde-texto); }
   .feedback-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .feedback-texto { font-size: .84rem; font-weight: 700; color: var(--tinta); line-height: 1.25; }
-  .feedback-marca { font-size: .74rem; color: var(--suave); margin-top: 2px; }
+  .feedback-marca { display: flex; align-items: center; gap: 6px; font-size: .74rem; color: var(--suave); margin-top: 3px; }
+  .feedback-estrelas { color: #d4a017; font-size: .66rem; letter-spacing: 1px; line-height: 1; }
   .feedback-1 { top: 16%; right: -170px; }
   .feedback-2 { bottom: 12%; left: -40px; animation-delay: -2s; }
   .feedback-3 { top: 50%; right: -190px; animation-delay: -4s; }
@@ -575,7 +576,7 @@
     <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
       <defs>
         <pattern id="estampa-roca" width="180" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
-          <g class="traco" stroke-width="1.1" opacity=".13">
+          <g class="traco" stroke-width="1.2" opacity=".24">
             <!-- raminho com folhas -->
             <path d="M24 70 C 30 52, 34 36, 42 20"/>
             <path d="M30 54 C 20 50, 16 42, 17 34 C 25 38, 29 45, 30 54Z"/>
@@ -592,14 +593,14 @@
             <path d="M52 168 C 54 156, 56 146, 60 136 M60 136 l -5 6 M60 136 l 4 6 M58 144 l -5 6 M58 144 l 4 6 M56 152 l -5 6 M56 152 l 4 6"/>
           </g>
           <!-- sementinhas -->
-          <g style="fill: var(--verde-texto)" opacity=".12">
+          <g style="fill: var(--verde-texto)" opacity=".22">
             <circle cx="74" cy="22" r="1.4"/><circle cx="140" cy="160" r="1.4"/><circle cx="12" cy="128" r="1.2"/><circle cx="160" cy="70" r="1.2"/><circle cx="104" cy="92" r="1.1"/>
           </g>
         </pattern>
         <!-- some a estampa perto do texto e deixa mais forte perto da foto -->
         <linearGradient id="estampa-esmaece" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stop-color="#fff" stop-opacity=".35"/>
-          <stop offset=".55" stop-color="#fff" stop-opacity=".75"/>
+          <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+          <stop offset=".55" stop-color="#fff" stop-opacity=".85"/>
           <stop offset="1" stop-color="#fff" stop-opacity="1"/>
         </linearGradient>
         <mask id="estampa-mascara"><rect width="100%" height="100%" fill="url(#estampa-esmaece)"/></mask>
@@ -1037,7 +1038,7 @@ $(".capa-foto-moldura").insertAdjacentHTML("beforeend", FEEDBACKS.map((f, i) => 
     <span class="feedback-logo">${f.logo ? `<img src="feedbacks/${esc(f.logo)}" alt="Logo ${esc(f.marca)}">` : esc((f.marca || "?").charAt(0))}</span>
     <span>
       <p class="feedback-texto">${esc(f.texto)}</p>
-      ${f.marca ? `<p class="feedback-marca">${esc(f.marca)}</p>` : ""}
+      <p class="feedback-marca">${esc(f.marca || "")}<span class="feedback-estrelas" role="img" aria-label="cinco estrelas">★★★★★</span></p>
     </span>
   </div>`).join(""));
 
