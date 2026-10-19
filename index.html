@@ -168,13 +168,25 @@
   .capa-cartao .estrelas { font-size: .95rem; }
   .estrelas { color: var(--estrela); letter-spacing: 2px; font-size: .9rem; line-height: 1; }
 
-  .marcas { margin-top: 72px; border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); background: var(--fundo); padding: 16px 0; overflow: hidden; }
-  .marcas-titulo { text-align: center; font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: var(--suave); margin-bottom: 10px; }
-  .marcas-trilho { display: flex; width: max-content; animation: deslizar 45s linear infinite; }
-  .marcas:hover .marcas-trilho { animation-play-state: paused; }
-  .marcas-lista { display: flex; gap: 40px; padding-right: 40px; list-style: none; margin: 0; padding-left: 0; }
-  .marcas-lista li { white-space: nowrap; font-weight: 800; font-size: 1.05rem; color: #46534d; display: flex; align-items: center; gap: 40px; }
-  .marcas-lista li::after { content: "✦"; color: var(--verde-texto); font-size: .8rem; }
+  /* faixa verde com os serviços, no rodapé da capa */
+  .marcas { margin-top: 56px; background: #5d6022; padding: 15px 0; overflow: hidden; }
+  .marcas-trilho { display: flex; width: max-content; animation: deslizar 40s linear infinite; }
+  .marcas-lista { display: flex; gap: 36px; padding-right: 36px; list-style: none; margin: 0; padding-left: 0; }
+  .marcas-lista li { white-space: nowrap; font-weight: 800; font-size: 1rem; text-transform: uppercase; letter-spacing: .02em; color: #fff; display: flex; align-items: center; gap: 36px; }
+  .marcas-lista li::after { content: "◆"; color: var(--verde); font-size: .7rem; }
+
+  /* no computador, a capa e a faixa cabem inteiras na primeira tela */
+  @media (min-width: 901px) {
+    .capa { display: flex; flex-direction: column; min-height: calc(100vh - var(--altura-topo, 101px)); min-height: calc(100svh - var(--altura-topo, 101px)); padding-top: clamp(20px, 4vh, 48px); }
+    .capa-grade { flex: 1; }
+    .capa h1 { font-size: clamp(2.6rem, min(5.4vw, 9vh), 5rem); margin: clamp(12px, 2vh, 22px) 0 clamp(10px, 1.6vh, 18px); }
+    .capa-frase { font-size: clamp(1.02rem, min(1.6vw, 2.4vh), 1.25rem); }
+    .capa-botoes { margin: clamp(16px, 3vh, 30px) 0 clamp(18px, 3.2vh, 34px); }
+    .capa-numeros li { padding: clamp(10px, 1.6vh, 16px) 16px; }
+    .capa-foto-moldura { width: auto; max-width: none; height: min(560px, calc(100svh - var(--altura-topo, 101px) - 150px)); aspect-ratio: 4 / 5; }
+    .capa-foto { height: 100%; }
+    .marcas { margin-top: clamp(20px, 3.5vh, 44px); }
+  }
   @keyframes deslizar { to { transform: translateX(-50%); } }
 
   /* ============ CARROSSEL DE LOGOS ============ */
@@ -523,9 +535,8 @@
       </div>
     </div>
 
-    <!-- faixa fina com as marcas (preenchida pelo array MARCAS) -->
-    <div class="marcas" aria-label="Marcas com quem já trabalhei">
-      <p class="marcas-titulo">Marcas com quem já criei</p>
+    <!-- faixa verde com os serviços (preenchida pelo array SERVICOS_FAIXA) -->
+    <div class="marcas" aria-label="O que eu faço">
       <div class="marcas-trilho" id="marcas-trilho"></div>
     </div>
   </section>
@@ -750,7 +761,10 @@ const METRICAS = [
   { valor: 7,   antes: "",  depois: "",  rotulo: "nichos atendidos" }
 ];
 
-/* MARCAS: aparecem na faixa que passa no fim da capa */
+/* SERVIÇOS DA FAIXA VERDE: os textos que passam no rodapé da capa. Para incluir outro, é só colocar entre aspas. */
+const SERVICOS_FAIXA = ["Clips para marketplace", "Edição de vídeo", "Vídeos UGC", "Influencer", "UGC Canvas"];
+
+/* MARCAS: aparecem no carrossel de logos (entre Sobre mim e Conteúdos de destaque) */
 const MARCAS = [
   "L'Oréal", "Pantene", "Mercado Livre", "Agora Sou Mãe", "Zulu Perfumes", "Coala",
   "Vinagreen", "SunKids", "Cartão de Todos", "Kinedu", "Secret", "Méliuz", "Dove",
@@ -893,9 +907,16 @@ $("#capa-numeros").innerHTML = METRICAS.slice(0, 3).map((m) =>
   `<li><strong data-contar="${m.valor}" data-antes="${esc(m.antes)}" data-depois="${esc(m.depois)}">${esc(m.antes)}${m.valor}${esc(m.depois)}</strong><span>${esc(m.rotulo)}</span></li>`
 ).join("");
 
-/* Faixa de marcas (duplicada para o movimento contínuo; a cópia fica escondida do leitor de tela) */
-const listaMarcas = MARCAS.map((m) => `<li>${esc(m)}</li>`).join("");
-$("#marcas-trilho").innerHTML = `<ul class="marcas-lista">${listaMarcas}</ul><ul class="marcas-lista" aria-hidden="true">${listaMarcas}</ul>`;
+/* Faixa verde da capa: repete os serviços até preencher a tela e duplica para o movimento contínuo
+   (a cópia fica escondida do leitor de tela) */
+const repeticoes = Math.max(1, Math.ceil(12 / SERVICOS_FAIXA.length));
+const listaFaixa = Array.from({ length: repeticoes }, () => SERVICOS_FAIXA).flat().map((s) => `<li>${esc(s)}</li>`).join("");
+$("#marcas-trilho").innerHTML = `<ul class="marcas-lista">${listaFaixa}</ul><ul class="marcas-lista" aria-hidden="true">${listaFaixa}</ul>`;
+
+/* Altura do topo fixo, usada para a capa caber certinho na primeira tela */
+const medirTopo = () => document.documentElement.style.setProperty("--altura-topo", document.querySelector(".topo").offsetHeight + "px");
+medirTopo();
+window.addEventListener("resize", medirTopo);
 
 /* Carrossel de logos: monta os círculos e mostra o nome quando a imagem não existe */
 const nomeArquivo = (nome) => nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".png";
