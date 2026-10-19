@@ -81,25 +81,45 @@
 
   /* ============ TOPO FIXO ============ */
   .topo { position: sticky; top: 0; z-index: 100; }
-  .faixa-entrega {
-    background: #5d6022; color: #fff; text-align: center; /* faixa do topo em musgo escuro */
-    font-size: .85rem; font-weight: 600; padding: 7px 16px; letter-spacing: .01em;
+  /* faixa de cima: selo, contagem da Black Friday, frase e link */
+  .faixa-topo { background: #5d6022; color: #fff; padding: 9px 16px; font-size: .9rem; }
+  .faixa-topo-conteudo { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; row-gap: 4px; }
+  .selo-bf {
+    background: var(--tinta); color: #fff; border-radius: 999px; padding: 4px 12px;
+    font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .16em; line-height: 1.3;
   }
-  .faixa-entrega strong { color: #fff; font-weight: 800; text-decoration: underline; text-decoration-color: var(--amarelo); text-decoration-thickness: 3px; text-underline-offset: 3px; }
+  .faixa-contagem { font-weight: 700; }
+  .faixa-ponto { opacity: .6; }
+  .faixa-extra { opacity: .85; }
+  .faixa-link { margin-left: 44px; color: #fff; font-weight: 700; font-size: .82rem; text-decoration: none; white-space: nowrap; }
+  .faixa-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* barra do menu: nome à esquerda, links no centro, botão à direita */
   .barra {
     background: rgba(248, 244, 237, .6); /* barra do menu com transparência */
     backdrop-filter: saturate(1.6) blur(12px);
     -webkit-backdrop-filter: saturate(1.6) blur(12px);
     border-bottom: 1px solid var(--borda);
+    box-shadow: 0 6px 18px -12px rgba(21, 32, 27, .25);
   }
-  .barra .container { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; }
+  .barra .container { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; min-height: 64px; }
+  .marca-nome { justify-self: start; font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: -.01em; color: var(--tinta); text-decoration: none; white-space: nowrap; }
+  .marca-nome span { color: var(--amarelo); }
+  .barra-acoes { justify-self: end; display: flex; align-items: center; gap: 12px; }
+  .btn-trabalhe {
+    background: #5d6022; color: #fff; text-decoration: none; font-weight: 700; font-size: .88rem;
+    padding: 11px 20px; border-radius: 6px; white-space: nowrap; transition: background-color .2s;
+  }
+  .btn-trabalhe:hover { background: var(--tinta); }
   .logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; color: var(--tinta); text-decoration: none; font-size: 1.1rem; letter-spacing: -.02em; }
   .logo-bolinha { width: 34px; height: 34px; border-radius: 12px; background: var(--verde); color: var(--tinta); display: grid; place-items: center; font-size: .95rem; }
-  .menu { display: flex; align-items: center; gap: 4px; list-style: none; margin: 0; padding: 0; }
-  .menu a { display: block; padding: 8px 14px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: .95rem; color: var(--texto); transition: background-color .2s, color .2s; }
-  .menu a:hover { background: var(--gelo); color: var(--verde-texto); }
-  .menu .menu-cta a { background: var(--verde); color: var(--tinta); margin-left: 6px; }
-  .menu .menu-cta a:hover { background: var(--verde-escuro); color: var(--tinta); }
+  .menu { display: flex; align-items: center; gap: 30px; list-style: none; margin: 0; padding: 0; }
+  .menu a {
+    display: block; padding: 6px 0; text-decoration: none; font-weight: 600; font-size: .8rem;
+    text-transform: uppercase; letter-spacing: .16em; color: var(--texto); transition: color .2s;
+  }
+  .menu a:hover { color: var(--verde-texto); }
+  .menu .menu-cta-celular { display: none; }
   .sanduiche {
     display: none; width: 46px; height: 46px; border-radius: 14px; border: 1px solid var(--borda);
     background: #fff; cursor: pointer; align-items: center; justify-content: center; padding: 0;
@@ -423,17 +443,21 @@
   @media (max-width: 1060px) {
     .metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  @media (max-width: 900px) {
+  @media (max-width: 1100px) {
     .sanduiche { display: inline-flex; }
+    .barra .container { grid-template-columns: 1fr auto; }
     .menu {
       position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 2px;
       background: var(--fundo); padding: 12px 16px 20px; border-bottom: 1px solid var(--borda); box-shadow: var(--sombra-forte);
       display: none;
     }
     .menu.aberto { display: flex; }
-    .menu a { padding: 13px 16px; font-size: 1.05rem; }
-    .menu .menu-cta a { margin: 8px 0 0; text-align: center; }
+    .menu a { padding: 13px 16px; font-size: .95rem; }
     .barra { position: relative; }
+  }
+  @media (max-width: 900px) {
+    .faixa-ponto, .faixa-extra { display: none; }
+    .faixa-link { margin-left: 4px; }
     .capa-grade, .sobre-grade, .contato-caixa { grid-template-columns: 1fr; gap: 40px; }
     .capa-foto-moldura { margin: 0 auto; max-width: 380px; }
     .capa-cartao { left: -8px; }
@@ -449,7 +473,12 @@
     .capa-numeros span { font-size: .76rem; display: block; line-height: 1.3; }
     .capa-botoes .btn { flex: 1 1 100%; }
     .selo-novo { width: 78px; height: 78px; font-size: 1rem; right: -4px; }
-    .faixa-entrega { font-size: .78rem; }
+    .faixa-topo { font-size: .8rem; padding: 8px 12px; }
+    .faixa-topo-conteudo { gap: 8px 10px; }
+    .btn-trabalhe { display: none; }
+    .menu .menu-cta-celular { display: block; }
+    .menu .menu-cta-celular a { margin-top: 8px; text-align: center; background: #5d6022; color: #fff; border-radius: 6px; letter-spacing: .06em; }
+    .marca-nome { font-size: .95rem; }
     .prateleira h3 { font-size: 1.25rem; }
     .video-card { flex-basis: 148px; }
     .carrossel { gap: 12px; }
@@ -485,19 +514,32 @@
 
 <!-- ============ TOPO FIXO: faixa verde + menu ============ -->
 <header class="topo">
-  <div class="faixa-entrega">🚚 Entrega em até <strong>72h úteis</strong> com roteiro aprovado antes de gravar</div>
+  <!-- Faixa de cima: a contagem da Black Friday é calculada sozinha pelo script -->
+  <div class="faixa-topo">
+    <div class="faixa-topo-conteudo">
+      <span class="selo-bf">Black Friday</span>
+      <span class="faixa-contagem" id="contagem-bf">Black Friday chegando</span>
+      <span class="faixa-ponto" aria-hidden="true">·</span>
+      <span class="faixa-extra">roteiro aprovado e entrega em até 72h úteis</span>
+      <a class="faixa-link" href="#contato">reservar agenda →</a>
+    </div>
+  </div>
   <div class="barra">
     <nav class="container" aria-label="Menu principal">
-      <a class="logo" href="#inicio"><span class="logo-bolinha" aria-hidden="true">LG</span>Letícia Gabrielly</a>
-      <button class="sanduiche" type="button" aria-expanded="false" aria-controls="menu" aria-label="Abrir menu"><span></span></button>
+      <a class="marca-nome" href="#inicio">Letícia Gabrielly<span aria-hidden="true">.</span></a>
       <ul class="menu" id="menu">
         <li><a href="#sobre">Sobre</a></li>
         <li><a href="#destaques">Destaques</a></li>
         <li><a href="#trabalhos">Trabalhos</a></li>
         <li><a href="#servicos">Serviços</a></li>
         <li><a href="#numeros">Números</a></li>
-        <li class="menu-cta"><a href="#contato">Contato</a></li>
+        <li><a href="#contato">Contato</a></li>
+        <li class="menu-cta-celular"><a href="#contato">Trabalhe comigo</a></li>
       </ul>
+      <div class="barra-acoes">
+        <a class="btn-trabalhe" href="#contato">Trabalhe comigo</a>
+        <button class="sanduiche" type="button" aria-expanded="false" aria-controls="menu" aria-label="Abrir menu"><span></span></button>
+      </div>
     </nav>
   </div>
 </header>
@@ -904,6 +946,22 @@ document.documentElement.classList.add("js");
 const reduzMovimento = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const $ = (s) => document.querySelector(s);
+
+/* Contagem da Black Friday (sexta depois da quarta quinta-feira de novembro), atualizada todo dia sozinha */
+(function contagemBlackFriday() {
+  const hoje = new Date();
+  const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  let ano = hoje.getFullYear();
+  let bf;
+  do {
+    const diaDaSemana = new Date(ano, 10, 1).getDay();
+    const primeiraQuinta = 1 + ((4 - diaDaSemana + 7) % 7);
+    bf = new Date(ano, 10, primeiraQuinta + 22);
+    ano++;
+  } while (bf < inicioHoje);
+  const dias = Math.round((bf - inicioHoje) / 86400000);
+  $("#contagem-bf").textContent = dias === 0 ? "É hoje: Black Friday!" : dias === 1 ? "Falta 1 dia pra Black Friday" : `Faltam ${dias} dias pra Black Friday`;
+})();
 
 /* Capa: três números */
 $("#capa-numeros").innerHTML = METRICAS.slice(0, 3).map((m) =>
