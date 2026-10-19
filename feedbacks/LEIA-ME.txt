@@ -1,0 +1,16 @@
+PASTA DOS FEEDBACKS DA CAPA
+
+Aqui ficam os cartõezinhos que aparecem em volta da sua foto na capa.
+
+1. Salve a logo de cada marca nesta pasta (PNG, de preferência com fundo transparente).
+2. Abra o arquivo feedbacks.js com o Bloco de Notas.
+3. Em cada linha, troque:
+     marca: "Marca 01"   pelo nome da marca
+     logo: ""            pelo nome do arquivo da logo, ex: logo: "meliuz.png"
+     texto: "..."        pelo que a marca te mandou
+4. Salve o arquivo e me avise, que eu envio para o site.
+
+DICAS
+- Aparecem no máximo 3 feedbacks em volta da foto.
+- Frases curtas ficam mais bonitas (até umas 8 palavras).
+- Se preferir, é só me mandar a marca, a logo e o texto que eu coloco para você.

@@ -167,8 +167,27 @@
   .capa-textura .traco { fill: none; stroke: var(--verde-texto); stroke-linecap: round; stroke-linejoin: round; }
   .capa > .container, .capa > .marcas { position: relative; z-index: 1; }
   .capa-grade { display: grid; grid-template-columns: 1.1fr .9fr; gap: 24px; align-items: center; }
-  .capa-etiqueta { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--borda); padding: 6px 14px 6px 8px; border-radius: 999px; font-size: .88rem; font-weight: 600; box-shadow: var(--sombra); }
-  .capa-etiqueta b { background: var(--amarelo); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: .78rem; }
+  /* etiqueta acima do título: tracinho, UGC CREATOR | alfinete e cidade */
+  .capa-etiqueta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: .78rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--suave); }
+  .capa-etiqueta::before { content: ""; width: 34px; height: 2px; background: var(--amarelo); flex: none; }
+  .etiqueta-divisor { color: var(--borda); font-weight: 400; letter-spacing: 0; }
+  .etiqueta-local { display: inline-flex; align-items: center; gap: 6px; }
+  .etiqueta-local svg { width: 12px; height: 14px; fill: currentColor; flex: none; }
+
+  /* feedbacks das marcas em volta da foto (dados em feedbacks/feedbacks.js) */
+  .feedback-capa {
+    position: absolute; z-index: 2; display: flex; align-items: center; gap: 10px; max-width: 250px;
+    background: #fff; border-radius: 14px; padding: 10px 16px 10px 10px; box-shadow: var(--sombra-forte);
+    animation: flutuar 6s ease-in-out infinite;
+  }
+  .feedback-logo { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--borda); background: var(--fundo); display: grid; place-items: center; overflow: hidden; padding: 4px; font-weight: 800; color: var(--verde-texto); }
+  .feedback-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .feedback-texto { font-size: .84rem; font-weight: 700; color: var(--tinta); line-height: 1.25; }
+  .feedback-marca { font-size: .74rem; color: var(--suave); margin-top: 2px; }
+  .feedback-1 { top: 16%; right: -170px; }
+  .feedback-2 { bottom: 12%; left: -40px; animation-delay: -2s; }
+  .feedback-3 { top: 50%; right: -190px; animation-delay: -4s; }
+  @keyframes flutuar { 50% { transform: translateY(-6px); } }
   .capa h1 { font-size: clamp(2.8rem, 7.6vw, 5.8rem); margin: 22px 0 18px; letter-spacing: -.045em; line-height: .98; }
   .capa h1 .serif { font-size: 1.12em; letter-spacing: -.01em; }
   .capa-frase { font-size: clamp(1.05rem, 1.8vw, 1.2rem); max-width: 520px; color: var(--texto); }
@@ -180,18 +199,6 @@
   .capa-numeros span { font-weight: 600; color: var(--tinta); }
   .capa-foto-moldura { position: relative; max-width: 440px; margin-inline: auto; width: 100%; align-self: end; margin-bottom: -56px; }
   .capa-foto { display: block; width: 100%; height: auto; }
-  .selo-novo {
-    position: absolute; top: -18px; right: -14px; z-index: 2;
-    width: 96px; height: 96px; border-radius: 50%; background: var(--amarelo); color: #fff;
-    display: grid; place-items: center; text-align: center; font-weight: 800; font-size: 1.15rem; text-transform: lowercase;
-    box-shadow: 0 12px 24px -10px rgba(0, 0, 0, .3); transform: rotate(-12deg);
-    border: 4px solid #fff;
-  }
-  .capa-cartao {
-    position: absolute; left: -28px; bottom: 34px; z-index: 2; background: #fff; border-radius: 20px; padding: 12px 16px;
-    box-shadow: var(--sombra-forte); display: flex; align-items: center; gap: 10px; font-size: .88rem; font-weight: 700; color: var(--tinta);
-  }
-  .capa-cartao .estrelas { font-size: .95rem; }
   .estrelas { color: var(--estrela); letter-spacing: 2px; font-size: .9rem; line-height: 1; }
 
   /* faixa verde com os serviços, no rodapé da capa */
@@ -205,7 +212,7 @@
   /* no computador, a capa e a faixa cabem inteiras na primeira tela */
   @media (min-width: 901px) {
     .capa { display: flex; flex-direction: column; min-height: calc(100vh - var(--altura-topo, 101px)); min-height: calc(100svh - var(--altura-topo, 101px)); padding-top: clamp(20px, 4vh, 48px); }
-    .capa-grade { flex: 1; grid-template-columns: minmax(0, clamp(590px, 44vw, 720px)) auto; justify-content: center; gap: clamp(8px, 2vw, 32px); }
+    .capa-grade { flex: 1; grid-template-columns: minmax(0, clamp(590px, 44vw, 720px)) auto; justify-content: start; gap: clamp(8px, 2vw, 32px); }
     .capa-foto-moldura { margin-inline: -20px 0; }
     .capa-numeros { flex-wrap: nowrap; white-space: nowrap; }
     .capa-numeros li { font-size: 1rem; }
@@ -469,7 +476,6 @@
     .faixa-link { margin-left: 4px; }
     .capa-grade, .sobre-grade, .contato-caixa { grid-template-columns: 1fr; gap: 40px; }
     .capa-foto-moldura { margin: 0 auto -56px; max-width: 320px; }
-    .capa-cartao { left: -8px; }
     .sobre-foto { max-width: 420px; margin-inline: auto; width: 100%; }
     .destaques-grade { grid-template-columns: 1fr; max-width: 380px; margin-inline: auto; }
     .servicos, .resultados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -481,13 +487,20 @@
     .capa-numeros { gap: 4px 16px; }
     .capa-numeros li + li::before { display: none; }
     .capa-botoes .btn { flex: 1 1 100%; }
-    .selo-novo { width: 78px; height: 78px; font-size: 1rem; right: -4px; }
     .faixa-topo { font-size: .8rem; padding: 8px 12px; }
     .faixa-topo-conteudo { gap: 8px 10px; }
     .btn-trabalhe { display: none; }
     .menu .menu-cta-celular { display: block; }
     .menu .menu-cta-celular a { margin-top: 8px; text-align: center; background: #5d6022; color: #fff; border-radius: 6px; letter-spacing: .06em; }
     .marca-nome { font-size: 1.1rem; }
+    .feedback-capa { max-width: 190px; padding: 8px 12px 8px 8px; gap: 8px; }
+    .feedback-logo { width: 30px; height: 30px; }
+    .feedback-texto { font-size: .74rem; }
+    .feedback-marca { font-size: .68rem; }
+    .feedback-1 { right: -6px; top: 16%; }
+    .feedback-2 { left: -6px; bottom: 22%; }
+    .feedback-3 { display: none; }
+    .capa-textura .so-computador { display: none; }
     .prateleira h3 { font-size: 1.25rem; }
     .video-card { flex-basis: 148px; }
     .carrossel { gap: 12px; }
@@ -560,7 +573,7 @@
     <!-- TEXTURA DA ROÇA (só decoração). Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo. -->
     <svg class="capa-textura" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false" style="opacity: 1">
       <!-- curvas de nível, como num mapa de terreno -->
-      <g class="traco" stroke-width="1.1" opacity=".07">
+      <g class="traco so-computador" stroke-width="1.1" opacity=".07">
         <path d="M-40 120 C 120 60, 300 70, 420 140 S 640 260, 820 210 S 1080 90, 1260 140 S 1480 220, 1500 200"/>
         <path d="M-40 160 C 110 105, 290 112, 410 178 S 630 300, 815 250 S 1075 130, 1255 180 S 1480 260, 1500 240"/>
         <path d="M-40 200 C 100 150, 280 156, 400 216 S 620 340, 810 290 S 1070 170, 1250 220 S 1480 300, 1500 280"/>
@@ -572,14 +585,14 @@
       <path d="M0 610 C 180 540, 380 560, 560 610 S 900 690, 1100 620 S 1340 560, 1440 580 V800 H0Z" style="fill: var(--verde)" opacity=".07"/>
       <path d="M0 680 C 240 630, 500 670, 740 690 S 1180 640, 1440 680 V800 H0Z" style="fill: var(--verde-texto)" opacity=".06"/>
       <!-- linhas de plantação acompanhando a colina -->
-      <g class="traco" stroke-width="1.2" opacity=".1">
+      <g class="traco so-computador" stroke-width="1.2" opacity=".1">
         <path d="M60 700 C 260 662, 470 690, 690 708"/>
         <path d="M40 724 C 250 688, 470 714, 700 732"/>
         <path d="M20 748 C 240 714, 470 738, 710 756"/>
         <path d="M0 772 C 230 740, 470 762, 720 780"/>
       </g>
       <!-- galhinho com folhas, no canto de cima -->
-      <g class="traco" stroke-width="1.3" opacity=".14" transform="translate(40 40) rotate(-18)">
+      <g class="traco so-computador" stroke-width="1.3" opacity=".14" transform="translate(40 40) rotate(-18)">
         <path d="M0 0 C 18 70, 26 140, 18 230"/>
         <path d="M6 40 C -22 32, -34 12, -32 -6 C -12 4, 2 20, 6 40Z"/>
         <path d="M12 70 C 40 58, 50 36, 46 18 C 28 30, 16 48, 12 70Z"/>
@@ -588,7 +601,7 @@
         <path d="M21 190 C -8 186, -22 164, -20 144 C 0 156, 15 172, 21 190Z"/>
       </g>
       <!-- espigas de trigo perto da colina -->
-      <g class="traco" stroke-width="1.2" opacity=".14" transform="translate(760 560)">
+      <g class="traco so-computador" stroke-width="1.2" opacity=".14" transform="translate(760 560)">
         <path d="M0 120 C 4 70, 8 30, 14 0"/>
         <path d="M14 0 l -8 12 M14 0 l 6 12 M11 16 l -9 11 M11 16 l 7 11 M8 32 l -9 11 M8 32 l 7 11 M6 48 l -8 10 M6 48 l 7 10"/>
         <path d="M30 124 C 32 80, 38 44, 48 14"/>
@@ -604,7 +617,11 @@
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
-        <span class="capa-etiqueta"><b>UGC Creator</b> Paraisópolis, MG · atendo todo o Brasil</span>
+        <span class="capa-etiqueta">
+          <span>UGC Creator</span>
+          <span class="etiqueta-divisor" aria-hidden="true">|</span>
+          <span class="etiqueta-local"><svg viewBox="0 0 12 14" aria-hidden="true"><path d="M6 0a5 5 0 0 0-5 5c0 3.6 4.2 8.2 4.4 8.4a.8.8 0 0 0 1.2 0C6.8 13.2 11 8.6 11 5a5 5 0 0 0-5-5Zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/></svg>Paraisópolis, MG</span>
+        </span>
         <h1 id="capa-titulo">Criando conteúdo<br> que <span class="serif">conecta</span><br> <span class="serif">e vende</span></h1>
         <p class="capa-frase">De hook a CTA, cada segundo pensado pra performar.</p>
         <!-- Os três números são preenchidos pelo script (array METRICAS) -->
@@ -616,13 +633,9 @@
       </div>
 
       <div class="capa-foto-moldura revelar">
-        <span class="selo-novo" aria-hidden="true">novo</span>
         <!-- FOTO DA CAPA: foto recortada, sem fundo, na pasta img. Para trocar, salve outro PNG sem fundo com o mesmo nome. -->
         <img class="capa-foto" src="img/leticia-capa.png" width="640" height="826" alt="Letícia Gabrielly sorrindo, de camisa branca">
 
-        <div class="capa-cartao" aria-hidden="true">
-          <span class="estrelas">★★★★★</span> marcas que voltam
-        </div>
       </div>
     </div>
 
@@ -836,6 +849,8 @@
   </div>
 </div>
 
+<!-- textos dos feedbacks da capa (edite em feedbacks/feedbacks.js) -->
+<script src="feedbacks/feedbacks.js"></script>
 <script>
 /* =====================================================================
    DADOS DO PORTFÓLIO
@@ -1024,6 +1039,17 @@ const listaFaixa = Array.from({ length: repeticoes }, () => SERVICOS_FAIXA).flat
 $("#marcas-trilho").innerHTML = `<ul class="marcas-lista">${listaFaixa}</ul><ul class="marcas-lista" aria-hidden="true">${listaFaixa}</ul>`;
 
 /* Altura do topo fixo, usada para a capa caber certinho na primeira tela */
+/* Feedbacks das marcas em volta da foto da capa (os textos ficam em feedbacks/feedbacks.js) */
+const FEEDBACKS = (window.FEEDBACKS_CAPA || []).filter((f) => f && f.texto).slice(0, 3);
+$(".capa-foto-moldura").insertAdjacentHTML("beforeend", FEEDBACKS.map((f, i) => `
+  <div class="feedback-capa feedback-${i + 1}">
+    <span class="feedback-logo">${f.logo ? `<img src="feedbacks/${esc(f.logo)}" alt="Logo ${esc(f.marca)}">` : esc((f.marca || "?").charAt(0))}</span>
+    <span>
+      <p class="feedback-texto">${esc(f.texto)}</p>
+      ${f.marca ? `<p class="feedback-marca">${esc(f.marca)}</p>` : ""}
+    </span>
+  </div>`).join(""));
+
 const medirTopo = () => document.documentElement.style.setProperty("--altura-topo", document.querySelector(".topo").offsetHeight + "px");
 medirTopo();
 window.addEventListener("resize", medirTopo);
