@@ -179,25 +179,32 @@
 
   /* ============ CARROSSEL DE LOGOS ============ */
   .logos-secao { background: var(--gelo); border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); padding: 52px 0; overflow: hidden; }
-  .logos-titulo { text-align: center; font-size: .82rem; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: var(--suave); margin-bottom: 28px; }
+  .logos-titulo {
+    display: flex; align-items: center; justify-content: center; gap: 18px; padding: 0 16px;
+    font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .3em; color: var(--suave); margin-bottom: 30px; text-align: center;
+  }
+  .logos-titulo::before, .logos-titulo::after { content: ""; flex: none; width: 34px; height: 1px; background: currentColor; opacity: .55; }
   .logos {
     overflow: hidden;
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
     mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
   }
   .logos-trilho { display: flex; width: max-content; animation: deslizar 55s linear infinite; }
-  .logos-lista { display: flex; gap: 20px; padding: 6px 20px 10px 0; list-style: none; margin: 0; }
+  .logos-lista { display: flex; gap: 14px; padding: 4px 14px 6px 0; list-style: none; margin: 0; }
+  /* círculo da mesma cor do fundo, só com o contorno */
   .logo-circulo {
-    flex: none; width: 112px; height: 112px; border-radius: 50%; background: #fff; border: 1px solid var(--borda);
-    box-shadow: var(--sombra); display: grid; place-items: center; padding: 14px; overflow: hidden;
+    flex: none; width: 96px; height: 96px; border-radius: 50%; background: var(--gelo); border: 1px solid #d8d1c5;
+    box-shadow: 0 1px 3px rgba(21, 32, 27, .05); display: grid; place-items: center; padding: 9px; overflow: hidden;
   }
   .logo-circulo img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .logo-nome { display: none; font-weight: 800; font-size: .78rem; line-height: 1.2; text-align: center; color: var(--tinta); }
   .logo-circulo.sem-imagem img { display: none; }
   .logo-circulo.sem-imagem .logo-nome { display: block; }
   @media (max-width: 620px) {
-    .logo-circulo { width: 90px; height: 90px; padding: 11px; }
-    .logos-lista { gap: 14px; padding-right: 14px; }
+    .logo-circulo { width: 80px; height: 80px; padding: 8px; }
+    .logos-lista { gap: 10px; padding-right: 10px; }
+    .logos-titulo { letter-spacing: .2em; gap: 12px; font-size: .72rem; }
+    .logos-titulo::before, .logos-titulo::after { width: 22px; }
   }
 
   /* ============ SOBRE ============ */
@@ -554,7 +561,7 @@
        A lista de arquivos está no script, no array LOGOS_EXTRAS e no array MARCAS.
        Veja o passo a passo no arquivo logos/LEIA-ME.txt -->
   <section class="logos-secao" aria-labelledby="logos-titulo">
-    <h2 class="logos-titulo" id="logos-titulo">Marcas que já confiaram no meu trabalho</h2>
+    <h2 class="logos-titulo" id="logos-titulo">Marcas que confiam no meu trabalho</h2>
     <div class="logos">
       <div class="logos-trilho" id="logos-trilho"></div>
     </div>
