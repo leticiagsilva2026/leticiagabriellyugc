@@ -572,41 +572,58 @@
 
   <!-- ============ 1. CAPA ============ -->
   <section class="capa" id="inicio" aria-labelledby="capa-titulo">
-    <!-- TEXTURA DA ROÇA (só decoração): estampa miudinha de raminhos, folhas e flores do campo.
+    <!-- TEXTURA DA ROÇA (só decoração): galhos de café em traço fino e um grão leve de papel.
          Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo (ex: .6 deixa mais fraca; o máximo é 1). -->
-    <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
+    <svg class="capa-textura" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false" style="opacity: 1">
       <defs>
-        <pattern id="estampa-roca" width="180" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
-          <g class="traco" stroke-width="1.2" opacity=".24">
-            <!-- raminho com folhas -->
-            <path d="M24 70 C 30 52, 34 36, 42 20"/>
-            <path d="M30 54 C 20 50, 16 42, 17 34 C 25 38, 29 45, 30 54Z"/>
-            <path d="M35 40 C 45 38, 50 30, 50 22 C 42 25, 37 32, 35 40Z"/>
-            <path d="M39 28 C 31 23, 30 15, 33 9 C 39 14, 40 21, 39 28Z"/>
-            <!-- florzinha do campo -->
-            <circle cx="118" cy="44" r="2.4"/>
-            <path d="M118 41.6 C 115 35, 121 35, 118 41.6Z M120.3 43.2 C 126 40, 127.5 45.5, 120.3 45Z M119.4 46.2 C 122 52, 116.5 52.5, 117.2 46.4Z M116.4 45.8 C 110.5 48, 110 42.6, 115.8 43Z M116 42.8 C 111.5 38.5, 116 36, 117 41.8Z"/>
-            <!-- capim -->
-            <path d="M92 150 C 90 138, 86 130, 80 124 M96 150 C 97 136, 100 128, 106 120 M94 150 C 94 140, 93 132, 92 126"/>
-            <!-- folhinha solta -->
-            <path d="M152 112 C 162 104, 172 106, 176 114 C 166 120, 158 120, 152 112Z M152 112 L 170 112"/>
-            <!-- espiguinha -->
-            <path d="M52 168 C 54 156, 56 146, 60 136 M60 136 l -5 6 M60 136 l 4 6 M58 144 l -5 6 M58 144 l 4 6 M56 152 l -5 6 M56 152 l 4 6"/>
-          </g>
-          <!-- sementinhas -->
-          <g style="fill: var(--verde-texto)" opacity=".22">
-            <circle cx="74" cy="22" r="1.4"/><circle cx="140" cy="160" r="1.4"/><circle cx="12" cy="128" r="1.2"/><circle cx="160" cy="70" r="1.2"/><circle cx="104" cy="92" r="1.1"/>
-          </g>
-        </pattern>
-        <!-- some a estampa perto do texto e deixa mais forte perto da foto -->
-        <linearGradient id="estampa-esmaece" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
-          <stop offset=".55" stop-color="#fff" stop-opacity=".85"/>
-          <stop offset="1" stop-color="#fff" stop-opacity="1"/>
-        </linearGradient>
-        <mask id="estampa-mascara"><rect width="100%" height="100%" fill="url(#estampa-esmaece)"/></mask>
+        <!-- folha de café: contorno e nervura do meio -->
+        <g id="folha-cafe">
+          <path d="M0 0 C 26 -20, 78 -22, 118 0 C 78 20, 26 18, 0 0Z"/>
+          <path d="M4 0 C 40 -2, 80 -2, 114 0"/>
+          <path d="M30 -1 l 12 -9 M52 -1 l 13 -10 M74 -1 l 12 -8 M30 1 l 12 8 M52 1 l 13 9 M74 1 l 12 7"/>
+        </g>
+        <!-- grão de papel bem fininho -->
+        <filter id="grao-papel" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch" result="ruido"/>
+          <feColorMatrix in="ruido" type="matrix" values="0 0 0 0 .33  0 0 0 0 .38  0 0 0 0 .19  0 0 0 .9 0"/>
+          <feComponentTransfer><feFuncA type="table" tableValues="0 .09"/></feComponentTransfer>
+        </filter>
       </defs>
-      <rect width="100%" height="100%" fill="url(#estampa-roca)" mask="url(#estampa-mascara)"/>
+
+      <rect width="1440" height="800" filter="url(#grao-papel)"/>
+
+      <!-- galho de café grande, saindo do canto de cima à direita -->
+      <g class="traco" stroke-width="1.5" opacity=".3">
+        <path d="M1470 20 C 1380 60, 1300 110, 1220 170 S 1080 280, 990 330"/>
+        <use href="#folha-cafe" transform="translate(1400 52) rotate(-150) scale(1.15)"/>
+        <use href="#folha-cafe" transform="translate(1392 56) rotate(40) scale(1.05)"/>
+        <use href="#folha-cafe" transform="translate(1300 108) rotate(-160) scale(1.2)"/>
+        <use href="#folha-cafe" transform="translate(1292 114) rotate(55) scale(1.1)"/>
+        <use href="#folha-cafe" transform="translate(1200 186) rotate(-170) scale(1.05)"/>
+        <use href="#folha-cafe" transform="translate(1196 190) rotate(65) scale(.95)"/>
+        <use href="#folha-cafe" transform="translate(1090 262) rotate(-175) scale(.9)"/>
+        <use href="#folha-cafe" transform="translate(1086 266) rotate(75) scale(.85)"/>
+        <use href="#folha-cafe" transform="translate(992 330) rotate(-200) scale(.75)"/>
+      </g>
+      <!-- grãos de café no galho -->
+      <g style="fill: var(--amarelo)" opacity=".24">
+        <circle cx="1340" cy="98" r="8"/><circle cx="1354" cy="88" r="7"/><circle cx="1330" cy="84" r="6.5"/>
+        <circle cx="1236" cy="168" r="7.5"/><circle cx="1250" cy="158" r="6.5"/>
+        <circle cx="1140" cy="236" r="7"/><circle cx="1128" cy="226" r="6"/><circle cx="1152" cy="224" r="5.5"/>
+      </g>
+
+      <!-- raminho menor subindo no canto de baixo à esquerda -->
+      <g class="traco" stroke-width="1.4" opacity=".26">
+        <path d="M-20 820 C 40 760, 90 700, 150 640 S 250 560, 300 520"/>
+        <use href="#folha-cafe" transform="translate(70 735) rotate(-60) scale(.8)"/>
+        <use href="#folha-cafe" transform="translate(76 730) rotate(200) scale(.75)"/>
+        <use href="#folha-cafe" transform="translate(160 632) rotate(-50) scale(.7)"/>
+        <use href="#folha-cafe" transform="translate(166 628) rotate(190) scale(.68)"/>
+        <use href="#folha-cafe" transform="translate(262 548) rotate(-30) scale(.55)"/>
+      </g>
+      <g style="fill: var(--amarelo)" opacity=".22">
+        <circle cx="118" cy="690" r="6"/><circle cx="128" cy="680" r="5"/><circle cx="214" cy="590" r="5.5"/>
+      </g>
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
