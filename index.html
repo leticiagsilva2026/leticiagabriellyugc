@@ -166,13 +166,14 @@
   .capa-etiqueta { display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--borda); padding: 6px 14px 6px 8px; border-radius: 999px; font-size: .88rem; font-weight: 600; box-shadow: var(--sombra); }
   .capa-etiqueta b { background: var(--amarelo); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: .78rem; }
   .capa h1 { font-size: clamp(2.8rem, 7.6vw, 5.8rem); margin: 22px 0 18px; letter-spacing: -.045em; line-height: .98; }
-  .capa h1 .serif { display: block; font-size: 1.08em; letter-spacing: -.01em; }
-  .capa-frase { font-size: clamp(1.1rem, 2vw, 1.3rem); max-width: 520px; color: var(--texto); }
+  .capa h1 .serif { font-size: 1.12em; letter-spacing: -.01em; }
+  .capa-frase { font-size: clamp(1.05rem, 1.8vw, 1.2rem); max-width: 520px; color: var(--texto); }
   .capa-botoes { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 38px; }
-  .capa-numeros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 540px; list-style: none; padding: 0; margin: 0; }
-  .capa-numeros li { background: #fff; border: 1px solid var(--borda); border-radius: 20px; padding: 16px; box-shadow: var(--sombra); }
-  .capa-numeros strong { display: block; font-size: clamp(1.5rem, 3vw, 2rem); color: var(--tinta); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
-  .capa-numeros span { font-size: .85rem; color: var(--suave); font-weight: 600; }
+  .capa-numeros { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; list-style: none; padding: 0; margin: 8px 0 0; }
+  .capa-numeros li { display: flex; align-items: baseline; gap: 5px; font-weight: 700; color: var(--tinta); font-size: clamp(1rem, 1.6vw, 1.12rem); }
+  .capa-numeros li + li::before { content: "|"; color: var(--amarelo); font-weight: 700; margin: 0 12px; }
+  .capa-numeros strong { font-weight: 800; color: var(--tinta); }
+  .capa-numeros span { font-weight: 600; color: var(--tinta); }
   .capa-foto-moldura { position: relative; max-width: 440px; margin-left: auto; width: 100%; }
   .capa-foto { aspect-ratio: 4 / 5; box-shadow: var(--sombra-forte); }
   .selo-novo {
@@ -203,7 +204,6 @@
     .capa h1 { font-size: clamp(2.6rem, min(5.4vw, 9vh), 5rem); margin: clamp(12px, 2vh, 22px) 0 clamp(10px, 1.6vh, 18px); }
     .capa-frase { font-size: clamp(1.02rem, min(1.6vw, 2.4vh), 1.25rem); }
     .capa-botoes { margin: clamp(16px, 3vh, 30px) 0 clamp(18px, 3.2vh, 34px); }
-    .capa-numeros li { padding: clamp(10px, 1.6vh, 16px) 16px; }
     .capa-foto-moldura { width: auto; max-width: none; height: min(560px, calc(100svh - var(--altura-topo, 101px) - 150px)); aspect-ratio: 4 / 5; }
     .capa-foto { height: 100%; }
     .marcas { margin-top: clamp(20px, 3.5vh, 44px); }
@@ -469,9 +469,9 @@
   }
   @media (max-width: 620px) {
     .servicos, .resultados, .depoimentos { grid-template-columns: 1fr; }
-    .capa-numeros { gap: 8px; }
-    .capa-numeros li { padding: 12px 10px; border-radius: 16px; }
-    .capa-numeros span { font-size: .76rem; display: block; line-height: 1.3; }
+    .capa-numeros li { font-size: .92rem; }
+    .capa-numeros { gap: 4px 16px; }
+    .capa-numeros li + li::before { display: none; }
     .capa-botoes .btn { flex: 1 1 100%; }
     .selo-novo { width: 78px; height: 78px; font-size: 1rem; right: -4px; }
     .faixa-topo { font-size: .8rem; padding: 8px 12px; }
@@ -552,14 +552,14 @@
     <div class="container capa-grade">
       <div class="revelar">
         <span class="capa-etiqueta"><b>UGC Creator</b> Paraisópolis, MG · atendo todo o Brasil</span>
-        <h1 id="capa-titulo">Letícia <span class="serif">Gabrielly</span></h1>
-        <p class="capa-frase">Conteúdo real, com a naturalidade de uma amiga que usou, aprovou e indica. Vídeos e fotos que fazem a sua marca vender sem parecer anúncio.</p>
+        <h1 id="capa-titulo">Criando conteúdo<br> que conecta<br> e <span class="serif">vende</span></h1>
+        <p class="capa-frase">De hook a CTA, cada segundo pensado pra performar.</p>
+        <!-- Os três números são preenchidos pelo script (array METRICAS) -->
+        <ul class="capa-numeros" id="capa-numeros"></ul>
         <div class="capa-botoes">
           <a class="btn btn-verde" href="#contato">Falar comigo</a>
           <a class="btn btn-contorno" href="#trabalhos">Ver os trabalhos</a>
         </div>
-        <!-- Os três números são preenchidos pelo script (array METRICAS) -->
-        <ul class="capa-numeros" id="capa-numeros"></ul>
       </div>
 
       <div class="capa-foto-moldura revelar">
