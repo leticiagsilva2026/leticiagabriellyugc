@@ -341,14 +341,15 @@
   /* ============ PLAYER DE VÍDEO ============ */
   .player-fundo {
     position: fixed; inset: 0; z-index: 320; background: rgba(10, 14, 12, .88);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 64px 16px 24px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 56px 16px 16px;
   }
   .player-fundo[hidden] { display: none; }
   .player {
-    width: min(calc(100vw - 32px), calc((100vh - 150px) * 9 / 16), 420px); aspect-ratio: 9 / 16;
+    width: min(calc(100vw - 32px), calc((100vh - 110px) * 9 / 16), 560px); aspect-ratio: 9 / 16;
     border-radius: 24px; overflow: hidden; background: #000; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .6);
   }
   .player-quadro, .player-quadro iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .player-aviso { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; color: #fff; }
   .player-titulo { color: #fff; font-weight: 700; text-align: center; margin: 0; }
   .player-fechar, .player-seta {
     position: fixed; width: 48px; height: 48px; border-radius: 50%; border: 0; background: #fff; color: var(--tinta);
@@ -1170,13 +1171,20 @@ function pararPrevia() {
   previaAtual.capa.classList.remove("tocando");
   previaAtual = null;
 }
+/* O YouTube só toca o vídeo quando sabe em qual site ele está (senão dá o Erro 153).
+   Aberto com dois cliques no arquivo, não existe endereço de site; por isso mostramos o link do site publicado. */
+const SITE_PUBLICADO = "https://leticiagsilva2026.github.io/leticiagabriellyugc/";
+const temEndereco = location.protocol === "http:" || location.protocol === "https:";
+const linkEmbed = (id, extras) => `https://www.youtube.com/embed/${id}?${extras}&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&vq=hd1080${temEndereco ? "&origin=" + encodeURIComponent(location.origin) + "&widget_referrer=" + encodeURIComponent(location.href) : ""}`;
 function iniciarPrevia(capa) {
   pararPrevia();
+  if (!temEndereco) return;
   const id = capa.dataset.id;
   previaAtual = { capa, espera: setTimeout(() => {
     const quadro = document.createElement("iframe");
     quadro.className = "video-previa";
-    quadro.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&controls=0&playsinline=1&loop=1&playlist=${id}&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0`;
+    quadro.src = linkEmbed(id, `autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&disablekb=1&fs=0`);
+    quadro.referrerPolicy = "strict-origin-when-cross-origin";
     quadro.title = "Prévia do vídeo";
     quadro.tabIndex = -1;
     quadro.setAttribute("aria-hidden", "true");
@@ -1203,7 +1211,9 @@ let focoPlayer = null;
 function mostrarVideo(i) {
   indiceAtual = (i + listaAtual.length) % listaAtual.length;
   const v = listaAtual[indiceAtual];
-  $("#player-quadro").innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1" title="${esc(v.titulo)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+  $("#player-quadro").innerHTML = temEndereco
+    ? `<iframe src="${linkEmbed(v.id, "autoplay=1")}" title="${esc(v.titulo)}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`
+    : `<div class="player-aviso"><p>Os vídeos só tocam com o portfólio aberto pelo site.</p><a class="btn btn-verde" href="${SITE_PUBLICADO}">Abrir o site</a></div>`;
   $("#player-titulo").textContent = listaAtual.length > 1 ? `${v.titulo} · ${indiceAtual + 1} de ${listaAtual.length}` : v.titulo;
 }
 function abrirPlayer(lista, indice) {
