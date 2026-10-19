@@ -574,12 +574,12 @@
   <section class="capa" id="inicio" aria-labelledby="capa-titulo">
     <!-- TEXTURA DA ROÇA (só decoração): ramos de folhagem em traço fino cobrindo a capa toda.
          Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo (ex: .6 deixa mais fraca; o máximo é 1). -->
-    <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
+    <svg class="capa-textura" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" focusable="false" style="opacity: 1">
       <defs>
         <!-- folha comprida e pontuda, com a nervura do meio -->
         <g id="fl-longa"><path d="M0 0 C 14 -10, 42 -12, 66 -1 C 44 5, 16 7, 0 0Z"/><path d="M3 0 C 22 -2, 44 -3, 63 -1.5"/></g>
 
-        <pattern id="folhagem-fina" width="380" height="380" patternUnits="userSpaceOnUse" patternTransform="rotate(-4)">
+        <pattern id="folhagem-fina" width="340" height="340" patternUnits="userSpaceOnUse" patternTransform="rotate(-4)">
           <g class="traco" stroke-width="1">
             <!-- ramo 1 -->
             <path d="M-12 132 C 60 102, 130 62, 212 6"/>
@@ -640,15 +640,18 @@
           </g>
         </pattern>
 
+        <!-- segunda camada dos mesmos ramos, girada e deslocada, para as folhas ficarem mais juntas -->
+        <pattern id="folhagem-fina-2" href="#folhagem-fina" xlink:href="#folhagem-fina" patternTransform="rotate(168) translate(150 110)"/>
         <!-- um pouco mais suave atrás do texto, para não atrapalhar a leitura -->
         <linearGradient id="folhagem-esmaece" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+          <stop offset="0" stop-color="#fff" stop-opacity=".5"/>
           <stop offset=".55" stop-color="#fff" stop-opacity=".85"/>
           <stop offset="1" stop-color="#fff" stop-opacity="1"/>
         </linearGradient>
         <mask id="folhagem-mascara"><rect width="100%" height="100%" fill="url(#folhagem-esmaece)"/></mask>
       </defs>
-      <rect width="100%" height="100%" fill="url(#folhagem-fina)" mask="url(#folhagem-mascara)" opacity=".24"/>
+      <rect width="100%" height="100%" fill="url(#folhagem-fina)" mask="url(#folhagem-mascara)" opacity=".15"/>
+      <rect width="100%" height="100%" fill="url(#folhagem-fina-2)" mask="url(#folhagem-mascara)" opacity=".15"/>
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
