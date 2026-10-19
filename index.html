@@ -574,48 +574,83 @@
 
   <!-- ============ 1. CAPA ============ -->
   <section class="capa" id="inicio" aria-labelledby="capa-titulo">
-    <!-- TEXTURA DA ROÇA (só decoração): folhas tropicais grandes, com as nervuras formando listras, cobrindo a capa toda.
-         Para deixar mais forte ou mais fraca, mude o opacity do grupo "folhas-tropicais" abaixo (ex: .05 mais fraca, .12 mais forte). -->
-    <svg class="capa-textura" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+    <!-- TEXTURA DA ROÇA (só decoração): ramos de folhagem em traço fino cobrindo a capa toda.
+         Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo (ex: .6 deixa mais fraca; o máximo é 1). -->
+    <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
       <defs>
-        <!-- folha: corpo preenchido e nervuras na cor do fundo, que viram as "listras" -->
-        <g id="lf-tropical">
-          <path class="lf-corpo" fill="#556330" d="M0 0 C 60 -80, 214 -88, 320 0 C 214 88, 60 80, 0 0Z"/>
-          <g class="lf-veias" fill="none" stroke="#f8f4ed" stroke-width="9" stroke-linecap="round">
-            <path d="M0 0 C 90 -5, 220 -5, 320 0"/>
-            <path d="M26 -2 C 44 -24, 64 -48, 84 -80 M58 -2 C 78 -26, 100 -52, 122 -88 M92 -3 C 114 -28, 136 -54, 160 -90 M128 -3 C 150 -28, 172 -54, 196 -88 M164 -3 C 186 -26, 206 -50, 228 -80 M200 -3 C 220 -24, 238 -44, 256 -68 M236 -2 C 252 -18, 266 -34, 280 -52 M270 -1 C 282 -12, 292 -22, 302 -34"/>
-            <path d="M26 2 C 44 24, 64 48, 84 80 M58 2 C 78 26, 100 52, 122 88 M92 3 C 114 28, 136 54, 160 90 M128 3 C 150 28, 172 54, 196 88 M164 3 C 186 26, 206 50, 228 80 M200 3 C 220 24, 238 44, 256 68 M236 2 C 252 18, 266 34, 280 52 M270 1 C 282 12, 292 22, 302 34"/>
-            <path d="M0 0 C 60 -80, 214 -88, 320 0 C 214 88, 60 80, 0 0Z"/>
+        <!-- folha comprida e pontuda, com a nervura do meio -->
+        <g id="fl-longa"><path d="M0 0 C 14 -10, 42 -12, 66 -1 C 44 5, 16 7, 0 0Z"/><path d="M3 0 C 22 -2, 44 -3, 63 -1.5"/></g>
+
+        <pattern id="folhagem-fina" width="380" height="380" patternUnits="userSpaceOnUse" patternTransform="rotate(-4)">
+          <g class="traco" stroke-width="1">
+            <!-- ramo 1 -->
+            <path d="M-12 132 C 60 102, 130 62, 212 6"/>
+            <use href="#fl-longa" transform="translate(22 119) rotate(-66) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(30 116) rotate(6) scale(1)"/>
+            <use href="#fl-longa" transform="translate(58 102) rotate(-70) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(66 98) rotate(2) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(94 82) rotate(-72) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(102 77) rotate(-2) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(130 58) rotate(-74) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(138 53) rotate(-6) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(166 35) rotate(-76) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(172 31) rotate(-10) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(206 10) rotate(-38) scale(.6)"/>
+
+            <!-- ramo 2, o mais longo -->
+            <path d="M108 384 C 170 306, 240 232, 344 162"/>
+            <use href="#fl-longa" transform="translate(132 352) rotate(-96) scale(1.1)"/>
+            <use href="#fl-longa" transform="translate(140 342) rotate(-12) scale(1.1)"/>
+            <use href="#fl-longa" transform="translate(164 318) rotate(-98) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(172 309) rotate(-14) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(196 286) rotate(-100) scale(1)"/>
+            <use href="#fl-longa" transform="translate(205 278) rotate(-16) scale(1)"/>
+            <use href="#fl-longa" transform="translate(230 255) rotate(-102) scale(.92)"/>
+            <use href="#fl-longa" transform="translate(240 247) rotate(-18) scale(.92)"/>
+            <use href="#fl-longa" transform="translate(266 226) rotate(-104) scale(.82)"/>
+            <use href="#fl-longa" transform="translate(276 219) rotate(-20) scale(.82)"/>
+            <use href="#fl-longa" transform="translate(304 196) rotate(-106) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(312 190) rotate(-22) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(340 166) rotate(-46) scale(.58)"/>
+
+            <!-- ramo 3, descendo para a direita -->
+            <path d="M222 -12 C 252 30, 300 70, 384 102"/>
+            <use href="#fl-longa" transform="translate(236 8) rotate(-6) scale(.9)"/>
+            <use href="#fl-longa" transform="translate(240 16) rotate(76) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(262 36) rotate(-2) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(266 44) rotate(80) scale(.9)"/>
+            <use href="#fl-longa" transform="translate(292 60) rotate(4) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(296 66) rotate(84) scale(.8)"/>
+            <use href="#fl-longa" transform="translate(324 78) rotate(8) scale(.72)"/>
+            <use href="#fl-longa" transform="translate(328 84) rotate(88) scale(.66)"/>
+            <use href="#fl-longa" transform="translate(358 92) rotate(24) scale(.55)"/>
+
+            <!-- ramo 4, pequeno, no canto de baixo -->
+            <path d="M-12 304 C 30 284, 70 256, 112 226"/>
+            <use href="#fl-longa" transform="translate(16 292) rotate(-68) scale(.75)"/>
+            <use href="#fl-longa" transform="translate(22 289) rotate(4) scale(.75)"/>
+            <use href="#fl-longa" transform="translate(48 274) rotate(-70) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(54 270) rotate(0) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(80 252) rotate(-72) scale(.6)"/>
+            <use href="#fl-longa" transform="translate(86 248) rotate(-4) scale(.6)"/>
+            <use href="#fl-longa" transform="translate(110 228) rotate(-40) scale(.5)"/>
+
+            <!-- folhas soltas para preencher -->
+            <use href="#fl-longa" transform="translate(40 190) rotate(-150) scale(.8)"/>
+            <use href="#fl-longa" transform="translate(300 300) rotate(150) scale(.75)"/>
+            <use href="#fl-longa" transform="translate(330 250) rotate(-120) scale(.6)"/>
           </g>
-        </g>
+        </pattern>
+
         <!-- um pouco mais suave atrás do texto, para não atrapalhar a leitura -->
-        <linearGradient id="lf-esmaece" x1="0" y1="0" x2="1" y2="0">
+        <linearGradient id="folhagem-esmaece" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
-          <stop offset=".5" stop-color="#fff" stop-opacity=".8"/>
+          <stop offset=".55" stop-color="#fff" stop-opacity=".85"/>
           <stop offset="1" stop-color="#fff" stop-opacity="1"/>
         </linearGradient>
-        <mask id="lf-mascara"><rect width="1440" height="800" fill="url(#lf-esmaece)"/></mask>
+        <mask id="folhagem-mascara"><rect width="100%" height="100%" fill="url(#folhagem-esmaece)"/></mask>
       </defs>
-
-      <g mask="url(#lf-mascara)">
-        <g class="folhas-tropicais" opacity=".08">
-          <use href="#lf-tropical" transform="translate(-80 110) rotate(-18) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(-60 560) rotate(-52) scale(1.35)"/>
-          <use href="#lf-tropical" transform="translate(150 340) rotate(8) scale(1.15)"/>
-          <use href="#lf-tropical" transform="translate(250 -60) rotate(42) scale(1.15)"/>
-          <use href="#lf-tropical" transform="translate(320 790) rotate(-42) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(470 360) rotate(-72) scale(1.15)"/>
-          <use href="#lf-tropical" transform="translate(560 40) rotate(18) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(630 540) rotate(-14) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(860 280) rotate(-62) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(900 -70) rotate(58) scale(1.15)"/>
-          <use href="#lf-tropical" transform="translate(980 640) rotate(-36) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(1140 310) rotate(14) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(1250 790) rotate(-72) scale(1.25)"/>
-          <use href="#lf-tropical" transform="translate(1290 -30) rotate(70) scale(1.15)"/>
-          <use href="#lf-tropical" transform="translate(1520 440) rotate(196) scale(1.25)"/>
-        </g>
-      </g>
+      <rect width="100%" height="100%" fill="url(#folhagem-fina)" mask="url(#folhagem-mascara)" opacity=".24"/>
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
