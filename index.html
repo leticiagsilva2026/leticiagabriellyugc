@@ -572,41 +572,83 @@
 
   <!-- ============ 1. CAPA ============ -->
   <section class="capa" id="inicio" aria-labelledby="capa-titulo">
-    <!-- TEXTURA DA ROÇA (só decoração): estampa miudinha de raminhos, folhas e flores do campo.
+    <!-- TEXTURA DA ROÇA (só decoração): ramos de folhagem em traço fino cobrindo a capa toda.
          Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo (ex: .6 deixa mais fraca; o máximo é 1). -->
     <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
       <defs>
-        <pattern id="estampa-roca" width="180" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
-          <g class="traco" stroke-width="1.2" opacity=".24">
-            <!-- raminho com folhas -->
-            <path d="M24 70 C 30 52, 34 36, 42 20"/>
-            <path d="M30 54 C 20 50, 16 42, 17 34 C 25 38, 29 45, 30 54Z"/>
-            <path d="M35 40 C 45 38, 50 30, 50 22 C 42 25, 37 32, 35 40Z"/>
-            <path d="M39 28 C 31 23, 30 15, 33 9 C 39 14, 40 21, 39 28Z"/>
-            <!-- florzinha do campo -->
-            <circle cx="118" cy="44" r="2.4"/>
-            <path d="M118 41.6 C 115 35, 121 35, 118 41.6Z M120.3 43.2 C 126 40, 127.5 45.5, 120.3 45Z M119.4 46.2 C 122 52, 116.5 52.5, 117.2 46.4Z M116.4 45.8 C 110.5 48, 110 42.6, 115.8 43Z M116 42.8 C 111.5 38.5, 116 36, 117 41.8Z"/>
-            <!-- capim -->
-            <path d="M92 150 C 90 138, 86 130, 80 124 M96 150 C 97 136, 100 128, 106 120 M94 150 C 94 140, 93 132, 92 126"/>
-            <!-- folhinha solta -->
-            <path d="M152 112 C 162 104, 172 106, 176 114 C 166 120, 158 120, 152 112Z M152 112 L 170 112"/>
-            <!-- espiguinha -->
-            <path d="M52 168 C 54 156, 56 146, 60 136 M60 136 l -5 6 M60 136 l 4 6 M58 144 l -5 6 M58 144 l 4 6 M56 152 l -5 6 M56 152 l 4 6"/>
-          </g>
-          <!-- sementinhas -->
-          <g style="fill: var(--verde-texto)" opacity=".22">
-            <circle cx="74" cy="22" r="1.4"/><circle cx="140" cy="160" r="1.4"/><circle cx="12" cy="128" r="1.2"/><circle cx="160" cy="70" r="1.2"/><circle cx="104" cy="92" r="1.1"/>
+        <!-- folha comprida e pontuda, com a nervura do meio -->
+        <g id="fl-longa"><path d="M0 0 C 14 -10, 42 -12, 66 -1 C 44 5, 16 7, 0 0Z"/><path d="M3 0 C 22 -2, 44 -3, 63 -1.5"/></g>
+
+        <pattern id="folhagem-fina" width="380" height="380" patternUnits="userSpaceOnUse" patternTransform="rotate(-4)">
+          <g class="traco" stroke-width="1">
+            <!-- ramo 1 -->
+            <path d="M-12 132 C 60 102, 130 62, 212 6"/>
+            <use href="#fl-longa" transform="translate(22 119) rotate(-66) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(30 116) rotate(6) scale(1)"/>
+            <use href="#fl-longa" transform="translate(58 102) rotate(-70) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(66 98) rotate(2) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(94 82) rotate(-72) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(102 77) rotate(-2) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(130 58) rotate(-74) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(138 53) rotate(-6) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(166 35) rotate(-76) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(172 31) rotate(-10) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(206 10) rotate(-38) scale(.6)"/>
+
+            <!-- ramo 2, o mais longo -->
+            <path d="M108 384 C 170 306, 240 232, 344 162"/>
+            <use href="#fl-longa" transform="translate(132 352) rotate(-96) scale(1.1)"/>
+            <use href="#fl-longa" transform="translate(140 342) rotate(-12) scale(1.1)"/>
+            <use href="#fl-longa" transform="translate(164 318) rotate(-98) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(172 309) rotate(-14) scale(1.05)"/>
+            <use href="#fl-longa" transform="translate(196 286) rotate(-100) scale(1)"/>
+            <use href="#fl-longa" transform="translate(205 278) rotate(-16) scale(1)"/>
+            <use href="#fl-longa" transform="translate(230 255) rotate(-102) scale(.92)"/>
+            <use href="#fl-longa" transform="translate(240 247) rotate(-18) scale(.92)"/>
+            <use href="#fl-longa" transform="translate(266 226) rotate(-104) scale(.82)"/>
+            <use href="#fl-longa" transform="translate(276 219) rotate(-20) scale(.82)"/>
+            <use href="#fl-longa" transform="translate(304 196) rotate(-106) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(312 190) rotate(-22) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(340 166) rotate(-46) scale(.58)"/>
+
+            <!-- ramo 3, descendo para a direita -->
+            <path d="M222 -12 C 252 30, 300 70, 384 102"/>
+            <use href="#fl-longa" transform="translate(236 8) rotate(-6) scale(.9)"/>
+            <use href="#fl-longa" transform="translate(240 16) rotate(76) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(262 36) rotate(-2) scale(.95)"/>
+            <use href="#fl-longa" transform="translate(266 44) rotate(80) scale(.9)"/>
+            <use href="#fl-longa" transform="translate(292 60) rotate(4) scale(.85)"/>
+            <use href="#fl-longa" transform="translate(296 66) rotate(84) scale(.8)"/>
+            <use href="#fl-longa" transform="translate(324 78) rotate(8) scale(.72)"/>
+            <use href="#fl-longa" transform="translate(328 84) rotate(88) scale(.66)"/>
+            <use href="#fl-longa" transform="translate(358 92) rotate(24) scale(.55)"/>
+
+            <!-- ramo 4, pequeno, no canto de baixo -->
+            <path d="M-12 304 C 30 284, 70 256, 112 226"/>
+            <use href="#fl-longa" transform="translate(16 292) rotate(-68) scale(.75)"/>
+            <use href="#fl-longa" transform="translate(22 289) rotate(4) scale(.75)"/>
+            <use href="#fl-longa" transform="translate(48 274) rotate(-70) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(54 270) rotate(0) scale(.7)"/>
+            <use href="#fl-longa" transform="translate(80 252) rotate(-72) scale(.6)"/>
+            <use href="#fl-longa" transform="translate(86 248) rotate(-4) scale(.6)"/>
+            <use href="#fl-longa" transform="translate(110 228) rotate(-40) scale(.5)"/>
+
+            <!-- folhas soltas para preencher -->
+            <use href="#fl-longa" transform="translate(40 190) rotate(-150) scale(.8)"/>
+            <use href="#fl-longa" transform="translate(300 300) rotate(150) scale(.75)"/>
+            <use href="#fl-longa" transform="translate(330 250) rotate(-120) scale(.6)"/>
           </g>
         </pattern>
-        <!-- some a estampa perto do texto e deixa mais forte perto da foto -->
-        <linearGradient id="estampa-esmaece" x1="0" y1="0" x2="1" y2="0">
+
+        <!-- um pouco mais suave atrás do texto, para não atrapalhar a leitura -->
+        <linearGradient id="folhagem-esmaece" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
           <stop offset=".55" stop-color="#fff" stop-opacity=".85"/>
           <stop offset="1" stop-color="#fff" stop-opacity="1"/>
         </linearGradient>
-        <mask id="estampa-mascara"><rect width="100%" height="100%" fill="url(#estampa-esmaece)"/></mask>
+        <mask id="folhagem-mascara"><rect width="100%" height="100%" fill="url(#folhagem-esmaece)"/></mask>
       </defs>
-      <rect width="100%" height="100%" fill="url(#estampa-roca)" mask="url(#estampa-mascara)"/>
+      <rect width="100%" height="100%" fill="url(#folhagem-fina)" mask="url(#folhagem-mascara)" opacity=".24"/>
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
