@@ -572,58 +572,86 @@
 
   <!-- ============ 1. CAPA ============ -->
   <section class="capa" id="inicio" aria-labelledby="capa-titulo">
-    <!-- TEXTURA DA ROÇA (só decoração): galhos de café em traço fino e um grão leve de papel.
+    <!-- TEXTURA DA ROÇA (só decoração): papel de parede botânico em traço fino cobrindo a capa toda
+         (samambaia, eucalipto, folhas e grãos de café, flor do campo e capim) + grão leve de papel.
          Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo (ex: .6 deixa mais fraca; o máximo é 1). -->
-    <svg class="capa-textura" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false" style="opacity: 1">
+    <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
       <defs>
-        <!-- folha de café: contorno e nervura do meio -->
-        <g id="folha-cafe">
-          <path d="M0 0 C 26 -20, 78 -22, 118 0 C 78 20, 26 18, 0 0Z"/>
-          <path d="M4 0 C 40 -2, 80 -2, 114 0"/>
-          <path d="M30 -1 l 12 -9 M52 -1 l 13 -10 M74 -1 l 12 -8 M30 1 l 12 8 M52 1 l 13 9 M74 1 l 12 7"/>
-        </g>
-        <!-- grão de papel bem fininho -->
+        <path id="bt-folhinha" d="M0 0 C 6 -6, 16 -6.5, 23 0 C 16 6.5, 6 6, 0 0Z"/>
+        <g id="bt-redonda"><ellipse cx="11" cy="0" rx="11" ry="7.5"/><path d="M1 0 L 19 0"/></g>
+        <g id="bt-cafe"><path d="M0 0 C 22 -17, 66 -19, 100 0 C 66 17, 22 15, 0 0Z"/><path d="M4 0 C 36 -2, 68 -2, 96 0"/><path d="M26 -1 l 10 -8 M46 -1 l 11 -8 M66 -1 l 10 -7 M26 1 l 10 7 M46 1 l 11 8 M66 1 l 10 6"/></g>
+
+        <pattern id="papel-botanico" width="320" height="320" patternUnits="userSpaceOnUse" patternTransform="rotate(-6)">
+          <g class="traco" stroke-width="1.15">
+            <!-- samambaia -->
+            <path d="M18 300 C 48 248, 90 196, 146 152"/>
+            <use href="#bt-folhinha" transform="translate(30 280) rotate(-125) scale(1.25)"/>
+            <use href="#bt-folhinha" transform="translate(30 280) rotate(15) scale(1.2)"/>
+            <use href="#bt-folhinha" transform="translate(45 258) rotate(-128) scale(1.15)"/>
+            <use href="#bt-folhinha" transform="translate(45 258) rotate(10) scale(1.1)"/>
+            <use href="#bt-folhinha" transform="translate(61 236) rotate(-130) scale(1.05)"/>
+            <use href="#bt-folhinha" transform="translate(61 236) rotate(6) scale(1)"/>
+            <use href="#bt-folhinha" transform="translate(78 216) rotate(-132) scale(.92)"/>
+            <use href="#bt-folhinha" transform="translate(78 216) rotate(2) scale(.88)"/>
+            <use href="#bt-folhinha" transform="translate(95 199) rotate(-135) scale(.78)"/>
+            <use href="#bt-folhinha" transform="translate(95 199) rotate(-2) scale(.75)"/>
+            <use href="#bt-folhinha" transform="translate(112 182) rotate(-138) scale(.62)"/>
+            <use href="#bt-folhinha" transform="translate(112 182) rotate(-6) scale(.6)"/>
+            <use href="#bt-folhinha" transform="translate(128 167) rotate(-140) scale(.48)"/>
+            <use href="#bt-folhinha" transform="translate(128 167) rotate(-10) scale(.46)"/>
+
+            <!-- ramo de eucalipto -->
+            <path d="M170 24 C 192 58, 222 98, 270 140"/>
+            <use href="#bt-redonda" transform="translate(178 38) rotate(-160)"/>
+            <use href="#bt-redonda" transform="translate(186 50) rotate(10) scale(.95)"/>
+            <use href="#bt-redonda" transform="translate(198 68) rotate(-150) scale(.95)"/>
+            <use href="#bt-redonda" transform="translate(208 82) rotate(20) scale(.9)"/>
+            <use href="#bt-redonda" transform="translate(222 98) rotate(-140) scale(.85)"/>
+            <use href="#bt-redonda" transform="translate(236 112) rotate(30) scale(.8)"/>
+            <use href="#bt-redonda" transform="translate(252 126) rotate(-130) scale(.7)"/>
+
+            <!-- folhas de café -->
+            <path d="M206 300 C 214 272, 226 252, 244 236"/>
+            <use href="#bt-cafe" transform="translate(222 262) rotate(-28) scale(.78)"/>
+            <use href="#bt-cafe" transform="translate(220 266) rotate(-205) scale(.68)"/>
+            <use href="#bt-cafe" transform="translate(242 238) rotate(-80) scale(.55)"/>
+
+            <!-- flor do campo -->
+            <path d="M64 72 C 60 98, 56 118, 50 140"/>
+            <use href="#bt-folhinha" transform="translate(58 104) rotate(-160) scale(.9)"/>
+            <use href="#bt-folhinha" transform="translate(55 118) rotate(20) scale(.8)"/>
+            <circle cx="64" cy="64" r="3.2"/>
+            <path d="M64 60.8 C 59 50, 69 50, 64 60.8Z M67 62.6 C 77 57, 80 66, 67.4 65Z M66.6 67 C 72 76.5, 63 78.5, 64 67.4Z M61.4 66.8 C 52 72, 50 63, 60.8 63.6Z M61.6 61.6 C 54 54, 61 50, 63.4 60.6Z"/>
+
+            <!-- capim e espiguinhas -->
+            <path d="M280 318 C 278 298, 274 284, 266 272 M286 318 C 288 296, 292 284, 300 272 M283 318 C 283 302, 282 290, 281 280"/>
+            <path d="M120 318 C 122 300, 126 288, 132 276 M132 276 l -6 6 M132 276 l 4 7 M129 286 l -6 6 M129 286 l 5 6"/>
+            <path d="M300 40 C 296 62, 292 76, 284 92 M300 40 l -2 9 M297 54 l -7 4 M297 54 l 6 4"/>
+          </g>
+          <!-- grãos de café e sementinhas -->
+          <g style="fill: var(--amarelo)" opacity=".75">
+            <circle cx="256" cy="226" r="5.5"/><circle cx="266" cy="218" r="4.8"/><circle cx="252" cy="214" r="4.4"/>
+          </g>
+          <g style="fill: var(--verde-texto)">
+            <circle cx="150" cy="70" r="1.6"/><circle cx="100" cy="20" r="1.3"/><circle cx="20" cy="150" r="1.4"/><circle cx="170" cy="290" r="1.4"/><circle cx="300" cy="180" r="1.3"/><circle cx="160" cy="215" r="1.2"/>
+          </g>
+        </pattern>
+
         <filter id="grao-papel" x="0" y="0" width="100%" height="100%">
           <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch" result="ruido"/>
           <feColorMatrix in="ruido" type="matrix" values="0 0 0 0 .33  0 0 0 0 .38  0 0 0 0 .19  0 0 0 .9 0"/>
           <feComponentTransfer><feFuncA type="table" tableValues="0 .09"/></feComponentTransfer>
         </filter>
+        <!-- um pouco mais suave atrás do texto, para não atrapalhar a leitura -->
+        <linearGradient id="papel-esmaece" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#fff" stop-opacity=".6"/>
+          <stop offset=".45" stop-color="#fff" stop-opacity=".75"/>
+          <stop offset="1" stop-color="#fff" stop-opacity="1"/>
+        </linearGradient>
+        <mask id="papel-mascara"><rect width="100%" height="100%" fill="url(#papel-esmaece)"/></mask>
       </defs>
-
-      <rect width="1440" height="800" filter="url(#grao-papel)"/>
-
-      <!-- galho de café grande, saindo do canto de cima à direita -->
-      <g class="traco" stroke-width="1.5" opacity=".3">
-        <path d="M1470 20 C 1380 60, 1300 110, 1220 170 S 1080 280, 990 330"/>
-        <use href="#folha-cafe" transform="translate(1400 52) rotate(-150) scale(1.15)"/>
-        <use href="#folha-cafe" transform="translate(1392 56) rotate(40) scale(1.05)"/>
-        <use href="#folha-cafe" transform="translate(1300 108) rotate(-160) scale(1.2)"/>
-        <use href="#folha-cafe" transform="translate(1292 114) rotate(55) scale(1.1)"/>
-        <use href="#folha-cafe" transform="translate(1200 186) rotate(-170) scale(1.05)"/>
-        <use href="#folha-cafe" transform="translate(1196 190) rotate(65) scale(.95)"/>
-        <use href="#folha-cafe" transform="translate(1090 262) rotate(-175) scale(.9)"/>
-        <use href="#folha-cafe" transform="translate(1086 266) rotate(75) scale(.85)"/>
-        <use href="#folha-cafe" transform="translate(992 330) rotate(-200) scale(.75)"/>
-      </g>
-      <!-- grãos de café no galho -->
-      <g style="fill: var(--amarelo)" opacity=".24">
-        <circle cx="1340" cy="98" r="8"/><circle cx="1354" cy="88" r="7"/><circle cx="1330" cy="84" r="6.5"/>
-        <circle cx="1236" cy="168" r="7.5"/><circle cx="1250" cy="158" r="6.5"/>
-        <circle cx="1140" cy="236" r="7"/><circle cx="1128" cy="226" r="6"/><circle cx="1152" cy="224" r="5.5"/>
-      </g>
-
-      <!-- raminho menor subindo no canto de baixo à esquerda -->
-      <g class="traco" stroke-width="1.4" opacity=".26">
-        <path d="M-20 820 C 40 760, 90 700, 150 640 S 250 560, 300 520"/>
-        <use href="#folha-cafe" transform="translate(70 735) rotate(-60) scale(.8)"/>
-        <use href="#folha-cafe" transform="translate(76 730) rotate(200) scale(.75)"/>
-        <use href="#folha-cafe" transform="translate(160 632) rotate(-50) scale(.7)"/>
-        <use href="#folha-cafe" transform="translate(166 628) rotate(190) scale(.68)"/>
-        <use href="#folha-cafe" transform="translate(262 548) rotate(-30) scale(.55)"/>
-      </g>
-      <g style="fill: var(--amarelo)" opacity=".22">
-        <circle cx="118" cy="690" r="6"/><circle cx="128" cy="680" r="5"/><circle cx="214" cy="590" r="5.5"/>
-      </g>
+      <rect width="100%" height="100%" filter="url(#grao-papel)"/>
+      <rect width="100%" height="100%" fill="url(#papel-botanico)" mask="url(#papel-mascara)" opacity=".17"/>
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
