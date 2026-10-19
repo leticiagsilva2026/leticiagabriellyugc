@@ -174,8 +174,8 @@
   .capa-numeros li + li::before { content: "|"; color: var(--amarelo); font-weight: 700; margin: 0 12px; }
   .capa-numeros strong { font-weight: 800; color: var(--tinta); }
   .capa-numeros span { font-weight: 600; color: var(--tinta); }
-  .capa-foto-moldura { position: relative; max-width: 440px; margin-left: auto; width: 100%; }
-  .capa-foto { aspect-ratio: 4 / 5; box-shadow: var(--sombra-forte); }
+  .capa-foto-moldura { position: relative; max-width: 440px; margin-left: auto; width: 100%; align-self: end; margin-bottom: -56px; }
+  .capa-foto { display: block; width: 100%; height: auto; }
   .selo-novo {
     position: absolute; top: -18px; right: -14px; z-index: 2;
     width: 96px; height: 96px; border-radius: 50%; background: var(--amarelo); color: #fff;
@@ -191,7 +191,7 @@
   .estrelas { color: var(--estrela); letter-spacing: 2px; font-size: .9rem; line-height: 1; }
 
   /* faixa verde com os serviços, no rodapé da capa */
-  .marcas { margin-top: 56px; background: #5d6022; padding: 10px 0; overflow: hidden; }
+  .marcas { margin-top: 56px; background: #5d6022; padding: 10px 0; overflow: hidden; position: relative; z-index: 3; }
   .marcas-trilho { display: flex; width: max-content; animation: deslizar 70s linear infinite; }
   .marcas-lista { display: flex; gap: 26px; padding-right: 26px; list-style: none; margin: 0; padding-left: 0; }
   .marcas-lista li { white-space: nowrap; font-weight: 800; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #fff; display: flex; align-items: center; gap: 26px; }
@@ -204,7 +204,7 @@
     .capa h1 { font-size: clamp(2.6rem, min(5.4vw, 9vh), 5rem); margin: clamp(12px, 2vh, 22px) 0 clamp(10px, 1.6vh, 18px); }
     .capa-frase { font-size: clamp(1.02rem, min(1.6vw, 2.4vh), 1.25rem); }
     .capa-botoes { margin: clamp(16px, 3vh, 30px) 0 clamp(18px, 3.2vh, 34px); }
-    .capa-foto-moldura { width: auto; max-width: none; height: min(560px, calc(100svh - var(--altura-topo, 101px) - 150px)); aspect-ratio: 4 / 5; }
+    .capa-foto-moldura { width: auto; max-width: none; height: min(660px, calc(100svh - var(--altura-topo, 101px) - 72px)); aspect-ratio: 640 / 826; margin-bottom: calc(-1 * clamp(20px, 3.5vh, 44px)); }
     .capa-foto { height: 100%; }
     .marcas { margin-top: clamp(20px, 3.5vh, 44px); }
   }
@@ -460,7 +460,7 @@
     .faixa-ponto, .faixa-extra { display: none; }
     .faixa-link { margin-left: 4px; }
     .capa-grade, .sobre-grade, .contato-caixa { grid-template-columns: 1fr; gap: 40px; }
-    .capa-foto-moldura { margin: 0 auto; max-width: 380px; }
+    .capa-foto-moldura { margin: 0 auto -56px; max-width: 320px; }
     .capa-cartao { left: -8px; }
     .sobre-foto { max-width: 420px; margin-inline: auto; width: 100%; }
     .destaques-grade { grid-template-columns: 1fr; max-width: 380px; margin-inline: auto; }
@@ -564,14 +564,9 @@
 
       <div class="capa-foto-moldura revelar">
         <span class="selo-novo" aria-hidden="true">novo</span>
-        <!--
-          FOTO DA CAPA: para trocar pela sua foto real, coloque o arquivo na mesma pasta do index.html
-          e troque o span de legenda por: <img src="minha-foto.jpg" alt="Letícia Gabrielly sorrindo segurando um produto">
-          Formato ideal: 4:5 (exemplo 800 x 1000 px), em JPG ou WEBP leve.
-        -->
-        <div class="midia capa-foto" role="img" aria-label="Espaço para a foto da creator Letícia Gabrielly">
-          <span class="legenda-midia">foto da creator 4:5</span>
-        </div>
+        <!-- FOTO DA CAPA: foto recortada, sem fundo, na pasta img. Para trocar, salve outro PNG sem fundo com o mesmo nome. -->
+        <img class="capa-foto" src="img/leticia-capa.png" width="640" height="826" alt="Letícia Gabrielly sorrindo, de camisa branca">
+
         <div class="capa-cartao" aria-hidden="true">
           <span class="estrelas">★★★★★</span> marcas que voltam
         </div>
