@@ -23,6 +23,8 @@ Garnier ............... garnier.png
 Mamamais .............. mamamais.png
 Boi da Cara Preta ..... boi-da-cara-preta.png
 Elseve ................ elseve.png
+União Magistral ....... uniao-magistral.png
+Stone ................. stone.png
 
 MARCA NOVA
 Abra o index.html, procure por LOGOS_EXTRAS e adicione uma linha assim:
