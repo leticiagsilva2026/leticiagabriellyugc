@@ -213,7 +213,7 @@
   @media (min-width: 901px) {
     .capa { display: flex; flex-direction: column; min-height: calc(100vh - var(--altura-topo, 101px)); min-height: calc(100svh - var(--altura-topo, 101px)); padding-top: clamp(20px, 4vh, 48px); }
     .capa-grade { flex: 1; grid-template-columns: minmax(0, clamp(590px, 44vw, 720px)) auto; justify-content: start; gap: clamp(8px, 2vw, 32px); }
-    .capa-foto-moldura { margin-inline: -20px 0; }
+    .capa-foto-moldura { margin-inline: 40px 0; }
     .capa-numeros { flex-wrap: nowrap; white-space: nowrap; }
     .capa-numeros li { font-size: 1rem; }
     .capa h1 { font-size: clamp(2.6rem, min(5.4vw, 9vh), 5rem); margin: clamp(12px, 2vh, 22px) 0 clamp(10px, 1.6vh, 18px); }
@@ -570,50 +570,41 @@
 
   <!-- ============ 1. CAPA ============ -->
   <section class="capa" id="inicio" aria-labelledby="capa-titulo">
-    <!-- TEXTURA DA ROÇA (só decoração). Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo. -->
-    <svg class="capa-textura" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false" style="opacity: 1">
-      <!-- curvas de nível, como num mapa de terreno -->
-      <g class="traco so-computador" stroke-width="1.1" opacity=".07">
-        <path d="M-40 120 C 120 60, 300 70, 420 140 S 640 260, 820 210 S 1080 90, 1260 140 S 1480 220, 1500 200"/>
-        <path d="M-40 160 C 110 105, 290 112, 410 178 S 630 300, 815 250 S 1075 130, 1255 180 S 1480 260, 1500 240"/>
-        <path d="M-40 200 C 100 150, 280 156, 400 216 S 620 340, 810 290 S 1070 170, 1250 220 S 1480 300, 1500 280"/>
-        <path d="M120 70 C 200 40, 300 50, 330 90 S 260 150, 180 130 S 70 100, 120 70Z"/>
-        <path d="M150 80 C 210 62, 280 70, 296 96 S 245 128, 190 118 S 115 98, 150 80Z"/>
-        <path d="M1040 60 C 1120 30, 1230 40, 1260 80 S 1190 140, 1110 125 S 990 95, 1040 60Z"/>
-      </g>
-      <!-- colinas ao fundo -->
-      <path d="M0 610 C 180 540, 380 560, 560 610 S 900 690, 1100 620 S 1340 560, 1440 580 V800 H0Z" style="fill: var(--verde)" opacity=".07"/>
-      <path d="M0 680 C 240 630, 500 670, 740 690 S 1180 640, 1440 680 V800 H0Z" style="fill: var(--verde-texto)" opacity=".06"/>
-      <!-- linhas de plantação acompanhando a colina -->
-      <g class="traco so-computador" stroke-width="1.2" opacity=".1">
-        <path d="M60 700 C 260 662, 470 690, 690 708"/>
-        <path d="M40 724 C 250 688, 470 714, 700 732"/>
-        <path d="M20 748 C 240 714, 470 738, 710 756"/>
-        <path d="M0 772 C 230 740, 470 762, 720 780"/>
-      </g>
-      <!-- galhinho com folhas, no canto de cima -->
-      <g class="traco so-computador" stroke-width="1.3" opacity=".14" transform="translate(40 40) rotate(-18)">
-        <path d="M0 0 C 18 70, 26 140, 18 230"/>
-        <path d="M6 40 C -22 32, -34 12, -32 -6 C -12 4, 2 20, 6 40Z"/>
-        <path d="M12 70 C 40 58, 50 36, 46 18 C 28 30, 16 48, 12 70Z"/>
-        <path d="M18 110 C -12 104, -26 82, -24 62 C -4 74, 12 90, 18 110Z"/>
-        <path d="M22 150 C 50 138, 60 114, 56 96 C 38 110, 26 128, 22 150Z"/>
-        <path d="M21 190 C -8 186, -22 164, -20 144 C 0 156, 15 172, 21 190Z"/>
-      </g>
-      <!-- espigas de trigo perto da colina -->
-      <g class="traco so-computador" stroke-width="1.2" opacity=".14" transform="translate(760 560)">
-        <path d="M0 120 C 4 70, 8 30, 14 0"/>
-        <path d="M14 0 l -8 12 M14 0 l 6 12 M11 16 l -9 11 M11 16 l 7 11 M8 32 l -9 11 M8 32 l 7 11 M6 48 l -8 10 M6 48 l 7 10"/>
-        <path d="M30 124 C 32 80, 38 44, 48 14"/>
-        <path d="M48 14 l -9 11 M48 14 l 6 12 M44 30 l -9 11 M44 30 l 7 11 M41 46 l -9 10 M41 46 l 7 11"/>
-        <path d="M-24 126 C -22 90, -20 58, -14 30"/>
-        <path d="M-14 30 l -8 11 M-14 30 l 6 11 M-16 46 l -8 10 M-16 46 l 6 10"/>
-      </g>
-      <!-- passarinhos -->
-      <g class="traco" stroke-width="1.4" opacity=".16">
-        <path d="M640 120 q 8 -8 16 0 q 8 -8 16 0"/>
-        <path d="M690 96 q 6 -6 12 0 q 6 -6 12 0"/>
-      </g>
+    <!-- TEXTURA DA ROÇA (só decoração): estampa miudinha de raminhos, folhas e flores do campo.
+         Para deixar mais forte ou mais fraca, mude o opacity do <svg> abaixo (ex: .6 deixa mais fraca; o máximo é 1). -->
+    <svg class="capa-textura" aria-hidden="true" focusable="false" style="opacity: 1">
+      <defs>
+        <pattern id="estampa-roca" width="180" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
+          <g class="traco" stroke-width="1.1" opacity=".13">
+            <!-- raminho com folhas -->
+            <path d="M24 70 C 30 52, 34 36, 42 20"/>
+            <path d="M30 54 C 20 50, 16 42, 17 34 C 25 38, 29 45, 30 54Z"/>
+            <path d="M35 40 C 45 38, 50 30, 50 22 C 42 25, 37 32, 35 40Z"/>
+            <path d="M39 28 C 31 23, 30 15, 33 9 C 39 14, 40 21, 39 28Z"/>
+            <!-- florzinha do campo -->
+            <circle cx="118" cy="44" r="2.4"/>
+            <path d="M118 41.6 C 115 35, 121 35, 118 41.6Z M120.3 43.2 C 126 40, 127.5 45.5, 120.3 45Z M119.4 46.2 C 122 52, 116.5 52.5, 117.2 46.4Z M116.4 45.8 C 110.5 48, 110 42.6, 115.8 43Z M116 42.8 C 111.5 38.5, 116 36, 117 41.8Z"/>
+            <!-- capim -->
+            <path d="M92 150 C 90 138, 86 130, 80 124 M96 150 C 97 136, 100 128, 106 120 M94 150 C 94 140, 93 132, 92 126"/>
+            <!-- folhinha solta -->
+            <path d="M152 112 C 162 104, 172 106, 176 114 C 166 120, 158 120, 152 112Z M152 112 L 170 112"/>
+            <!-- espiguinha -->
+            <path d="M52 168 C 54 156, 56 146, 60 136 M60 136 l -5 6 M60 136 l 4 6 M58 144 l -5 6 M58 144 l 4 6 M56 152 l -5 6 M56 152 l 4 6"/>
+          </g>
+          <!-- sementinhas -->
+          <g style="fill: var(--verde-texto)" opacity=".12">
+            <circle cx="74" cy="22" r="1.4"/><circle cx="140" cy="160" r="1.4"/><circle cx="12" cy="128" r="1.2"/><circle cx="160" cy="70" r="1.2"/><circle cx="104" cy="92" r="1.1"/>
+          </g>
+        </pattern>
+        <!-- some a estampa perto do texto e deixa mais forte perto da foto -->
+        <linearGradient id="estampa-esmaece" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#fff" stop-opacity=".35"/>
+          <stop offset=".55" stop-color="#fff" stop-opacity=".75"/>
+          <stop offset="1" stop-color="#fff" stop-opacity="1"/>
+        </linearGradient>
+        <mask id="estampa-mascara"><rect width="100%" height="100%" fill="url(#estampa-esmaece)"/></mask>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#estampa-roca)" mask="url(#estampa-mascara)"/>
     </svg>
     <div class="container capa-grade">
       <div class="revelar">
