@@ -1137,7 +1137,7 @@ function montarVideos(listaDestaques, listaNichos, semAnimacao) {
 
   /* Destaques */
   const destaquesProntos = listaDestaques.map((d) => ({ ...d, id: idYT(d.link) })).filter((d) => d.id);
-  LISTAS.destaques = destaquesProntos.map((d) => ({ id: d.id, titulo: d.titulo }));
+  LISTAS.destaques = destaquesProntos.map((d) => ({ id: d.id, titulo: d.titulo, nicho: "Destaques" }));
   $("#destaques").hidden = !destaquesProntos.length;
   $("#destaques-grade").innerHTML = destaquesProntos.map((d, i) => `
   <button class="destaque revelar" type="button" data-lista="destaques" data-indice="${i}" aria-label="Assistir ${esc(d.titulo)}">
@@ -1158,7 +1158,7 @@ function montarVideos(listaDestaques, listaNichos, semAnimacao) {
       .map((v, vi) => ({ id: idYT(v.link), titulo: v.titulo || `${n.nome} ${String(vi + 1).padStart(2, "0")}` }))
       .filter((v) => v.id)
   })).filter((n) => n.videos.length);
-  nichosProntos.forEach((n, ni) => { LISTAS[ni] = n.videos; });
+  nichosProntos.forEach((n, ni) => { LISTAS[ni] = n.videos.map((v) => ({ ...v, nicho: n.nome })); });
 
   $("#prateleiras").innerHTML = nichosProntos.map((n, ni) => `
   <div class="prateleira revelar" data-prateleira="${ni}" role="region" aria-labelledby="prateleira-${ni}">
@@ -1212,6 +1212,7 @@ function montarVideos(listaDestaques, listaNichos, semAnimacao) {
     if (!botao) return;
     const escolhido = botao.dataset.filtro;
     filtros.querySelectorAll(".chip").forEach((b) => b.setAttribute("aria-pressed", String(b === botao)));
+    if (escolhido !== "todos" && nichosProntos[escolhido]) registrarEvento("nicho", nichosProntos[escolhido].nome, "filtro");
     document.querySelectorAll(".prateleira").forEach((p) => {
       const mostra = escolhido === "todos" || p.dataset.prateleira === escolhido;
       p.hidden = !mostra;
@@ -1285,6 +1286,7 @@ function mostrarVideo(i) {
     ? `<iframe src="${linkEmbed(v.id, "autoplay=1")}" title="${esc(v.titulo)}" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`
     : `<div class="player-aviso"><p>Os vídeos só tocam com o portfólio aberto pelo site.</p><a class="btn btn-verde" href="${SITE_PUBLICADO}">Abrir o site</a></div>`;
   $("#player-titulo").textContent = listaAtual.length > 1 ? `${v.titulo} · ${indiceAtual + 1} de ${listaAtual.length}` : v.titulo;
+  registrarEvento("video", v.titulo, `${v.nicho || ""} · ${v.id}`);
 }
 function abrirPlayer(lista, indice) {
   if (!lista || !lista.length) return;
@@ -1440,10 +1442,13 @@ const hojeISO = () => { const d = new Date(); return `${d.getFullYear()}-${Strin
   } catch (erro) { /* sem banco: fica a lista reserva */ }
 })();
 
-/* Visita: registra uma por visita (sem cookies e sem serviço de fora), com a origem */
-(function registrarVisita() {
-  if (!banco || !temEndereco || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return;
-  try { if (sessionStorage.getItem("visitaRegistrada") === "1") return; sessionStorage.setItem("visitaRegistrada", "1"); } catch (erro) { /* segue */ }
+/* MEDIÇÃO DO SITE (aparece na aba Portfólio do painel)
+   Conta visitas e o que as pessoas fazem aqui, sem cookies, sem serviço de fora e sem pedir nada.
+   Não mede nada quando o site está aberto no seu computador (localhost). */
+const medindo = !!banco && temEndereco && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const dispositivo = (window.matchMedia("(max-width: 760px)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) ? "celular" : "computador";
+const origemDaVisita = (function () {
+  try { const guardada = sessionStorage.getItem("origemVisita"); if (guardada) return guardada; } catch (erro) { /* segue */ }
   const parametros = new URLSearchParams(location.search);
   let origem = parametros.get("utm_source") || parametros.get("origem") || "";
   if (!origem && document.referrer) {
@@ -1452,9 +1457,44 @@ const hojeISO = () => { const d = new Date(); return `${d.getFullYear()}-${Strin
   const nomes = [[/instagram|^l\.instagram/i, "Instagram"], [/facebook|fb\.com|^m\.facebook/i, "Facebook"], [/whatsapp|wa\.me/i, "WhatsApp"], [/google/i, "Google"],
     [/tiktok/i, "TikTok"], [/youtube|youtu\.be/i, "YouTube"], [/linkedin|lnkd/i, "LinkedIn"], [/^t\.co$|twitter|^x\.com/i, "X"], [/bing/i, "Bing"], [/linktr/i, "Linktree"]];
   const achado = nomes.find(([regra]) => regra.test(origem));
-  origem = achado ? achado[1] : (origem || "Link direto");
-  banco.from("visitas").insert({ pagina: location.pathname.slice(0, 300), origem: origem.slice(0, 120) }).then(() => {}, () => {});
+  const final = (achado ? achado[1] : (origem || "Link direto")).slice(0, 120);
+  try { sessionStorage.setItem("origemVisita", final); } catch (erro) { /* segue */ }
+  return final;
 })();
+
+/* Visita: uma por visita */
+(function registrarVisita() {
+  if (!medindo) return;
+  try { if (sessionStorage.getItem("visitaRegistrada") === "1") return; sessionStorage.setItem("visitaRegistrada", "1"); } catch (erro) { /* segue */ }
+  const linha = { pagina: location.pathname.slice(0, 300), origem: origemDaVisita, dispositivo };
+  banco.from("visitas").insert(linha).then(({ error }) => {
+    /* se o banco ainda não tem o campo "dispositivo", registra sem ele */
+    if (error) banco.from("visitas").insert({ pagina: linha.pagina, origem: linha.origem }).then(() => {}, () => {});
+  }, () => {});
+})();
+
+/* Ações: vídeo aberto, cliques em WhatsApp, Instagram, e-mail, botões de contato, nichos e formulários */
+function registrarEvento(tipo, alvo, detalhe) {
+  if (!medindo) return;
+  try {
+    banco.from("eventos").insert({
+      tipo, alvo: String(alvo || "").trim().slice(0, 200), detalhe: String(detalhe || "").trim().slice(0, 200),
+      origem: origemDaVisita, dispositivo
+    }).then(() => {}, () => {});
+  } catch (erro) { /* medição nunca atrapalha o site */ }
+}
+document.addEventListener("click", (e) => {
+  const link = e.target.closest("a[href]");
+  if (!link) return;
+  const href = link.getAttribute("href") || "";
+  const onde = (link.closest("section[id], header, footer") || {}).id || (link.closest("footer") ? "rodape" : (link.closest("header") ? "topo" : ""));
+  const texto = (link.textContent || "").replace(/\s+/g, " ").trim() || href;
+  if (/wa\.me|whatsapp/i.test(href)) registrarEvento("whatsapp", texto, onde);
+  else if (/instagram\.com/i.test(href)) registrarEvento("instagram", texto, onde);
+  else if (/^mailto:/i.test(href)) registrarEvento("email", texto, onde);
+  else if (/tiktok\.com/i.test(href)) registrarEvento("tiktok", texto, onde);
+  else if (href === "#contato") registrarEvento("contato", texto, onde);
+}, true);
 
 /* Manda um contato para a tabela "marcas" como Lead. Devolve true se deu certo. */
 async function enviarLead(nome, email, observacao) {
@@ -1490,6 +1530,7 @@ $("#form-contato").addEventListener("submit", async (e) => {
   botao.disabled = false;
   botao.textContent = "Enviar mensagem";
   if (!ok) { avisoEnvio(form, "Não consegui enviar agora. Tente de novo em instantes ou me chame no WhatsApp."); return; }
+  registrarEvento("formulario", "Mensagem pelo formulário", "contato");
   form.hidden = true;
   const confirmacao = $("#confirmacao-contato");
   confirmacao.hidden = false;
@@ -1538,6 +1579,7 @@ $("#form-kit").addEventListener("submit", async (e) => {
   const ok = await enviarLead(form.elements.nome.value.trim(), form.elements.email.value.trim(), "Pediu o mídia kit pelo site.");
   botao.disabled = false;
   if (!ok) { avisoEnvio(form, "Não consegui enviar agora. Tente de novo em instantes."); return; }
+  registrarEvento("midia_kit", "Pediu o mídia kit", "card de captura");
   $("#modal-corpo").hidden = true;
   const confirmacao = $("#confirmacao-kit");
   confirmacao.hidden = false;

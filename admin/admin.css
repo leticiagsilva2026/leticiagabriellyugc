@@ -288,3 +288,20 @@ details.bloco[open] > summary { border-bottom: 1px solid var(--borda); }
   .cal-item { font-size: .64rem; padding: 1px 4px; }
   .form-grade { grid-template-columns: 1fr; }
 }
+
+/* métricas do portfólio */
+.ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ranking li { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; font-size: .84rem; }
+.ranking strong { display: block; color: var(--tinta); font-size: .84rem; font-weight: 700; line-height: 1.3; }
+.ranking small { display: block; color: var(--suave); font-size: .74rem; }
+.ranking b { font-size: .78rem; color: var(--verde-texto); white-space: nowrap; }
+.atividade li { grid-template-columns: 12px 1fr auto; padding: 6px 0; border-bottom: 1px solid var(--borda); }
+.atividade li:last-child { border-bottom: 0; }
+.ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--verde); }
+.ponto.t-whatsapp { background: #25d366; }
+.ponto.t-instagram { background: #d62976; }
+.ponto.t-formulario, .ponto.t-midia_kit, .ponto.t-email { background: var(--terracota); }
+.ponto.t-contato { background: var(--verde-escuro); }
+.ponto.t-nicho { background: #6b8fb5; }
+
+ul.origens { margin: 0; padding: 0; }

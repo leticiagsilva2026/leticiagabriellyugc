@@ -91,9 +91,10 @@
     calendario: ["titulo", "marca", "tipo", "data", "status"],
     campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita"],
     marcados: ["chave", "marcado"],
-    visitas: ["data", "pagina", "origem"]
+    visitas: ["data", "pagina", "origem"],
+    eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [] };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [] };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -112,17 +113,29 @@
     }
   }
 
+  /* o Supabase entrega no máximo 1000 linhas por vez: aqui busca de 1000 em 1000 (até 30 dias) */
+  async function buscarEmPartes(tabela, desde) {
+    const tudo = [];
+    for (let pagina = 0; pagina < 50; pagina++) {
+      const parte = await buscar(tabela, (q) => q.select("*").gte("data", desde.toISOString()).order("data", { ascending: false }).range(pagina * 1000, pagina * 1000 + 999));
+      tudo.push(...parte);
+      if (parte.length < 1000) break;
+    }
+    return tudo;
+  }
+
   async function carregarTudo() {
-    const desde = hoje0(); desde.setDate(desde.getDate() - 13);
-    const [v, m, c, cp, mc, vi] = await Promise.all([
+    const desde = hoje0(); desde.setDate(desde.getDate() - 29);
+    const [v, m, c, cp, mc, vi, ev] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
       buscar("campanhas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("marcados", (q) => q.select("*")),
-      buscar("visitas", (q) => q.select("data,origem,pagina").gte("data", desde.toISOString()).order("data", { ascending: true }).limit(20000))
+      buscarEmPartes("visitas", desde),
+      buscarEmPartes("eventos", desde)
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev;
     marcados.clear();
     mc.forEach((linha) => { if (linha.marcado !== false && linha.chave) marcados.add(linha.chave); });
   }
@@ -273,57 +286,125 @@
      ABA 1: PORTFÓLIO
      ================================================================= */
   const estadoVideos = { nicho: "todos" };
-  function nomeOrigem(o) { return o || "direto"; }
+  const estadoMetricas = { dias: 14 };
+  const nomeOrigem = (o) => (!o || o === "direto" ? "Link direto" : o);
+  const NOMES_EVENTO = {
+    video: "Vídeos abertos", whatsapp: "Cliques no WhatsApp", instagram: "Cliques no Instagram", email: "Cliques no e-mail",
+    tiktok: "Cliques no TikTok", contato: "Botões de contato", formulario: "Formulários enviados", midia_kit: "Pedidos de mídia kit", nicho: "Nichos filtrados"
+  };
+  const ROTULO_ACAO = {
+    video: "abriu o vídeo", whatsapp: "clicou no WhatsApp", instagram: "clicou no Instagram", email: "clicou no e-mail",
+    tiktok: "clicou no TikTok", contato: "clicou em", formulario: "enviou o formulário de contato", midia_kit: "pediu o mídia kit", nicho: "filtrou o nicho"
+  };
+  function contar(lista, chave) {
+    const c = {};
+    lista.forEach((x) => { const k = chave(x); if (k) c[k] = (c[k] || 0) + 1; });
+    return Object.entries(c).sort((a, b) => b[1] - a[1]);
+  }
+  function listaBarras(pares, vazio) {
+    if (!pares.length) return `<p class="frase-vazia">${vazio}</p>`;
+    return `<ul class="origens">${pares.map(([nome, n]) => `<li><div class="linha"><span>${esc(nome)}</span><b>${n}</b></div><div class="trilho"><i style="width:${(n / pares[0][1]) * 100}%"></i></div></li>`).join("")}</ul>`;
+  }
+  function quando(data) {
+    const d = new Date(data);
+    if (isNaN(d)) return "";
+    const hora = `${dois(d.getHours())}:${dois(d.getMinutes())}`;
+    if (isoLocal(d) === isoLocal(new Date())) return `hoje, ${hora}`;
+    const ontem = hoje0(); ontem.setDate(ontem.getDate() - 1);
+    if (isoLocal(d) === isoLocal(ontem)) return `ontem, ${hora}`;
+    return `${dois(d.getDate())}/${dois(d.getMonth() + 1)}, ${hora}`;
+  }
+  /* o detalhe de um vídeo aberto vem como "Nicho · códigoDoYouTube" */
+  const partesVideo = (detalhe) => { const p = String(detalhe || "").split(" · "); return { nicho: p[0] || "", id: p[1] || "" }; };
 
   function renderPortfolio(area) {
+    const N = estadoMetricas.dias;
+    const inicio = hoje0(); inicio.setDate(inicio.getDate() - (N - 1));
     const dias = [];
-    for (let i = 13; i >= 0; i--) { const d = hoje0(); d.setDate(d.getDate() - i); dias.push({ chave: isoLocal(d), d, n: 0 }); }
+    for (let i = N - 1; i >= 0; i--) { const d = hoje0(); d.setDate(d.getDate() - i); dias.push({ chave: isoLocal(d), d, n: 0 }); }
     const porChave = new Map(dias.map((x) => [x.chave, x]));
-    const contaOrigem = {};
-    dados.visitas.forEach((v) => {
-      const d = new Date(v.data);
-      if (isNaN(d)) return;
-      const dia = porChave.get(isoLocal(d));
-      if (!dia) return;
-      dia.n++;
-      const o = nomeOrigem(v.origem);
-      contaOrigem[o] = (contaOrigem[o] || 0) + 1;
-    });
-    const total14 = dias.reduce((s, x) => s + x.n, 0);
+    const noPeriodo = (lista) => lista.filter((x) => { const d = new Date(x.data); return !isNaN(d) && d >= inicio; });
+    const visitas = noPeriodo(dados.visitas);
+    const eventos = noPeriodo(dados.eventos);
+    visitas.forEach((v) => { const dia = porChave.get(isoLocal(new Date(v.data))); if (dia) dia.n++; });
+
+    const totalVisitas = visitas.length;
     const visitasHoje = dias[dias.length - 1].n;
     const noAr = dados.videos.filter((v) => v.visivel !== false).length;
+    const origens = contar(visitas, (v) => nomeOrigem(v.origem));
+    const aparelhos = contar(visitas, (v) => (v.dispositivo === "celular" ? "Celular" : v.dispositivo === "computador" ? "Computador" : ""));
+    const porTipo = {};
+    eventos.forEach((e) => { porTipo[e.tipo] = (porTipo[e.tipo] || 0) + 1; });
+    const qtd = (t) => porTipo[t] || 0;
+    const contatos = qtd("whatsapp") + qtd("email") + qtd("formulario") + qtd("midia_kit");
+    const taxa = totalVisitas > 0 ? Math.round((contatos / totalVisitas) * 100) : 0;
+
+    const abertos = contar(eventos.filter((e) => e.tipo === "video"), (e) => `${e.alvo}||${e.detalhe || ""}`).slice(0, 8);
+    const nichosProcurados = contar(eventos.filter((e) => e.tipo === "video" || e.tipo === "nicho"), (e) => (e.tipo === "nicho" ? e.alvo : partesVideo(e.detalhe).nicho));
     const contaNicho = {};
     dados.videos.forEach((v) => {
       if (v.visivel === false || !v.nicho || String(v.nicho).toLowerCase() === "destaques") return;
       contaNicho[v.nicho] = (contaNicho[v.nicho] || 0) + 1;
     });
-    const nichoForte = Object.entries(contaNicho).sort((a, b) => b[1] - a[1])[0];
-    const origens = Object.entries(contaOrigem).sort((a, b) => b[1] - a[1]);
+    const nichoMaisVideos = Object.entries(contaNicho).sort((a, b) => b[1] - a[1])[0];
+    const nichoForte = nichosProcurados.find(([n]) => n && n.toLowerCase() !== "destaques");
+    const acoes = Object.keys(NOMES_EVENTO).map((t) => [NOMES_EVENTO[t], qtd(t)]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    const recentes = eventos.slice().sort((a, b) => new Date(b.data) - new Date(a.data)).slice(0, 12);
     const maior = Math.max(1, ...dias.map((x) => x.n));
+    const pulo = N > 14 ? 3 : 1;
 
-    const grafico = total14 === 0
-      ? `<p class="frase-vazia">Quando as pessoas começarem a visitar o seu portfólio, aqui aparece uma barrinha para cada um dos últimos 14 dias, mostrando quantas visitas chegaram em cada dia.</p>`
-      : `<div class="grafico">${dias.map((x, i) => `<div class="barra ${i === dias.length - 1 ? "hoje" : ""}" title="${plural(x.n, "visita", "visitas")} em ${dois(x.d.getDate())}/${dois(x.d.getMonth() + 1)}"><b>${x.n || ""}</b><i style="height:${x.n ? Math.max(3, (x.n / maior) * 78) : 0}%"></i><span>${dois(x.d.getDate())}/${dois(x.d.getMonth() + 1)}</span></div>`).join("")}</div>`;
-    const listaOrigens = origens.length === 0
-      ? `<p class="frase-vazia">Aqui vai aparecer de onde as pessoas chegam no seu portfólio, como Instagram, WhatsApp, Google ou link direto.</p>`
-      : `<ul class="origens">${origens.map(([o, n]) => `<li><div class="linha"><span>${esc(o)}</span><b>${n}</b></div><div class="trilho"><i style="width:${(n / origens[0][1]) * 100}%"></i></div></li>`).join("")}</ul>`;
+    const grafico = totalVisitas === 0
+      ? `<p class="frase-vazia">Quando as pessoas começarem a visitar o seu portfólio, aqui aparece uma barrinha para cada um dos últimos ${N} dias, mostrando quantas visitas chegaram em cada dia.</p>`
+      : `<div class="grafico" style="grid-template-columns:repeat(${N}, minmax(0, 1fr))">${dias.map((x, i) => `<div class="barra ${i === dias.length - 1 ? "hoje" : ""}" title="${plural(x.n, "visita", "visitas")} em ${dois(x.d.getDate())}/${dois(x.d.getMonth() + 1)}"><b>${x.n || ""}</b><i style="height:${x.n ? Math.max(3, (x.n / maior) * 78) : 0}%"></i><span>${(dias.length - 1 - i) % pulo === 0 ? `${dois(x.d.getDate())}/${dois(x.d.getMonth() + 1)}` : "&nbsp;"}</span></div>`).join("")}</div>`;
+
+    const listaAbertos = abertos.length === 0
+      ? `<p class="frase-vazia">Quando alguém abrir um vídeo no seu site, ele aparece aqui, do mais assistido para o menos.</p>`
+      : `<ul class="ranking">${abertos.map(([chave, n]) => {
+          const [titulo, detalhe] = chave.split("||");
+          const { nicho, id } = partesVideo(detalhe);
+          return `<li>${id ? `<img class="capinha" src="https://i.ytimg.com/vi/${esc(id)}/default.jpg" alt="" loading="lazy">` : `<span class="capinha"></span>`}<div><strong>${esc(titulo || "Vídeo sem título")}</strong><small>${esc(nicho)}</small></div><b>${plural(n, "vez", "vezes")}</b></li>`;
+        }).join("")}</ul>`;
+
+    const listaRecentes = recentes.length === 0
+      ? `<p class="frase-vazia">Aqui aparecem as últimas coisas que as pessoas fizeram no site: vídeo aberto, clique no WhatsApp, formulário enviado.</p>`
+      : `<ul class="ranking atividade">${recentes.map((e) => `<li><span class="ponto t-${esc(e.tipo)}"></span><div><strong>${esc(ROTULO_ACAO[e.tipo] || e.tipo)} ${e.tipo === "contato" || e.tipo === "video" || e.tipo === "nicho" ? `"${esc(e.alvo)}"` : ""}</strong><small>${esc(nomeOrigem(e.origem))}${e.dispositivo ? ` · ${esc(e.dispositivo)}` : ""}</small></div><small>${quando(e.data)}</small></li>`).join("")}</ul>`;
 
     const nichos = Array.from(new Set(dados.videos.map((v) => v.nicho).filter(Boolean)));
     if (estadoVideos.nicho !== "todos" && !nichos.includes(estadoVideos.nicho)) estadoVideos.nicho = "todos";
     const lista = dados.videos.filter((v) => estadoVideos.nicho === "todos" || v.nicho === estadoVideos.nicho);
 
     area.innerHTML = `
+      <div class="ferramentas">
+        <div class="chips" role="group" aria-label="Período">
+          ${[7, 14, 30].map((d) => `<button type="button" data-periodo="${d}" aria-pressed="${N === d}">${d} dias</button>`).join("")}
+        </div>
+        <span class="dica">Conta só o site publicado. Quando você abre pelo seu computador (localhost), não entra.</span>
+      </div>
       <div class="faixa-numeros" style="--colunas:5">
-        <div><span>Visitas em 14 dias</span><strong>${total14}</strong></div>
+        <div><span>Visitas em ${N} dias</span><strong>${totalVisitas}</strong></div>
         <div><span>Visitas hoje</span><strong>${visitasHoje}</strong></div>
         <div><span>Vídeos no ar</span><strong>${noAr}</strong></div>
-        <div><span>Nicho mais forte</span><strong>${nichoForte ? esc(nichoForte[0]) : "Ainda sem vídeos"}</strong>${nichoForte ? `<small>${plural(nichoForte[1], "vídeo", "vídeos")}</small>` : ""}</div>
+        <div><span>Nicho mais forte</span><strong>${nichoForte ? esc(nichoForte[0]) : nichoMaisVideos ? esc(nichoMaisVideos[0]) : "Ainda sem vídeos"}</strong><small>${nichoForte ? `mais procurado: ${plural(nichoForte[1], "vez", "vezes")}` : nichoMaisVideos ? `com mais vídeos (${nichoMaisVideos[1]})` : ""}</small></div>
         <div><span>De onde mais vêm</span><strong>${origens.length ? esc(origens[0][0]) : "Ainda sem visitas"}</strong>${origens.length ? `<small>${plural(origens[0][1], "visita", "visitas")}</small>` : ""}</div>
       </div>
-      <div class="duas-colunas">
-        <section class="cartao"><h2>Visitas nos últimos 14 dias</h2>${grafico}</section>
-        <section class="cartao"><h2>Por onde as pessoas chegaram</h2>${listaOrigens}</section>
+      <div class="faixa-numeros" style="--colunas:5">
+        <div><span>Vídeos abertos</span><strong>${qtd("video")}</strong></div>
+        <div><span>Cliques no WhatsApp</span><strong>${qtd("whatsapp")}</strong></div>
+        <div><span>Cliques no Instagram</span><strong>${qtd("instagram")}</strong></div>
+        <div><span>Pedidos de contato</span><strong>${contatos}</strong><small>WhatsApp, e-mail, formulário e mídia kit</small></div>
+        <div><span>Taxa de contato</span><strong>${taxa}%</strong><small>${totalVisitas ? `${contatos} a cada ${totalVisitas} visitas` : "aparece quando tiver visitas"}</small></div>
       </div>
+      <div class="duas-colunas">
+        <section class="cartao"><h2>Visitas nos últimos ${N} dias</h2>${grafico}</section>
+        <section class="cartao"><h2>Por onde as pessoas chegaram</h2>${listaBarras(origens, "Aqui vai aparecer de onde as pessoas chegam no seu portfólio, como Instagram, WhatsApp, Google ou link direto.")}
+          ${aparelhos.length ? `<h2 style="margin-top:16px">Celular ou computador</h2>${listaBarras(aparelhos, "")}` : ""}</section>
+      </div>
+      <div class="duas-colunas">
+        <section class="cartao"><h2>Vídeos mais abertos no site</h2>${listaAbertos}</section>
+        <section class="cartao"><h2>O que as pessoas fizeram</h2>${listaBarras(acoes, "Aqui aparecem os cliques no WhatsApp, Instagram, e-mail, botões de contato, formulários e vídeos abertos.")}
+          ${nichosProcurados.length ? `<h2 style="margin-top:16px">Nichos mais procurados</h2>${listaBarras(nichosProcurados.slice(0, 6), "")}` : ""}</section>
+      </div>
+      <section class="cartao"><h2>Atividade recente</h2>${listaRecentes}</section>
       <section class="cartao">
         <div class="cartao-topo">
           <h2>Meus vídeos</h2>
@@ -360,6 +441,7 @@
       </section>`;
 
     $("#filtro-nicho").addEventListener("change", (e) => { estadoVideos.nicho = e.target.value; renderPortfolio(area); });
+    $$("[data-periodo]", area).forEach((b) => b.addEventListener("click", () => { estadoMetricas.dias = Number(b.dataset.periodo); renderPortfolio(area); }));
     $("#add-video").addEventListener("click", () => formVideo());
     const corpo = $("#corpo-videos");
     if (!corpo) return;
