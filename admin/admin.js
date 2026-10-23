@@ -117,9 +117,10 @@
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
     roteiros: ["fonte", "url", "perfil", "de_quem", "titulo", "transcricao", "legenda", "postado_em", "tags", "obs", "status", "erro"],
-    configuracoes: ["chave", "valor"]
+    configuracoes: ["chave", "valor"],
+    virais: ["url", "fonte", "perfil", "titulo", "nicho", "transcricao", "analise", "adaptacoes", "status"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -151,7 +152,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -160,9 +161,10 @@
       buscarEmPartes("visitas", desde),
       buscarEmPartes("eventos", desde),
       buscar("roteiros", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
-      buscar("configuracoes", (q) => q.select("*"))
+      buscar("configuracoes", (q) => q.select("*")),
+      buscar("virais", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -286,6 +288,7 @@
     calendario: ["Calendário", renderCalendario],
     campanhas: ["Campanhas", renderCampanhas],
     roteiros: ["📜 Roteiros", renderRoteiros],
+    virais: ["🔥 Virais", renderVirais],
     checklist: ["Checklist do portfólio", renderChecklist]
   };
   const abaAtual = () => { const h = location.hash.replace("#", ""); return ABAS[h] ? h : "portfolio"; };
@@ -1608,6 +1611,515 @@ ${blocos}`;
         if (await apagar("roteiros", r.id)) { dados.roteiros = dados.roteiros.filter((x) => x.id !== r.id); recado("Roteiro apagado"); renderRoteiros(area); }
       }
     });
+  }
+
+  /* =================================================================
+     ABA 7: VIRAIS (por que um conteúdo viralizou + adaptar a sua ideia)
+     A análise é feita pelo Gemini do Google (uso gratuito). A chave fica
+     na tabela "configuracoes" (nunca no código).
+     ================================================================= */
+  const CHAVE_GEMINI = "gemini_api_key";
+  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+  const estadoVir = { aviso: null, busca: "", form: {} };
+  const analisando = new Set();
+  const chaveGemini = () => String(dados.config[CHAVE_GEMINI] || "").trim();
+  const semTravessao = (t) => String(t == null ? "" : t).replace(new RegExp("\\s*[" + String.fromCharCode(8212, 8211) + "]\\s*", "g"), ", ");
+  const SEM_CHAVE_GEMINI = `✨ Para a análise, falta a chave grátis do Gemini (do Google). Entre em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> com a sua conta Google, clique em "Create API key", copie a chave e cole no campo "Chave do Gemini" aqui embaixo. Não pede cartão.`;
+
+  /* números: aceita 1,2M · 120 mil · 15k · 3.400 */
+  function paraNumero(texto) {
+    let s = String(texto || "").toLowerCase().replace(/\s+/g, "").trim();
+    if (!s) return null;
+    let mult = 1;
+    if (/(mi|m|milh(ão|ao|ões|oes))$/.test(s)) { mult = 1e6; s = s.replace(/(milh(ão|ao|ões|oes)|mi|m)$/, ""); }
+    else if (/(mil|k)$/.test(s)) { mult = 1e3; s = s.replace(/(mil|k)$/, ""); }
+    if (mult > 1) s = s.replace(",", ".");
+    else s = s.replace(/\./g, "").replace(",", ".");
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? Math.round(n * mult) : null;
+  }
+  function numeroCurto(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v) || v <= 0) return "";
+    if (v >= 1e6) return (v / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mi";
+    if (v >= 1e3) return (v / 1e3).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil";
+    return v.toLocaleString("pt-BR");
+  }
+
+  /* ---- Gemini ---- */
+  async function perguntarGemini(prompt, temperatura) {
+    const chave = chaveGemini();
+    let ultimoErro = "";
+    for (const modelo of MODELOS_GEMINI) {
+      let resposta, corpo = null;
+      try {
+        resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: temperatura == null ? 0.7 : temperatura } })
+        });
+        try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
+      } catch (erro) { throw new Error("Não consegui falar com o Gemini. Confira a internet e tente de novo."); }
+      if (resposta.ok) {
+        const texto = corpo && corpo.candidates && corpo.candidates[0] && corpo.candidates[0].content && (corpo.candidates[0].content.parts || []).map((p) => p.text || "").join("");
+        if (!texto) throw new Error("O Gemini não devolveu resposta dessa vez. Tente de novo.");
+        try { return JSON.parse(texto.replace(/^```(json)?|```$/g, "").trim()); }
+        catch (erro) { throw new Error("A resposta veio bagunçada. Clique para tentar de novo."); }
+      }
+      const status = resposta.status;
+      const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
+      if (status === 404 || motivo.includes("not found")) { ultimoErro = "modelo"; continue; }
+      if (status === 400 && motivo.includes("api key")) throw new Error("A chave do Gemini não foi aceita. Confira se copiou a chave inteira e salve de novo.");
+      if (status === 401 || status === 403) throw new Error("A chave do Gemini não foi aceita ou está sem permissão. Gere uma nova em aistudio.google.com/apikey e salve de novo.");
+      if (status === 429) throw new Error("Você chegou no limite grátis do Gemini por agora. Espere 1 minuto e tente de novo (se for o limite do dia, ele volta amanhã).");
+      if (status >= 500) throw new Error("O Gemini está sobrecarregado agora. Tente de novo em 1 minuto.");
+      throw new Error("A análise não deu certo agora. Tente de novo em instantes.");
+    }
+    throw new Error(ultimoErro === "modelo" ? "Não encontrei um modelo do Gemini disponível para a sua chave. Tente gerar uma chave nova." : "A análise não deu certo agora.");
+  }
+
+  /* transcrição pela Supadata (a mesma chave da aba Roteiros) */
+  async function transcricaoSupadata(link, aoAndar) {
+    const chave = chaveSupadata();
+    const primeiro = await pedirSupadata("/transcript", chave, { url: link, mode: "auto", text: "true", lang: "pt" });
+    let resultado = null;
+    if (primeiro.status === 200) resultado = primeiro.corpo;
+    else if (primeiro.status === 202 && primeiro.corpo && primeiro.corpo.jobId) {
+      const limite = Date.now() + 6 * 60 * 1000;
+      while (!resultado) {
+        if (Date.now() > limite) throw new Error("A transcrição demorou mais de 6 minutos e eu desisti. Tente de novo mais tarde.");
+        await esperar(5000);
+        if (aoAndar) aoAndar();
+        const job = await pedirSupadata("/transcript/" + encodeURIComponent(primeiro.corpo.jobId), chave);
+        const st = job.corpo && String(job.corpo.status || "").toLowerCase();
+        if (job.status !== 200 && job.status !== 202) { const m = erroSupadata(job.status, job.corpo); if (m === "VAZIO") return ""; throw new Error(m); }
+        if (st === "completed") resultado = job.corpo.result || job.corpo;
+        if (st === "failed") { const m = erroSupadata(job.status, job.corpo); if (m === "VAZIO") return ""; throw new Error(m); }
+      }
+    } else { const m = erroSupadata(primeiro.status, primeiro.corpo); if (m === "VAZIO") return ""; throw new Error(m); }
+    const { texto, lang } = textoDoResultado(resultado);
+    return lang === "none" ? "" : texto;
+  }
+
+  /* ---- prompts ---- */
+  const meusNichos = () => Array.from(new Set(dados.videos.map((v) => v.nicho).filter((n) => n && !/^destaques?$/i.test(n))));
+  function promptAnalise(v) {
+    const numeros = [["visualizações", v.visualizacoes], ["curtidas", v.curtidas], ["comentários", v.comentarios], ["compartilhamentos", v.compartilhamentos], ["salvamentos", v.salvamentos]]
+      .filter(([, n]) => n).map(([nome, n]) => `${nome}: ${Number(n).toLocaleString("pt-BR")}`).join(", ");
+    return `Você é especialista em conteúdo viral para Reels, TikTok e Shorts, e ajuda creators UGC do Brasil.
+Analise o vídeo abaixo, que teve ótimo desempenho, e explique por que ele viralizou.
+
+Perfil: ${v.perfil || "não informado"}
+Plataforma: ${NOME_FONTE[v.fonte] ? NOME_FONTE[v.fonte].replace(/^\S+\s/, "") : "não informada"}
+Nicho: ${v.nicho || "não informado"}
+Números: ${numeros || "não informados"}
+Legenda do post: ${v.legenda || "não informada"}
+O que chamou a atenção da creator: ${v.obs || "não informado"}
+
+Transcrição do que é falado no vídeo:
+"""
+${String(v.transcricao || "").slice(0, 12000) || "sem fala (vídeo só com música ou texto na tela)"}
+"""
+
+Responda SOMENTE com um JSON válido, exatamente neste formato:
+{
+  "titulo_sugerido": "nome curto para guardar esta estrutura, até 6 palavras",
+  "resumo": "uma ou duas frases sobre o vídeo",
+  "porque_viralizou": "explicação clara em um parágrafo",
+  "pontos_fortes": ["ponto forte 1", "ponto forte 2", "ponto forte 3"],
+  "gancho": { "tipo": "nome do tipo de gancho, ex: curiosidade, identificação, quebra de expectativa, polêmica, promessa, pergunta, antes e depois", "frase": "a frase exata do gancho tirada da transcrição", "porque_funciona": "por que esse gancho prende" },
+  "estrutura": [ { "tempo": "0 a 3s", "bloco": "nome do bloco", "o_que_acontece": "o que é dito ou mostrado", "objetivo": "para que serve esse bloco" } ],
+  "gatilhos": ["gatilho mental usado"],
+  "formato": "o formato do vídeo, ex: conversa olhando para a câmera, tutorial, antes e depois, encenação",
+  "cta": "como o vídeo termina e qual a chamada",
+  "como_replicar": ["dica prática para repetir essa estrutura"]
+}
+
+Regras: português do Brasil, linguagem simples de creator para creator, exemplos reais tirados da transcrição, sem inventar números, e nunca use travessão.`;
+  }
+  function promptAdaptar(v, ideia, produto, duracao) {
+    const a = v.analise || {};
+    return `Você é roteirista de conteúdo UGC e escreve para a creator Letícia Gabrielly (@leh.gsilva), que mora na roça em Minas Gerais e cria conteúdo real, com a naturalidade de uma amiga que usou, aprovou e indica.
+Os nichos dela: ${meusNichos().join(", ") || "casa, beleza, maternidade, culinária"}.
+
+Ela encontrou um vídeo que viralizou e quer usar A MESMA ESTRUTURA para a ideia dela. Reaproveite a estrutura, o tipo de gancho e o ritmo, mas NÃO copie o conteúdo nem as frases.
+
+Estrutura que viralizou:
+Tipo de gancho: ${a.gancho ? `${a.gancho.tipo}. Exemplo original: "${a.gancho.frase}"` : "não informado"}
+Formato: ${a.formato || "não informado"}
+Blocos: ${(a.estrutura || []).map((b) => `${b.tempo}: ${b.bloco} (${b.objetivo || b.o_que_acontece || ""})`).join(" | ") || "não informado"}
+Pontos fortes: ${(a.pontos_fortes || []).join("; ")}
+Gatilhos: ${(a.gatilhos || []).join(", ")}
+Como termina: ${a.cta || "não informado"}
+
+A ideia da Letícia: ${ideia}
+${produto ? `Produto ou marca: ${produto}` : ""}
+Duração desejada: ${duracao || "a mesma do vídeo original"}
+
+Responda SOMENTE com um JSON válido, exatamente neste formato:
+{
+  "titulo": "nome curto do roteiro",
+  "ganchos": ["opção de gancho 1", "opção de gancho 2", "opção de gancho 3"],
+  "roteiro": [ { "tempo": "0 a 3s", "fala": "o que ela fala", "cena": "o que aparece na tela ou o que ela faz" } ],
+  "legenda": "legenda pronta para o post, com no máximo 3 hashtags",
+  "cta": "a chamada final",
+  "dicas_gravacao": ["dica prática para gravar"],
+  "por_que_vai_funcionar": "explicação curta ligando à estrutura original"
+}
+
+Regras: português do Brasil, fala natural e espontânea, nada robotizado, nada de linguagem de vendedor, e nunca use travessão.`;
+  }
+
+  /* ---- aviso ---- */
+  function avisoVir(tipo, html, acao) { estadoVir.aviso = tipo ? { tipo, html, acao } : null; desenharAvisoVir(); }
+  function desenharAvisoVir() {
+    const el = $("#vir-aviso");
+    if (!el) return;
+    const a = estadoVir.aviso;
+    if (!a) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.className = "rot-aviso " + a.tipo;
+    el.innerHTML = `<span>${a.html}</span>${a.acao ? `<button type="button" class="botao botao-leve" id="vir-aviso-acao">${esc(a.acao.texto)}</button>` : ""}`;
+    if (a.acao) $("#vir-aviso-acao").addEventListener("click", a.acao.fazer);
+  }
+  const redesenharVirais = () => { if (abaAtual() === "virais") renderVirais($("#area")); };
+
+  /* ---- analisar ---- */
+  async function analisarViral(dadosForm, existente) {
+    if (!chaveGemini()) { avisoVir("erro", SEM_CHAVE_GEMINI); const c = $("#vir-chave"); if (c) c.focus(); return; }
+    const link = dadosForm.url ? limparLink(dadosForm.url) : "";
+    if (dadosForm.url && !link) { avisoVir("erro", "🤔 Esse link não parece certo. Cole o link completo do vídeo, começando com https://"); return; }
+    const fonte = (link && fonteDoLink(link)) || "manual";
+    if (link && fonte === "manual") { avisoVir("erro", "🤔 Esse link não é do Instagram, TikTok ou YouTube. Cole o que é falado no campo de transcrição e deixe o link vazio."); return; }
+    let transcricao = String(dadosForm.transcricao || "").trim();
+    if (!transcricao && !link) { avisoVir("erro", "📝 Cole o link do vídeo ou escreva o que é falado nele, para eu ter o que analisar."); return; }
+    if (!transcricao && link && !chaveSupadata()) { avisoVir("erro", "🔑 Para eu ouvir o vídeo pelo link, falta a chave da Supadata (fica na aba Roteiros). Ou cole o que é falado no campo de transcrição."); return; }
+
+    const base = {
+      url: link || "", fonte, perfil: dadosForm.perfil ? (dadosForm.perfil.startsWith("@") ? dadosForm.perfil : "@" + dadosForm.perfil) : (link ? perfilDoLink(link, fonte) : ""),
+      nicho: dadosForm.nicho || "", legenda: dadosForm.legenda || "", obs: dadosForm.obs || "", transcricao,
+      visualizacoes: paraNumero(dadosForm.visualizacoes), curtidas: paraNumero(dadosForm.curtidas), comentarios: paraNumero(dadosForm.comentarios),
+      compartilhamentos: paraNumero(dadosForm.compartilhamentos), salvamentos: paraNumero(dadosForm.salvamentos), status: "analisando", erro: null
+    };
+    let linha = existente ? await gravar("virais", { status: "analisando", erro: null }, existente.id) : await gravar("virais", base);
+    if (!linha) { avisoVir("erro", "😕 Não consegui guardar na biblioteca. Confira se a tabela de virais foi criada no Supabase."); return; }
+    trocarNaLista(dados.virais, linha);
+    dados.virais.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    analisando.add(linha.id);
+    if (!existente) estadoVir.form = {};
+    redesenharVirais();
+
+    const inicio = Date.now();
+    let etapa = "";
+    const andar = () => { const s = Math.round((Date.now() - inicio) / 1000); avisoVir("andamento", `${etapa} ${s < 60 ? s + "s" : Math.floor(s / 60) + "min " + dois(s % 60) + "s"}. Pode deixar a aba aberta.`); };
+    const relogio = setInterval(andar, 5000);
+    try {
+      if (!linha.transcricao && linha.url) {
+        etapa = "🎧 Ouvindo o vídeo… (costuma levar de 1 a 4 minutos)";
+        andar();
+        const texto = await transcricaoSupadata(linha.url);
+        const salvo = await gravar("virais", { transcricao: texto || "" }, linha.id);
+        if (salvo) { linha = salvo; trocarNaLista(dados.virais, salvo); }
+      }
+      etapa = "🔍 Descobrindo por que viralizou…";
+      andar();
+      const analise = await perguntarGemini(promptAnalise(linha), 0.6);
+      const final = await gravar("virais", { analise, titulo: linha.titulo || semTravessao(analise.titulo_sugerido || ""), status: "pronto", erro: null }, linha.id);
+      clearInterval(relogio);
+      analisando.delete(linha.id);
+      if (final) { trocarNaLista(dados.virais, final); linha = final; }
+      avisoVir("ok", "✅ Análise pronta e guardada na sua biblioteca de virais.");
+      redesenharVirais();
+      atualizarSaldo();
+      verAnalise(linha);
+    } catch (erro) {
+      clearInterval(relogio);
+      analisando.delete(linha.id);
+      const motivo = erro.message || "A análise não deu certo agora.";
+      const falhou = await gravar("virais", { status: "falhou", erro: motivo }, linha.id);
+      if (falhou) trocarNaLista(dados.virais, falhou);
+      avisoVir("erro", "😕 " + esc(motivo));
+      redesenharVirais();
+    }
+  }
+
+  /* ---- ver a análise ---- */
+  function htmlAnalise(a) {
+    const t = (x) => esc(semTravessao(x));
+    const lista = (arr) => (Array.isArray(arr) && arr.length ? `<ul class="lista-simples">${arr.map((x) => `<li>${t(x)}</li>`).join("")}</ul>` : `<p class="dica">Sem informação.</p>`);
+    return `<div class="ficha">
+      ${a.resumo ? `<p>${t(a.resumo)}</p>` : ""}
+      <h3>🚀 Por que viralizou</h3><p>${t(a.porque_viralizou)}</p>
+      <h3>💪 Pontos fortes</h3>${lista(a.pontos_fortes)}
+      <h3>🎣 O gancho</h3>
+      ${a.gancho ? `<div class="chips-info"><span class="pilula p-outra">${t(a.gancho.tipo)}</span></div><p class="gancho" style="margin-top:6px">"${t(a.gancho.frase)}"</p><p style="margin-top:6px">${t(a.gancho.porque_funciona)}</p>` : `<p class="dica">Sem informação.</p>`}
+      <h3>🧱 A estrutura</h3>
+      ${Array.isArray(a.estrutura) && a.estrutura.length ? `<ol class="passos">${a.estrutura.map((b) => `<li><span>${t(b.tempo)}</span><div><b>${t(b.bloco)}</b>. ${t(b.o_que_acontece)}${b.objetivo ? `<br><small class="dica">Para que serve: ${t(b.objetivo)}</small>` : ""}</div></li>`).join("")}</ol>` : `<p class="dica">Sem informação.</p>`}
+      <h3>🧠 Gatilhos</h3>${Array.isArray(a.gatilhos) && a.gatilhos.length ? `<div class="chips-info">${a.gatilhos.map((g) => `<span class="pilula">${t(g)}</span>`).join("")}</div>` : `<p class="dica">Sem informação.</p>`}
+      <h3>🎬 Formato</h3><p>${t(a.formato)}</p>
+      <h3>📣 Como termina</h3><p>${t(a.cta)}</p>
+      <h3>🔁 Como repetir</h3>${lista(a.como_replicar)}
+    </div>`;
+  }
+  function textoRoteiro(r) {
+    const t = semTravessao;
+    return [
+      t(r.titulo),
+      "",
+      "Opções de gancho:",
+      ...(r.ganchos || []).map((g, i) => `${i + 1}. ${t(g)}`),
+      "",
+      "Roteiro:",
+      ...(r.roteiro || []).map((b) => `[${t(b.tempo)}] ${t(b.fala)}${b.cena ? `\n   (na tela: ${t(b.cena)})` : ""}`),
+      "",
+      `Chamada final: ${t(r.cta)}`,
+      "",
+      `Legenda: ${t(r.legenda)}`
+    ].join("\n");
+  }
+  function htmlAdaptacao(r) {
+    const t = (x) => esc(semTravessao(x));
+    return `<div class="ficha vir-resultado">
+      <h3>✨ ${t(r.titulo)}</h3>
+      <h3>🎣 3 opções de gancho</h3>
+      <ol class="lista-simples">${(r.ganchos || []).map((g) => `<li>${t(g)}</li>`).join("")}</ol>
+      <h3>🎬 Roteiro</h3>
+      <ol class="passos">${(r.roteiro || []).map((b) => `<li><span>${t(b.tempo)}</span><div>${t(b.fala)}${b.cena ? `<br><small class="dica">Na tela: ${t(b.cena)}</small>` : ""}</div></li>`).join("")}</ol>
+      <h3>📣 Chamada final</h3><p>${t(r.cta)}</p>
+      <h3>✍️ Legenda</h3><p>${t(r.legenda)}</p>
+      ${(r.dicas_gravacao || []).length ? `<h3>🎥 Dicas para gravar</h3><ul class="lista-simples">${r.dicas_gravacao.map((d) => `<li>${t(d)}</li>`).join("")}</ul>` : ""}
+      ${r.por_que_vai_funcionar ? `<h3>💡 Por que vai funcionar</h3><p>${t(r.por_que_vai_funcionar)}</p>` : ""}
+    </div>`;
+  }
+  function verAnalise(v) {
+    const adaptacoes = Array.isArray(v.adaptacoes) ? v.adaptacoes : [];
+    abrirModal(`🔥 ${v.titulo || "Análise do viral"}`, `
+      ${v.analise ? htmlAnalise(v.analise) : `<p class="frase-vazia">Ainda não tem análise. ${esc(v.erro || "")}</p>`}
+      ${adaptacoes.length ? `<h3 class="vir-sub">📝 Suas adaptações (${adaptacoes.length})</h3>
+        <ul class="vir-adaptacoes">${adaptacoes.slice().reverse().map((ad, i) => `<li><div><strong>${esc(semTravessao(ad.resultado && ad.resultado.titulo || "Roteiro"))}</strong><small class="dica">Ideia: ${esc(ad.ideia || "")}</small></div><button type="button" class="botao botao-leve" data-ver-adaptacao="${adaptacoes.length - 1 - i}">Abrir</button></li>`).join("")}</ul>` : ""}
+      <div class="form-acoes"><button type="button" class="botao botao-principal" id="vir-adaptar-agora">✨ Adaptar minha ideia</button></div>`, true);
+    $("#vir-adaptar-agora").addEventListener("click", () => adaptarIdeia(v));
+    $$("[data-ver-adaptacao]").forEach((b) => b.addEventListener("click", () => mostrarAdaptacao(v, adaptacoes[Number(b.dataset.verAdaptacao)])));
+  }
+
+  /* ---- adaptar a ideia ---- */
+  function adaptarIdeia(v) {
+    if (!v.analise) { recado("Esse viral ainda não tem análise. Analise primeiro.", true); return; }
+    const blocos = (v.analise.estrutura || []).map((b) => `${esc(b.tempo)} ${esc(b.bloco)}`).join(" · ");
+    abrirModal(`✨ Adaptar minha ideia`, `
+      <p class="dica" style="margin-bottom:10px">Estrutura de <b>${esc(v.titulo || "viral")}</b>${v.analise.gancho ? `, gancho de <b>${esc(semTravessao(v.analise.gancho.tipo))}</b>` : ""}${blocos ? `: ${blocos}` : ""}.</p>
+      <form class="form-grade" id="vir-form-ideia" novalidate>
+        <label class="inteira">Sua ideia *<textarea name="ideia" placeholder="Ex: mostrar como eu organizo a despensa da roça usando os potes da marca X"></textarea></label>
+        <label>Produto ou marca<input name="produto" placeholder="opcional"></label>
+        <label>Duração<select name="duracao"><option value="">Igual ao original</option><option>15 segundos</option><option>30 segundos</option><option>45 segundos</option><option>60 segundos</option></select></label>
+        <div class="form-acoes inteira"><span class="espaco"></span><button type="button" class="botao botao-leve" id="vir-cancelar">Cancelar</button><button type="submit" class="botao botao-principal" id="vir-gerar">✨ Adaptar</button></div>
+      </form>
+      <div id="vir-andamento" class="rot-aviso andamento" hidden></div>`, true);
+    $("#vir-cancelar").addEventListener("click", fecharModal);
+    $("#vir-form-ideia").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target.elements;
+      const ideia = f.ideia.value.trim();
+      if (!ideia) { recado("Escreva a sua ideia primeiro.", true); f.ideia.focus(); return; }
+      if (!chaveGemini()) { fecharModal(); avisoVir("erro", SEM_CHAVE_GEMINI); return; }
+      const botao = $("#vir-gerar");
+      botao.disabled = true;
+      const caixa = $("#vir-andamento");
+      const inicio = Date.now();
+      const andar = () => { if (caixa) { caixa.hidden = false; caixa.innerHTML = `<span>✍️ Escrevendo o seu roteiro na mesma estrutura… ${Math.round((Date.now() - inicio) / 1000)}s</span>`; } };
+      andar();
+      const relogio = setInterval(andar, 1000);
+      try {
+        const resultado = await perguntarGemini(promptAdaptar(v, ideia, f.produto.value.trim(), f.duracao.value), 0.85);
+        clearInterval(relogio);
+        const nova = { data: new Date().toISOString(), ideia, produto: f.produto.value.trim(), resultado };
+        const lista = (Array.isArray(v.adaptacoes) ? v.adaptacoes : []).concat([nova]).slice(-30);
+        const salvo = await gravar("virais", { adaptacoes: lista }, v.id);
+        if (salvo) { trocarNaLista(dados.virais, salvo); v = salvo; }
+        mostrarAdaptacao(v, nova);
+        redesenharVirais();
+      } catch (erro) {
+        clearInterval(relogio);
+        botao.disabled = false;
+        if (caixa) { caixa.className = "rot-aviso erro"; caixa.innerHTML = `<span>😕 ${esc(erro.message || "Não deu certo agora.")}</span>`; }
+      }
+    });
+  }
+  function mostrarAdaptacao(v, ad) {
+    if (!ad || !ad.resultado) return;
+    abrirModal(`✨ Seu roteiro`, `
+      <p class="dica" style="margin-bottom:6px">Ideia: ${esc(ad.ideia)}. Na estrutura de <b>${esc(v.titulo || "viral")}</b>.</p>
+      ${htmlAdaptacao(ad.resultado)}
+      <div class="form-acoes">
+        <button type="button" class="botao botao-leve" id="vir-outra">🔁 Fazer outra versão</button>
+        <span class="espaco"></span>
+        <button type="button" class="botao botao-leve" id="vir-copiar">📋 Copiar roteiro</button>
+        <button type="button" class="botao botao-principal" id="vir-salvar-roteiro">💾 Salvar nos meus roteiros</button>
+      </div>`, true);
+    $("#vir-outra").addEventListener("click", () => adaptarIdeia(v));
+    $("#vir-copiar").addEventListener("click", async (e) => {
+      try { await navigator.clipboard.writeText(textoRoteiro(ad.resultado)); e.target.textContent = "copiado ✓"; }
+      catch (erro) { recado("Não consegui copiar. Selecione o texto e copie.", true); }
+    });
+    $("#vir-salvar-roteiro").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      const linha = await gravar("roteiros", {
+        fonte: "manual", url: "", perfil: "@leh.gsilva", de_quem: "minha", titulo: semTravessao(ad.resultado.titulo || ad.ideia).slice(0, 200),
+        transcricao: textoRoteiro(ad.resultado), legenda: semTravessao(ad.resultado.legenda || ""), tags: ["adaptado", "viral"],
+        obs: `Adaptado da estrutura de ${v.titulo || "um viral"}${v.perfil ? ` (${v.perfil})` : ""}. Ideia: ${ad.ideia}`, status: "pronto"
+      });
+      if (linha) { trocarNaLista(dados.roteiros, linha); ordenarRoteiros(); e.target.textContent = "salvo na aba Roteiros ✓"; }
+      else e.target.disabled = false;
+    });
+  }
+
+  /* ---- biblioteca ---- */
+  function cardViral(v) {
+    const fonte = NOME_FONTE[v.fonte] ? v.fonte : "manual";
+    const id = idDoVideo(fonte, v.url);
+    const a = v.analise || {};
+    const rodando = analisando.has(v.id);
+    const numeros = [["👀", v.visualizacoes], ["❤️", v.curtidas], ["💬", v.comentarios], ["🔁", v.compartilhamentos], ["🔖", v.salvamentos]].filter(([, n]) => numeroCurto(n)).map(([e, n]) => `<span class="pilula">${e} ${numeroCurto(n)}</span>`).join("");
+    let situacao = "";
+    if (v.status === "analisando") situacao = `<p class="rot-status"><span class="rot-relogio" aria-hidden="true">⏳</span>${rodando ? "Analisando agora..." : "Ficou pela metade. A análise foi interrompida."}</p>`;
+    if (v.status === "falhou") situacao = `<p class="rot-status falhou">⚠️ ${esc(v.erro || "A análise não deu certo.")}</p>`;
+    const acoes = [];
+    if (v.analise) acoes.push(`<button type="button" class="botao botao-principal" data-acao="adaptar">✨ Adaptar minha ideia</button>`, `<button type="button" class="botao botao-leve" data-acao="ver-analise">📖 Ver análise</button>`);
+    if ((v.status === "analisando" && !rodando) || v.status === "falhou") acoes.push(`<button type="button" class="botao botao-leve" data-acao="refazer">🔁 Tentar de novo</button>`);
+    acoes.push(`<button type="button" class="botao botao-leve" data-acao="apagar">🗑️ Apagar</button>`);
+    return `<article class="rot-card" data-id="${esc(v.id)}">
+      <div class="rot-capa f-${fonte}">
+        ${fonte === "youtube" && id ? `<img src="https://i.ytimg.com/vi/${esc(id)}/hqdefault.jpg" alt="" loading="lazy">` : `<span class="rot-capa-emoji" aria-hidden="true">🔥</span>`}
+        ${v.url && id ? `<button type="button" class="rot-ver" data-acao="ver">▶ ver vídeo</button>` : ""}
+      </div>
+      <div class="rot-corpo">
+        <h3>${v.titulo ? esc(v.titulo) : `<span class="dica">Sem título</span>`}</h3>
+        <div class="rot-meta">
+          ${v.perfil ? `<strong>${esc(v.perfil)}</strong>` : ""}
+          <span class="pilula">${NOME_FONTE[fonte]}</span>
+          ${v.nicho ? `<span class="pilula rot-tag">#${esc(v.nicho)}</span>` : ""}
+          ${a.gancho && a.gancho.tipo ? `<span class="pilula p-outra">🎣 ${esc(semTravessao(a.gancho.tipo))}</span>` : ""}
+          ${numeros}
+        </div>
+        ${situacao}
+        ${a.porque_viralizou ? `<p class="rot-trecho">${esc(semTravessao(a.porque_viralizou))}</p>` : ""}
+        ${Array.isArray(a.pontos_fortes) && a.pontos_fortes.length ? `<div class="rot-meta">${a.pontos_fortes.slice(0, 3).map((p) => `<span class="pilula vir-forte">💪 ${esc(semTravessao(p))}</span>`).join("")}</div>` : ""}
+        ${Array.isArray(v.adaptacoes) && v.adaptacoes.length ? `<p class="dica">📝 ${plural(v.adaptacoes.length, "ideia adaptada", "ideias adaptadas")} com esta estrutura</p>` : ""}
+        <div class="rot-acoes">${acoes.join("")}</div>
+      </div>
+    </article>`;
+  }
+
+  function renderVirais(area) {
+    const f = estadoVir.form;
+    const nichos = meusNichos();
+    const lista = dados.virais.filter((v) => {
+      const b = estadoVir.busca.toLowerCase().trim();
+      if (!b) return true;
+      const a = v.analise || {};
+      return [v.titulo, v.perfil, v.nicho, v.transcricao, v.obs, a.porque_viralizou, a.gancho && a.gancho.tipo].some((c) => String(c || "").toLowerCase().includes(b));
+    });
+    const valor = (nome) => esc(f[nome] || "");
+    area.innerHTML = `
+      <section class="cartao rot-topo">
+        <p class="rot-frase">Achou um conteúdo que bombou? Cole aqui que eu te explico por que viralizou e guardo a estrutura. Depois é só trazer a sua ideia que eu adapto do mesmo jeito.</p>
+        <form class="form-grade vir-form" id="vir-form" novalidate>
+          <label class="inteira">🔗 Link do vídeo<input name="url" type="url" inputmode="url" placeholder="instagram.com/reel/... · tiktok.com/... · youtube.com/..." value="${valor("url")}"></label>
+          <label>👤 Perfil<input name="perfil" placeholder="@perfil (opcional)" value="${valor("perfil")}"></label>
+          <label>🏷️ Nicho<input name="nicho" list="vir-nichos" placeholder="Ex: Casa" value="${valor("nicho")}"><datalist id="vir-nichos">${nichos.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></label>
+          <div class="inteira vir-numeros">
+            <label>👀 Visualizações<input name="visualizacoes" placeholder="Ex: 1,2M" value="${valor("visualizacoes")}"></label>
+            <label>❤️ Curtidas<input name="curtidas" placeholder="Ex: 85 mil" value="${valor("curtidas")}"></label>
+            <label>💬 Comentários<input name="comentarios" value="${valor("comentarios")}"></label>
+            <label>🔁 Compartilhamentos<input name="compartilhamentos" value="${valor("compartilhamentos")}"></label>
+            <label>🔖 Salvamentos<input name="salvamentos" value="${valor("salvamentos")}"></label>
+          </div>
+          <details class="inteira vir-mais" ${f.legenda || f.transcricao || f.obs ? "open" : ""}>
+            <summary>➕ Mais detalhes (opcional): legenda, o que é falado e o que te chamou atenção</summary>
+            <div class="form-grade" style="margin-top:10px">
+              <label class="inteira">✍️ Legenda do post<textarea name="legenda">${valor("legenda")}</textarea></label>
+              <label class="inteira">🗣️ O que é falado no vídeo<textarea name="transcricao" placeholder="Se deixar vazio, eu transcrevo pelo link (usa a chave da Supadata da aba Roteiros).">${valor("transcricao")}</textarea></label>
+              <label class="inteira">👀 O que te chamou atenção<textarea name="obs">${valor("obs")}</textarea></label>
+            </div>
+          </details>
+          <div class="form-acoes inteira" style="margin-top:0"><span class="espaco"></span><button type="submit" class="botao botao-principal">🔍 Analisar por que viralizou</button></div>
+        </form>
+        <div id="vir-aviso" class="rot-aviso" aria-live="polite" hidden></div>
+        <div class="rot-config">
+          <label for="vir-chave">✨ Chave do Gemini (grátis)</label>
+          <input class="campo-busca" id="vir-chave" type="password" autocomplete="off" spellcheck="false" placeholder="${chaveGemini() ? "salva, termina em ••••" + esc(chaveGemini().slice(-4)) : "cole aqui a chave do Google AI Studio"}">
+          <button type="button" class="botao botao-leve" id="vir-salvar-chave">💾 Salvar</button>
+          ${chaveGemini() ? `<button type="button" class="botao botao-leve" id="vir-tirar-chave">Remover</button>` : ""}
+          <span class="dica">${chaveGemini() ? "✅ Chave salva." : `Pegue grátis em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.`} ${chaveSupadata() ? "🎧 Transcrição pela Supadata ligada." : "🎧 Para ouvir pelo link, salve também a chave da Supadata na aba Roteiros."}</span>
+        </div>
+      </section>
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>🔥 Estruturas que viralizaram <span class="dica">(${dados.virais.length})</span></h2>
+          <input class="campo-busca" id="vir-busca" type="search" placeholder="🔎 Buscar por perfil, nicho, gancho..." value="${esc(estadoVir.busca)}">
+        </div>
+        <div class="rot-lista">${lista.length ? lista.map(cardViral).join("") : `<p class="frase-vazia">${dados.virais.length ? "🔎 Nenhum viral com essa busca." : "📭 Nenhum viral guardado ainda. Cole o link de um conteúdo que bombou aqui em cima e clique em Analisar."}</p>`}</div>
+      </section>`;
+
+    desenharAvisoVir();
+    const form = $("#vir-form");
+    form.addEventListener("input", (e) => { if (e.target.name) estadoVir.form[e.target.name] = e.target.value; });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const valores = {};
+      Array.from(form.elements).forEach((el) => { if (el.name) valores[el.name] = el.value.trim(); });
+      estadoVir.form = valores;
+      analisarViral(valores);
+    });
+    $("#vir-salvar-chave").addEventListener("click", async () => {
+      const valor = $("#vir-chave").value.trim();
+      if (!valor) { recado("Cole a chave no campo antes de salvar.", true); $("#vir-chave").focus(); return; }
+      try {
+        const { error } = await banco.from("configuracoes").upsert({ chave: CHAVE_GEMINI, valor, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        dados.config[CHAVE_GEMINI] = valor;
+        recado("Chave do Gemini salva ✓");
+        if (estadoVir.aviso && /Gemini/.test(estadoVir.aviso.html)) avisoVir(null);
+        renderVirais(area);
+      } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); }
+    });
+    const tirar = $("#vir-tirar-chave");
+    if (tirar) tirar.addEventListener("click", async () => {
+      if (!confirm("Remover a chave do Gemini deste painel?")) return;
+      try {
+        const { error } = await banco.from("configuracoes").delete().eq("chave", CHAVE_GEMINI);
+        if (error) throw error;
+        delete dados.config[CHAVE_GEMINI];
+        recado("Chave removida");
+        renderVirais(area);
+      } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); }
+    });
+    $("#vir-busca").addEventListener("input", (e) => {
+      estadoVir.busca = e.target.value;
+      const pos = e.target.selectionStart;
+      renderVirais(area);
+      const campo = $("#vir-busca"); campo.focus(); campo.setSelectionRange(pos, pos);
+    });
+    $$(".rot-lista", area).forEach((caixa) => caixa.addEventListener("click", async (e) => {
+      const botao = e.target.closest("[data-acao]");
+      if (!botao) return;
+      const card = botao.closest(".rot-card");
+      const v = card && dados.virais.find((x) => String(x.id) === card.dataset.id);
+      if (!v) return;
+      const acao = botao.dataset.acao;
+      if (acao === "ver") {
+        const capa = card.querySelector(".rot-capa");
+        capa.classList.add("tocando");
+        capa.innerHTML = `<iframe src="${esc(linkEmbed(v.fonte, idDoVideo(v.fonte, v.url)))}" title="Vídeo" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+      }
+      if (acao === "ver-analise") verAnalise(v);
+      if (acao === "adaptar") adaptarIdeia(v);
+      if (acao === "refazer") analisarViral({ url: v.url, transcricao: v.transcricao, perfil: v.perfil }, v);
+      if (acao === "apagar") {
+        if (!confirm("Apagar este viral e as adaptações dele? Isso não tem volta.")) return;
+        if (await apagar("virais", v.id)) { dados.virais = dados.virais.filter((x) => x.id !== v.id); recado("Apagado"); renderVirais(area); }
+      }
+    }));
   }
 
   /* ---------------------------------------------------------------

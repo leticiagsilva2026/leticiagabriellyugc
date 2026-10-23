@@ -269,3 +269,59 @@ revoke all on public.roteiros, public.configuracoes from anon;
 grant select, insert, update, delete on public.roteiros, public.configuracoes to authenticated;
 
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
+
+
+create table if not exists public.virais (
+  id                 uuid primary key default gen_random_uuid(),
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  url                text not null default '',
+  fonte              text not null default 'manual' check (fonte in ('instagram', 'tiktok', 'youtube', 'manual')),
+  perfil             text not null default '',
+  titulo             text not null default '',
+  nicho              text not null default '',
+  transcricao        text not null default '',
+  legenda            text not null default '',
+  visualizacoes      bigint,
+  curtidas           bigint,
+  comentarios        bigint,
+  compartilhamentos  bigint,
+  salvamentos        bigint,
+  obs                text not null default '',
+  analise            jsonb,
+  adaptacoes         jsonb not null default '[]'::jsonb,
+  status             text not null default 'pronto' check (status in ('analisando', 'pronto', 'falhou')),
+  erro               text
+);
+
+create index if not exists virais_created_at_idx on public.virais (created_at desc);
+
+-- Atualiza o updated_at sozinho (a mesma função da aba Roteiros)
+create or replace function public.marcar_atualizacao()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+drop trigger if exists virais_atualizado on public.virais;
+create trigger virais_atualizado before update on public.virais
+  for each row execute function public.marcar_atualizacao();
+
+-- A TRANCA: só você, logada, lê, cria, edita e apaga
+alter table public.virais enable row level security;
+drop policy if exists "dona le virais" on public.virais;
+create policy "dona le virais" on public.virais for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria virais" on public.virais;
+create policy "dona cria virais" on public.virais for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita virais" on public.virais;
+create policy "dona edita virais" on public.virais for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga virais" on public.virais;
+create policy "dona apaga virais" on public.virais for delete to authenticated using (public.e_a_dona());
+
+revoke all on public.virais from anon;
+grant select, insert, update, delete on public.virais to authenticated;
+
+-- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

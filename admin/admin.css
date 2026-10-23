@@ -366,3 +366,16 @@ ul.origens { margin: 0; padding: 0; }
   .rot-card:has(.rot-capa.tocando) { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .rot-relogio, .rot-aviso.andamento span::after { animation: none; } }
+
+/* ---------- aba Virais ---------- */
+.vir-form { gap: 10px; }
+.vir-numeros { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.vir-mais > summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--verde-texto); }
+.vir-forte { background: var(--verde-claro); color: var(--verde-texto); white-space: normal; text-align: left; }
+.vir-sub { font-size: .85rem; margin: 18px 0 8px; }
+.vir-adaptacoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.vir-adaptacoes li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); }
+.vir-adaptacoes strong { display: block; color: var(--tinta); font-size: .84rem; }
+.vir-resultado .passos li { grid-template-columns: 70px 1fr; }
+#vir-busca { max-width: 300px; }
+@media (max-width: 860px) { .vir-numeros { grid-template-columns: repeat(2, minmax(0, 1fr)); } #vir-busca { max-width: none; flex: 1 1 100%; } }
