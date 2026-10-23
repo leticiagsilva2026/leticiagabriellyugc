@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Entrar | Painel Letícia Gabrielly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --verde: #98a869; --verde-texto: #556330; --verde-escuro: #5d6022; --verde-claro: #eef1e4;
+    --terracota: #c96a25; --fundo: #f8f4ed; --tinta: #15201b; --texto: #3b4842; --suave: #5d6b64; --borda: #ded8cd;
+    --erro: #b3261e; --erro-fundo: #fbe9e7; --ok-fundo: #eef1e4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: "Manrope", system-ui, sans-serif; color: var(--texto); background: var(--fundo);
+    min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; font-size: 15px;
+  }
+  .cartao { width: min(100%, 380px); background: #fff; border: 1px solid var(--borda); border-radius: 20px; padding: 28px 24px; box-shadow: 0 14px 40px -22px rgba(21, 32, 27, .35); }
+  .marca { display: flex; align-items: center; gap: 8px; font-weight: 800; color: var(--tinta); font-size: 1rem; margin-bottom: 18px; }
+  .marca span { width: 10px; height: 10px; border-radius: 50%; background: var(--verde); }
+  h1 { font-size: 1.15rem; margin: 0 0 4px; color: var(--tinta); }
+  .sub { margin: 0 0 18px; color: var(--suave); font-size: .9rem; }
+  label { display: block; font-weight: 700; font-size: .82rem; color: var(--tinta); margin: 12px 0 6px; }
+  input { width: 100%; font: 500 .95rem var(--fonte, "Manrope"), sans-serif; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--borda); background: var(--fundo); color: var(--tinta); }
+  input:focus { outline: none; border-color: var(--verde-texto); background: #fff; box-shadow: 0 0 0 3px var(--verde-claro); }
+  button { font: 700 .92rem "Manrope", sans-serif; cursor: pointer; border-radius: 12px; }
+  .entrar { width: 100%; margin-top: 18px; padding: 12px; border: 0; background: var(--verde-escuro); color: #fff; }
+  .entrar:hover { background: var(--tinta); }
+  .entrar:disabled { opacity: .6; cursor: wait; }
+  .link { background: none; border: 0; color: var(--verde-texto); padding: 0; margin-top: 14px; font-size: .85rem; text-decoration: underline; text-underline-offset: 3px; }
+  .faixa { border-radius: 10px; padding: 10px 12px; font-size: .86rem; font-weight: 600; margin-top: 14px; }
+  .faixa.erro { background: var(--erro-fundo); color: var(--erro); }
+  .faixa.ok { background: var(--ok-fundo); color: var(--verde-texto); }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 3px solid var(--verde-texto); outline-offset: 2px; }
+  .voltar { display: block; text-align: center; margin-top: 18px; font-size: .82rem; color: var(--suave); }
+</style>
+</head>
+<body>
+  <main class="cartao">
+    <div class="marca"><span aria-hidden="true"></span>Letícia Gabrielly</div>
+
+    <!-- Entrar -->
+    <form id="form-entrar" novalidate>
+      <h1>Entrar no painel</h1>
+      <p class="sub">Use o seu e-mail e a sua senha.</p>
+      <label for="email">E-mail</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <label for="senha">Senha</label>
+      <input id="senha" type="password" autocomplete="current-password" required>
+      <button class="entrar" type="submit" id="botao-entrar">Entrar</button>
+      <button class="link" type="button" id="esqueci">Esqueci minha senha</button>
+    </form>
+
+    <!-- Criar nova senha (aparece quando você chega pelo link do e-mail de recuperação) -->
+    <form id="form-nova" hidden novalidate>
+      <h1>Criar nova senha</h1>
+      <p class="sub">Escolha uma senha com pelo menos 8 caracteres.</p>
+      <label for="nova1">Nova senha</label>
+      <input id="nova1" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="nova2">Repita a nova senha</label>
+      <input id="nova2" type="password" autocomplete="new-password" minlength="8" required>
+      <button class="entrar" type="submit" id="botao-nova">Salvar nova senha</button>
+    </form>
+
+    <div class="faixa" id="faixa" role="alert" hidden></div>
+    <a class="voltar" href="../">Voltar para o portfólio</a>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/banco.js"></script>
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const faixa = $("#faixa");
+  const PAINEL = "../admin/";
+  function aviso(texto, tipo) {
+    faixa.textContent = texto;
+    faixa.className = "faixa " + (tipo || "erro");
+    faixa.hidden = !texto;
+  }
+  function erroEmPortugues(erro) {
+    const msg = String((erro && (erro.message || erro.error_description)) || "").toLowerCase();
+    if (msg.includes("invalid login") || msg.includes("invalid credentials")) return "E-mail ou senha incorretos";
+    if (msg.includes("email not confirmed")) return "Este e-mail ainda não foi confirmado. Confirme pelo link que chegou no seu e-mail.";
+    if (msg.includes("rate limit") || msg.includes("too many")) return "Muitas tentativas seguidas. Espere alguns minutos e tente de novo.";
+    if (msg.includes("fetch") || msg.includes("network")) return "Não consegui conectar. Confira a sua internet e tente de novo.";
+    if (msg.includes("password") && msg.includes("should")) return "A senha precisa ter pelo menos 8 caracteres.";
+    if (msg.includes("same password") || msg.includes("different from the old")) return "A nova senha precisa ser diferente da anterior.";
+    return "Não deu certo agora. Tente de novo em instantes.";
+  }
+
+  const banco = window.banco;
+  if (!banco) {
+    aviso("Não consegui carregar o sistema de login. Confira a sua internet e recarregue a página.");
+    $("#botao-entrar").disabled = true;
+    return;
+  }
+
+  // Quem chega pelo link de "esqueci minha senha" vem com type=recovery no endereço
+  let modoRecuperacao = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
+  function mostrarNovaSenha() {
+    modoRecuperacao = true;
+    $("#form-entrar").hidden = true;
+    $("#form-nova").hidden = false;
+    aviso("");
+    $("#nova1").focus();
+  }
+  if (modoRecuperacao) mostrarNovaSenha();
+  banco.auth.onAuthStateChange((evento) => { if (evento === "PASSWORD_RECOVERY") mostrarNovaSenha(); });
+
+  // Se já existe sessão aberta, vai direto para o painel
+  banco.auth.getSession().then(({ data }) => {
+    if (data && data.session && !modoRecuperacao) location.replace(PAINEL);
+  });
+
+  $("#form-entrar").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("#email").value.trim();
+    const senha = $("#senha").value;
+    if (!email || !senha) { aviso("Preencha o e-mail e a senha."); return; }
+    const botao = $("#botao-entrar");
+    botao.disabled = true; botao.textContent = "Entrando...";
+    aviso("");
+    try {
+      const { error } = await banco.auth.signInWithPassword({ email, password: senha });
+      if (error) throw error;
+      location.replace(PAINEL);
+    } catch (erro) {
+      aviso(erroEmPortugues(erro));
+      botao.disabled = false; botao.textContent = "Entrar";
+    }
+  });
+
+  $("#esqueci").addEventListener("click", async () => {
+    const email = $("#email").value.trim();
+    if (!email) { aviso("Escreva o seu e-mail no campo acima e clique de novo em Esqueci minha senha."); $("#email").focus(); return; }
+    try {
+      const destino = location.origin + location.pathname;
+      const { error } = await banco.auth.resetPasswordForEmail(email, { redirectTo: destino });
+      if (error) throw error;
+      aviso("Pronto. Se esse e-mail estiver cadastrado, chega um link para criar uma nova senha. Olhe também a caixa de spam.", "ok");
+    } catch (erro) {
+      aviso(erroEmPortugues(erro));
+    }
+  });
+
+  $("#form-nova").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const s1 = $("#nova1").value, s2 = $("#nova2").value;
+    if (s1.length < 8) { aviso("A senha precisa ter pelo menos 8 caracteres."); return; }
+    if (s1 !== s2) { aviso("As duas senhas não são iguais."); return; }
+    const botao = $("#botao-nova");
+    botao.disabled = true;
+    try {
+      const { error } = await banco.auth.updateUser({ password: s1 });
+      if (error) throw error;
+      aviso("Senha nova salva. Abrindo o painel...", "ok");
+      setTimeout(() => location.replace(PAINEL), 900);
+    } catch (erro) {
+      aviso(erroEmPortugues(erro));
+      botao.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Painel | Letícia Gabrielly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css">
+</head>
+<!-- "esperando" esconde tudo até o script conferir que você está logada -->
+<body class="esperando">
+
+<!-- ícones de traço usados no menu e nos botões -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-portfolio" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+  <symbol id="i-marcas" viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20"/><circle cx="10" cy="8" r="3.5"/><path d="M20 20v-1.5a3.5 3.5 0 0 0-2.5-3.35M15.5 4.65a3.5 3.5 0 0 1 0 6.7"/></symbol>
+  <symbol id="i-calendario" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-campanhas" viewBox="0 0 24 24"><path d="M4 10v4a1 1 0 0 0 1 1h2l5 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-checklist" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-sair" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-olho" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-olho-fechado" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 6.1A9.6 9.6 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3.2 3.9M6.7 7.3C4 9 2.5 12 2.5 12S6 18 12 18c1.6 0 3-.4 4.2-1"/><path d="M9.9 10a3 3 0 0 0 4.1 4.1"/></symbol>
+  <symbol id="i-lapis" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></symbol>
+  <symbol id="i-alca" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.3"/><circle cx="15" cy="6" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="18" r="1.3"/><circle cx="15" cy="18" r="1.3"/></symbol>
+  <symbol id="i-baixar" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4.5 19.5 5.6 16A8 8 0 1 1 8.4 18.6Z"/><path d="M9 9.5c.3 2 2.5 4.6 5 5l1.2-1.3-1.8-1-1 .8a4 4 0 0 1-1.9-1.9l.8-1-1-1.8Z"/></symbol>
+  <symbol id="i-insta" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="12" cy="12" r="3.6"/><circle cx="17" cy="7" r=".6"/></symbol>
+  <symbol id="i-estrela" viewBox="0 0 24 24"><path d="m12 3.8 2.5 5.2 5.6.7-4.1 3.9 1 5.6L12 16.5l-5 2.7 1-5.6-4.1-3.9 5.6-.7Z"/></symbol>
+  <symbol id="i-seta-esq" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+  <symbol id="i-seta-dir" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5Z"/></symbol>
+</svg>
+
+<div class="app">
+  <!-- MENU LATERAL -->
+  <aside class="menu" id="menu" aria-label="Menu do painel">
+    <div class="menu-topo">
+      <span class="menu-bolinha" aria-hidden="true"></span>
+      <div>
+        <strong>Letícia Gabrielly</strong>
+        <small>painel</small>
+      </div>
+    </div>
+    <nav>
+      <p class="menu-secao">meu site</p>
+      <a href="#portfolio" data-aba="portfolio"><svg class="ic"><use href="#i-portfolio"/></svg>Portfólio</a>
+      <a href="#marcas" data-aba="marcas"><svg class="ic"><use href="#i-marcas"/></svg>Marcas</a>
+      <p class="menu-secao">minha rotina</p>
+      <a href="#calendario" data-aba="calendario"><svg class="ic"><use href="#i-calendario"/></svg>Calendário</a>
+      <a href="#campanhas" data-aba="campanhas"><svg class="ic"><use href="#i-campanhas"/></svg>Campanhas</a>
+      <a href="#checklist" data-aba="checklist"><svg class="ic"><use href="#i-checklist"/></svg>Checklist</a>
+    </nav>
+    <div class="menu-rodape">
+      <span class="menu-email" id="usuario-email"></span>
+      <button type="button" class="botao botao-leve" id="sair"><svg class="ic"><use href="#i-sair"/></svg>Sair</button>
+    </div>
+  </aside>
+  <div class="menu-fundo" id="menu-fundo" hidden></div>
+
+  <!-- CONTEÚDO -->
+  <main class="conteudo">
+    <header class="topo">
+      <button type="button" class="botao-icone so-celular" id="abrir-menu" aria-label="Abrir menu"><svg class="ic"><use href="#i-menu"/></svg></button>
+      <h1 id="titulo-aba">Portfólio</h1>
+      <a class="ver-site" href="../" target="_blank" rel="noopener">ver o site</a>
+    </header>
+    <div id="avisos" class="avisos" aria-live="polite"></div>
+    <div id="area" class="area"></div>
+  </main>
+</div>
+
+<!-- janela de formulário / detalhes -->
+<div class="modal-fundo" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <div class="modal-topo">
+      <h2 id="modal-titulo"></h2>
+      <button type="button" class="botao-icone" id="modal-fechar" aria-label="Fechar"><svg class="ic"><use href="#i-fechar"/></svg></button>
+    </div>
+    <div id="modal-corpo"></div>
+  </div>
+</div>
+
+<div class="recado" id="recado" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/banco.js"></script>
+<script src="../js/biblioteca.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
