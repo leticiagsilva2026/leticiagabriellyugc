@@ -1301,7 +1301,7 @@
     linha = linha
       ? await gravar("roteiros", { status: "processando", erro: null, url: link, fonte }, linha.id)
       : await gravar("roteiros", { fonte, url: link, perfil: perfilDoLink(link, fonte), de_quem: deQuem === "minha" ? "minha" : "outra", status: "processando" });
-    if (!linha) { avisoRot("erro", "😕 Não consegui criar o roteiro na biblioteca. Confira se a tabela de roteiros foi criada no Supabase."); return; }
+    if (!linha) { avisoRot("erro", "😕 Não consegui criar o roteiro na biblioteca porque a tabela de roteiros não respondeu. Clique em Copiar o SQL, cole no SQL Editor do Supabase, clique em Run e tente de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
     trocarNaLista(dados.roteiros, linha);
     ordenarRoteiros();
     transcrevendo.add(linha.id);
@@ -1802,7 +1802,7 @@ Regras: português do Brasil, fala natural e espontânea, nada robotizado, nada 
       compartilhamentos: paraNumero(dadosForm.compartilhamentos), salvamentos: paraNumero(dadosForm.salvamentos), status: "analisando", erro: null
     };
     let linha = existente ? await gravar("virais", { status: "analisando", erro: null }, existente.id) : await gravar("virais", base);
-    if (!linha) { avisoVir("erro", "😕 Não consegui guardar na biblioteca. Confira se a tabela de virais foi criada no Supabase."); return; }
+    if (!linha) { avisoVir("erro", "😕 Não consegui guardar na biblioteca porque a tabela de virais ainda não existe no Supabase. Clique em Copiar o SQL, cole no SQL Editor do Supabase, clique em Run e tente de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
     trocarNaLista(dados.virais, linha);
     dados.virais.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     analisando.add(linha.id);
