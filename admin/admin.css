@@ -379,3 +379,41 @@ ul.origens { margin: 0; padding: 0; }
 .vir-resultado .passos li { grid-template-columns: 70px 1fr; }
 #vir-busca { max-width: 300px; }
 @media (max-width: 860px) { .vir-numeros { grid-template-columns: repeat(2, minmax(0, 1fr)); } #vir-busca { max-width: none; flex: 1 1 100%; } }
+
+/* ---------- roteiro em tabela (Virais e Tendências) ---------- */
+.vir-resultado .tabela-caixa, .ficha .tabela-caixa { overflow-x: auto; margin: 6px 0 4px; }
+.tabela-roteiro { width: 100%; border-collapse: collapse; font-size: .84rem; min-width: 620px; }
+.tabela-roteiro th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--verde-texto); background: var(--verde-claro); padding: 8px 10px; }
+.tabela-roteiro td { vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--borda); color: var(--tinta); line-height: 1.45; }
+.tabela-roteiro td:first-child { white-space: nowrap; font-weight: 700; color: var(--verde-texto); }
+.tabela-roteiro td small { display: block; margin-top: 4px; color: var(--texto); font-style: italic; }
+.tipo-fala { display: inline-block; font-size: .68rem; font-weight: 800; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; background: var(--terracota-claro); color: #7a3c12; margin-bottom: 4px; white-space: nowrap; }
+
+/* ---------- aba Tendências ---------- */
+.tend-temas { margin-top: 12px; }
+.tend-temas > summary { cursor: pointer; overflow-wrap: anywhere; font-size: .84rem; font-weight: 700; color: var(--verde-texto); }
+.tend-temas-corpo { display: grid; gap: 10px; margin-top: 10px; }
+.tend-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tend-chip { display: inline-flex; align-items: center; gap: 4px; font-size: .78rem; font-weight: 600; background: var(--verde-claro); color: var(--verde-texto); padding: 4px 6px 4px 11px; border-radius: 999px; }
+.tend-chip button { border: 0; background: transparent; color: inherit; font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 4px; border-radius: 50%; }
+.tend-chip button:hover { background: rgba(0,0,0,.08); }
+.tend-resumo { background: var(--fundo); border-radius: var(--raio-p); padding: 10px 12px; font-size: .88rem; color: var(--tinta); }
+.tend-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 14px; }
+.tend-card .pilula, .tend-chip { white-space: normal; }
+.tend-card { min-width: 0; }
+.tend-card { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--branco); }
+.tend-card.quero { border-color: var(--terracota); box-shadow: 0 0 0 1px var(--terracota) inset; }
+.tend-card.feito { opacity: .72; }
+.tend-card h3 { margin: 0; font-size: 1rem; color: var(--tinta); }
+.tend-card p { margin: 0; font-size: .85rem; line-height: 1.5; }
+.tend-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tend-plataforma { font-size: 1.15rem; }
+.tend-marca { background: var(--terracota-claro); color: #7a3c12; }
+.tend-adaptar { background: var(--verde-claro); border-radius: var(--raio-p); padding: 10px 12px; }
+.tend-adaptar b { color: var(--verde-texto); font-size: .82rem; }
+.tend-adaptar p { margin-top: 4px; color: var(--tinta); }
+.tend-gancho { font-weight: 700; color: var(--tinta); }
+.tend-card .rot-acoes { margin-top: auto; }
+.tend-fontes { margin-top: 14px; }
+.tend-fontes > summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--verde-texto); }
+@media (max-width: 860px) { .tend-grade { grid-template-columns: 1fr; } }

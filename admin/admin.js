@@ -118,9 +118,10 @@
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
     roteiros: ["fonte", "url", "perfil", "de_quem", "titulo", "transcricao", "legenda", "postado_em", "tags", "obs", "status", "erro"],
     configuracoes: ["chave", "valor"],
-    virais: ["url", "fonte", "perfil", "titulo", "nicho", "transcricao", "analise", "adaptacoes", "status"]
+    virais: ["url", "fonte", "perfil", "titulo", "nicho", "transcricao", "analise", "adaptacoes", "status"],
+    tendencias: ["nichos", "plataformas", "resumo", "itens", "fontes", "sem_busca"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -152,7 +153,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -162,9 +163,10 @@
       buscarEmPartes("eventos", desde),
       buscar("roteiros", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
       buscar("configuracoes", (q) => q.select("*")),
-      buscar("virais", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000))
+      buscar("virais", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
+      buscar("tendencias", (q) => q.select("*").order("created_at", { ascending: false }).limit(60))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -289,6 +291,7 @@
     campanhas: ["Campanhas", renderCampanhas],
     roteiros: ["📜 Roteiros", renderRoteiros],
     virais: ["🔥 Virais", renderVirais],
+    tendencias: ["📈 Tendências", renderTendencias],
     checklist: ["Checklist do portfólio", renderChecklist]
   };
   const abaAtual = () => { const h = location.hash.replace("#", ""); return ABAS[h] ? h : "portfolio"; };
@@ -1624,7 +1627,45 @@ ${blocos}`;
   const analisando = new Set();
   const chaveGemini = () => String(dados.config[CHAVE_GEMINI] || "").trim();
   const semTravessao = (t) => String(t == null ? "" : t).replace(new RegExp("\\s*[" + String.fromCharCode(8212, 8211) + "]\\s*", "g"), ", ");
-  const SEM_CHAVE_GEMINI = `✨ Para a análise, falta a chave grátis do Gemini (do Google). Entre em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> com a sua conta Google, clique em "Create API key", copie a chave e cole no campo "Chave do Gemini" aqui embaixo. Não pede cartão.`;
+  /* FORMATO DOS ROTEIROS DA LETÍCIA: tabela Tempo | Cena / ângulo | Fala | Texto na tela.
+     Cena em primeira pessoa com as siglas dela, e toda fala marcada com o tipo. */
+  const MODELO_BLOCOS_ROTEIRO = `[ { "tempo": "0 a 3s", "cena": "PP. Eu pego o pão quentinho da forma e mostro pra câmera", "tipo_fala": "FALADA PRA CÂMERA", "fala": "o que eu falo, palavra por palavra", "tom": "gesto e tom em detalhe, ex: levanto o dedo indicador na altura do rosto, falo mais baixo como quem conta um segredo", "texto_tela": "texto curto que aparece escrito no vídeo, ou vazio" } ]`;
+  const REGRAS_ROTEIRO = `Regras do roteiro (muito importante):
+- A coluna "cena" é escrita em PRIMEIRA PESSOA, como se a própria Letícia estivesse escrevendo ("eu pego o frasco", "eu me abaixo"), nunca "você faz".
+- Toda cena começa com a sigla do ângulo: PP (primeiro plano), PM (plano médio), Detalhe, Plongée (câmera de cima para baixo) ou CP (contra plongée, câmera de baixo para cima).
+- "tipo_fala" é sempre um destes três: "FALADA PRA CÂMERA" (olhando na lente), "NARRAÇÃO EM OFF" (voz por cima, sem falar na imagem) ou "SEM FALA".
+- "tom" descreve gestos e tom em detalhe, nunca vago como "fala com urgência".
+- Coloque naturalmente o toque dela nas cenas, sem tirar o protagonismo do assunto: verde, plantinha desfocada no canto, varal ao sol, mesa de madeira, som ambiente de passarinho, luz de fim de tarde.`;
+  const ICONE_FALA = { "FALADA PRA CÂMERA": "🎤 FALADA PRA CÂMERA", "NARRAÇÃO EM OFF": "🎙️ NARRAÇÃO EM OFF", "SEM FALA": "🔇 SEM FALA" };
+  const tipoFala = (b) => {
+    const t = String(b.tipo_fala || "").toUpperCase();
+    if (t.includes("SEM")) return ICONE_FALA["SEM FALA"];
+    if (t.includes("OFF") || t.includes("NARRA")) return ICONE_FALA["NARRAÇÃO EM OFF"];
+    if (t.includes("FALAD") || t.includes("CÂMERA") || t.includes("CAMERA")) return ICONE_FALA["FALADA PRA CÂMERA"];
+    return b.fala ? "" : ICONE_FALA["SEM FALA"];
+  };
+  function tabelaRoteiro(blocos) {
+    const t = (x) => esc(semTravessao(x));
+    if (!Array.isArray(blocos) || !blocos.length) return `<p class="dica">Sem roteiro.</p>`;
+    return `<div class="tabela-caixa"><table class="tabela-roteiro">
+      <thead><tr><th>Tempo</th><th>Cena / ângulo</th><th>Fala</th><th>Texto na tela</th></tr></thead>
+      <tbody>${blocos.map((b) => `<tr>
+        <td><b>${t(b.tempo)}</b></td>
+        <td>${t(b.cena)}</td>
+        <td>${tipoFala(b) ? `<span class="pilula tipo-fala">${tipoFala(b)}</span><br>` : ""}${b.fala ? `"${t(b.fala)}"` : ""}${b.tom ? `<br><small class="dica">${t(b.tom)}</small>` : ""}</td>
+        <td>${t(b.texto_tela)}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+  }
+  function textoBlocos(blocos) {
+    const t = semTravessao;
+    return (blocos || []).map((b) => [
+      `[${t(b.tempo)}] ${t(b.cena)}`,
+      tipoFala(b) ? `   ${tipoFala(b)}${b.fala ? `: "${t(b.fala)}"` : ""}` : (b.fala ? `   "${t(b.fala)}"` : ""),
+      b.tom ? `   Gesto e tom: ${t(b.tom)}` : "",
+      b.texto_tela ? `   Texto na tela: ${t(b.texto_tela)}` : ""
+    ].filter(Boolean).join("\n")).join("\n");
+  }
+  const SEM_CHAVE_GEMINI =`✨ Para a análise, falta a chave grátis do Gemini (do Google). Entre em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> com a sua conta Google, clique em "Create API key", copie a chave e cole no campo "Chave do Gemini" aqui embaixo. Não pede cartão.`;
 
   /* números: aceita 1,2M · 120 mil · 15k · 3.400 */
   function paraNumero(texto) {
@@ -1760,14 +1801,15 @@ Responda SOMENTE com um JSON válido, exatamente neste formato:
 {
   "titulo": "nome curto do roteiro",
   "ganchos": ["opção de gancho 1", "opção de gancho 2", "opção de gancho 3"],
-  "roteiro": [ { "tempo": "0 a 3s", "fala": "o que ela fala", "cena": "o que aparece na tela ou o que ela faz" } ],
+  "roteiro": ${MODELO_BLOCOS_ROTEIRO},
   "legenda": "legenda pronta para o post, com no máximo 3 hashtags",
   "cta": "a chamada final",
   "dicas_gravacao": ["dica prática para gravar"],
   "por_que_vai_funcionar": "explicação curta ligando à estrutura original"
 }
 
-Regras: português do Brasil, fala natural e espontânea, nada robotizado, nada de linguagem de vendedor, e nunca use travessão.`;
+${REGRAS_ROTEIRO}
+Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado, nada de linguagem de vendedor, e nunca use travessão.`;
   }
 
   /* ---- aviso ---- */
@@ -1870,7 +1912,7 @@ Regras: português do Brasil, fala natural e espontânea, nada robotizado, nada 
       ...(r.ganchos || []).map((g, i) => `${i + 1}. ${t(g)}`),
       "",
       "Roteiro:",
-      ...(r.roteiro || []).map((b) => `[${t(b.tempo)}] ${t(b.fala)}${b.cena ? `\n   (na tela: ${t(b.cena)})` : ""}`),
+      textoBlocos(r.roteiro),
       "",
       `Chamada final: ${t(r.cta)}`,
       "",
@@ -1884,7 +1926,7 @@ Regras: português do Brasil, fala natural e espontânea, nada robotizado, nada 
       <h3>🎣 3 opções de gancho</h3>
       <ol class="lista-simples">${(r.ganchos || []).map((g) => `<li>${t(g)}</li>`).join("")}</ol>
       <h3>🎬 Roteiro</h3>
-      <ol class="passos">${(r.roteiro || []).map((b) => `<li><span>${t(b.tempo)}</span><div>${t(b.fala)}${b.cena ? `<br><small class="dica">Na tela: ${t(b.cena)}</small>` : ""}</div></li>`).join("")}</ol>
+      ${tabelaRoteiro(r.roteiro)}
       <h3>📣 Chamada final</h3><p>${t(r.cta)}</p>
       <h3>✍️ Legenda</h3><p>${t(r.legenda)}</p>
       ${(r.dicas_gravacao || []).length ? `<h3>🎥 Dicas para gravar</h3><ul class="lista-simples">${r.dicas_gravacao.map((d) => `<li>${t(d)}</li>`).join("")}</ul>` : ""}
@@ -2120,6 +2162,351 @@ Regras: português do Brasil, fala natural e espontânea, nada robotizado, nada 
         if (await apagar("virais", v.id)) { dados.virais = dados.virais.filter((x) => x.id !== v.id); recado("Apagado"); renderVirais(area); }
       }
     }));
+  }
+
+  /* =================================================================
+     ABA 8: TENDÊNCIAS (o que está em alta no Instagram e no TikTok nos
+     temas da Letícia, e como adaptar para a realidade dela)
+     Pesquisa pelo Gemini com busca no Google (a mesma chave grátis da aba Virais).
+     ================================================================= */
+  const TEMAS_PADRAO = [
+    "Vida simples na roça",
+    "Maternidade e rotina com os filhos",
+    "Culinária simples do dia a dia (pão, bolo, comida caseira)",
+    "Reforma DIY barata, com achadinhos da Shopee e mão na massa",
+    "Horta e plantio",
+    "Criação de galinhas",
+    "Dicas de casa para facilitar a rotina da dona de casa",
+    "Entretenimento que mistura esses temas"
+  ];
+  const CHAVE_TEMAS = "tendencias_temas";
+  const CHAVE_PLATAFORMAS = "tendencias_plataformas";
+  const DIAS_PARA_ATUALIZAR = 3;
+  const estadoTend = { selecionada: null, tema: "todos", plataforma: "todas", buscando: false, aviso: null, autoTentado: false };
+  const lerLista = (chave, padrao) => { try { const v = JSON.parse(dados.config[chave] || "null"); if (Array.isArray(v) && v.length) return v; } catch (erro) { /* usa o padrão */ } return padrao.slice(); };
+  const temasTend = () => lerLista(CHAVE_TEMAS, TEMAS_PADRAO);
+  const plataformasTend = () => lerLista(CHAVE_PLATAFORMAS, ["Instagram", "TikTok"]);
+  const EMOJI_PLATAFORMA = (p) => (/tiktok/i.test(p) && /insta/i.test(p)) || /duas|ambas/i.test(p) ? "📸🎵" : /tiktok/i.test(p) ? "🎵" : /insta/i.test(p) ? "📸" : "✨";
+
+  async function salvarConfig(chave, valor) {
+    try {
+      const { error } = await banco.from("configuracoes").upsert({ chave, valor, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      dados.config[chave] = valor;
+      return true;
+    } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); return false; }
+  }
+
+  /* Gemini com busca no Google: devolve o JSON e as fontes que ele usou */
+  function extrairJSON(texto) {
+    const limpo = String(texto || "").replace(/```json|```/g, "");
+    const i = limpo.indexOf("{"), j = limpo.lastIndexOf("}");
+    if (i < 0 || j <= i) throw new Error("A resposta veio bagunçada. Tente buscar de novo.");
+    return JSON.parse(limpo.slice(i, j + 1));
+  }
+  async function perguntarGeminiComBusca(prompt) {
+    const chave = chaveGemini();
+    for (const modelo of MODELOS_GEMINI) {
+      let resposta, corpo = null;
+      try {
+        resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.8 } })
+        });
+        try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
+      } catch (erro) { throw new Error("Não consegui falar com o Gemini. Confira a internet e tente de novo."); }
+      if (resposta.ok) {
+        const candidato = corpo && corpo.candidates && corpo.candidates[0];
+        const texto = candidato && candidato.content && (candidato.content.parts || []).map((p) => p.text || "").join("");
+        if (!texto) throw new Error("O Gemini não devolveu resposta dessa vez. Tente de novo.");
+        let json;
+        try { json = extrairJSON(texto); } catch (erro) { throw new Error("A resposta veio bagunçada. Tente buscar de novo."); }
+        const vistos = new Set();
+        const fontes = ((candidato.groundingMetadata && candidato.groundingMetadata.groundingChunks) || [])
+          .map((c) => c && c.web).filter((w) => w && w.uri)
+          .filter((w) => { const k = w.title || w.uri; if (vistos.has(k)) return false; vistos.add(k); return true; })
+          .map((w) => ({ titulo: w.title || w.uri, link: w.uri }));
+        return { json, fontes, comBusca: true };
+      }
+      const status = resposta.status;
+      const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
+      if (status === 404 || motivo.includes("not found")) continue;
+      if (status === 400 && motivo.includes("api key")) throw new Error("A chave do Gemini não foi aceita. Confira na aba Virais e salve de novo.");
+      if (status === 400 && (motivo.includes("search") || motivo.includes("tool"))) {
+        /* sem a busca no Google disponível: pede só com o que o Gemini já sabe */
+        const json = await perguntarGemini(prompt, 0.8);
+        return { json, fontes: [], comBusca: false };
+      }
+      if (status === 401 || status === 403) throw new Error("A chave do Gemini não foi aceita ou está sem permissão. Gere uma nova em aistudio.google.com/apikey e salve na aba Virais.");
+      if (status === 429) throw new Error("Você chegou no limite grátis do Gemini por agora. Espere alguns minutos e tente de novo (se for o limite do dia, ele volta amanhã).");
+      if (status >= 500) throw new Error("O Gemini está sobrecarregado agora. Tente de novo em 1 minuto.");
+      throw new Error("A busca não deu certo agora. Tente de novo em instantes.");
+    }
+    throw new Error("Não encontrei um modelo do Gemini disponível para a sua chave. Tente gerar uma chave nova.");
+  }
+
+  function promptTendencias(temas, plataformas) {
+    const hoje = new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+    return `Hoje é ${hoje}. Você é pesquisadora de tendências de conteúdo para ${plataformas.join(" e ")} no Brasil.
+Pesquise na internet o que está em alta AGORA (últimos 30 dias) nos temas abaixo: trends, áudios em alta, formatos de vídeo, desafios e assuntos que estão gerando muitas visualizações, comentários, compartilhamentos ou salvamentos.
+
+Temas da creator:
+${temas.map((t) => "- " + t).join("\n")}
+
+Sobre a creator: Letícia Gabrielly (@leh.gsilva), creator UGC que mora na roça em Minas Gerais com os filhos. Mostra uma vida simples na roça, cozinha comida caseira e gostosa (pão, bolo, comida do dia a dia, nada chique), faz reformas baratas ela mesma com achadinhos da Shopee, está começando uma horta e quer criar galinhas. O conteúdo dela é real, aconchegante, com a naturalidade de uma amiga.
+
+Traga de 8 a 10 tendências DIFERENTES entre si, espalhadas pelos temas, priorizando as que ela consegue gravar com a realidade dela. Não invente números. Se não encontrar números, escreva em "sinais" o que você encontrou (ex: muitos vídeos usando o mesmo áudio, comentários pedindo a receita).
+
+Responda SOMENTE com um JSON válido, sem nenhum texto antes ou depois, exatamente neste formato:
+{
+  "resumo": "duas frases sobre o que está acontecendo nesses temas agora",
+  "tendencias": [
+    {
+      "titulo": "nome curto da tendência",
+      "plataforma": "Instagram, TikTok ou As duas",
+      "tema": "um dos temas da lista, escrito igual",
+      "formato": "formato do vídeo, ex: antes e depois, POV, receita em tempo real, vlog do dia",
+      "o_que_e": "o que é a tendência, em uma ou duas frases",
+      "por_que_esta_bombando": "por que está funcionando agora",
+      "sinais": "o que mostra que está em alta",
+      "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3"],
+      "audio": "nome do áudio em alta, se tiver, ou vazio",
+      "busca": "termo curto para procurar exemplos na plataforma",
+      "como_adaptar": "ideia concreta de como ela traz isso para a realidade dela, citando a roça, os filhos, a horta, as galinhas, a cozinha simples ou a reforma barata quando fizer sentido",
+      "gancho": "frase de gancho pronta para os primeiros 3 segundos",
+      "roteiro": ${MODELO_BLOCOS_ROTEIRO},
+      "legenda": "legenda pronta, com no máximo 3 hashtags",
+      "dificuldade": "fácil ou média",
+      "validade": "aproveite logo ou dura bastante"
+    }
+  ]
+}
+
+${REGRAS_ROTEIRO}
+- Cada roteiro com 4 a 6 blocos, de 15 a 45 segundos no total.
+Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca use travessão.`;
+  }
+
+  async function buscarTendencias(automatica) {
+    if (estadoTend.buscando) return;
+    if (!chaveGemini()) { avisoTend("erro", `✨ Para eu pesquisar as tendências, falta a chave grátis do Gemini. É a mesma da aba <a href="#virais">🔥 Virais</a>: salve ela lá e volte aqui.`); return; }
+    const temas = temasTend(), plataformas = plataformasTend();
+    if (!temas.length || !plataformas.length) { avisoTend("erro", "Escolha pelo menos um tema e uma plataforma."); return; }
+    estadoTend.buscando = true;
+    const inicio = Date.now();
+    const andar = () => avisoTend("andamento", `🔎 ${automatica ? "Atualizando sozinha as tendências" : "Pesquisando o que está em alta"} no ${plataformas.join(" e no ")}… ${Math.round((Date.now() - inicio) / 1000)}s. Costuma levar menos de 1 minuto.`);
+    andar();
+    const relogio = setInterval(andar, 3000);
+    try {
+      const { json, fontes, comBusca } = await perguntarGeminiComBusca(promptTendencias(temas, plataformas));
+      const itens = (Array.isArray(json.tendencias) ? json.tendencias : []).filter((x) => x && x.titulo).map((x, i) => ({ ...x, id: "t" + Date.now() + i, status: "nova" }));
+      if (!itens.length) throw new Error("Não encontrei tendências dessa vez. Tente buscar de novo.");
+      const linha = await gravar("tendencias", { nichos: temas, plataformas, resumo: semTravessao(json.resumo || ""), itens, fontes, sem_busca: !comBusca });
+      clearInterval(relogio);
+      estadoTend.buscando = false;
+      if (!linha) { avisoTend("erro", "😕 Achei as tendências, mas não consegui guardar porque a tabela de tendências ainda não existe no Supabase. Clique em Copiar o SQL, cole no SQL Editor, clique em Run e busque de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
+      dados.tendencias.unshift(linha);
+      estadoTend.selecionada = linha.id;
+      avisoTend("ok", `✅ ${plural(itens.length, "tendência nova encontrada", "tendências novas encontradas")}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet, então as ideias vieram do que o Gemini já sabe"}.`);
+      if (abaAtual() === "tendencias") renderTendencias($("#area"));
+    } catch (erro) {
+      clearInterval(relogio);
+      estadoTend.buscando = false;
+      avisoTend("erro", "😕 " + esc(erro.message || "A busca não deu certo agora."));
+    }
+  }
+
+  function avisoTend(tipo, html, acao) {
+    estadoTend.aviso = tipo ? { tipo, html, acao } : null;
+    const el = $("#tend-aviso");
+    if (!el) return;
+    const a = estadoTend.aviso;
+    if (!a) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.className = "rot-aviso " + a.tipo;
+    el.innerHTML = `<span>${a.html}</span>${a.acao ? `<button type="button" class="botao botao-leve" id="tend-aviso-acao">${esc(a.acao.texto)}</button>` : ""}`;
+    if (a.acao) $("#tend-aviso-acao").addEventListener("click", a.acao.fazer);
+  }
+
+  function textoTendencia(x) {
+    const t = semTravessao;
+    return [t(x.titulo), "", `Gancho: ${t(x.gancho)}`, "", `Como adaptar: ${t(x.como_adaptar)}`, "", "Roteiro:", textoBlocos(x.roteiro), "", `Legenda: ${t(x.legenda)}`].join("\n");
+  }
+  function linkExemplos(x, plataforma) {
+    const termo = x.busca || (x.hashtags && x.hashtags[0]) || x.titulo;
+    if (plataforma === "tiktok") return `https://www.tiktok.com/search?q=${encodeURIComponent(String(termo).replace(/^#/, ""))}`;
+    const tag = String((x.hashtags && x.hashtags[0]) || termo).replace(/^#/, "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w]/g, "").toLowerCase();
+    return `https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}/`;
+  }
+
+  function cardTendencia(x) {
+    const t = (v) => esc(semTravessao(v));
+    return `<article class="tend-card ${x.status === "quero" ? "quero" : ""} ${x.status === "feito" ? "feito" : ""}" data-item="${esc(x.id)}">
+      <div class="tend-topo">
+        <span class="tend-plataforma" title="${t(x.plataforma)}">${EMOJI_PLATAFORMA(x.plataforma || "")}</span>
+        ${x.tema ? `<span class="pilula p-minha">${t(x.tema)}</span>` : ""}
+        ${x.dificuldade ? `<span class="pilula">${/f[aá]cil/i.test(x.dificuldade) ? "🟢" : "🟡"} ${t(x.dificuldade)}</span>` : ""}
+        ${x.validade ? `<span class="pilula ${/logo/i.test(x.validade) ? "p-outra" : ""}">${/logo/i.test(x.validade) ? "⏰" : "🌱"} ${t(x.validade)}</span>` : ""}
+        ${x.status === "quero" ? `<span class="pilula tend-marca">⭐ Quero fazer</span>` : ""}${x.status === "feito" ? `<span class="pilula tend-marca">✅ Já fiz</span>` : ""}
+      </div>
+      <h3>${t(x.titulo)}</h3>
+      ${x.formato ? `<p class="dica">🎬 ${t(x.formato)}</p>` : ""}
+      <p>${t(x.o_que_e)}</p>
+      <p><b>🔥 Por que está bombando:</b> ${t(x.por_que_esta_bombando)}${x.sinais ? ` <span class="dica">(${t(x.sinais)})</span>` : ""}</p>
+      <div class="tend-adaptar"><b>💡 Como você pode trazer para a sua realidade</b><p>${t(x.como_adaptar)}</p></div>
+      ${x.gancho ? `<p class="tend-gancho">🎣 "${t(x.gancho)}"</p>` : ""}
+      <div class="rot-meta">
+        ${(x.hashtags || []).slice(0, 5).map((h) => `<span class="pilula rot-tag">${t(String(h).startsWith("#") ? h : "#" + h)}</span>`).join("")}
+        ${x.audio ? `<span class="pilula">🎵 ${t(x.audio)}</span>` : ""}
+      </div>
+      <div class="rot-acoes">
+        <button type="button" class="botao botao-principal" data-acao="roteiro">🎬 Ver roteiro</button>
+        <a class="botao botao-leve" href="${esc(linkExemplos(x, "tiktok"))}" target="_blank" rel="noopener">🎵 Exemplos no TikTok</a>
+        <a class="botao botao-leve" href="${esc(linkExemplos(x, "instagram"))}" target="_blank" rel="noopener">📸 no Instagram</a>
+        <button type="button" class="botao botao-leve" data-acao="quero">${x.status === "quero" ? "⭐ Tirar da lista" : "⭐ Quero fazer"}</button>
+        <button type="button" class="botao botao-leve" data-acao="feito">${x.status === "feito" ? "↩️ Ainda não fiz" : "✅ Já fiz"}</button>
+      </div>
+    </article>`;
+  }
+
+  async function mudarItem(busca, itemId, mudanca) {
+    const itens = (busca.itens || []).map((x) => (x.id === itemId ? { ...x, ...mudanca } : x));
+    const linha = await gravar("tendencias", { itens }, busca.id);
+    if (linha) { trocarNaLista(dados.tendencias, linha); return linha; }
+    return null;
+  }
+  function verRoteiroTendencia(busca, x) {
+    abrirModal(`🎬 ${semTravessao(x.titulo)}`, `<div class="ficha vir-resultado">
+        <h3>💡 Como adaptar</h3><p>${esc(semTravessao(x.como_adaptar))}</p>
+        <h3>🎣 Gancho</h3><p class="gancho">"${esc(semTravessao(x.gancho))}"</p>
+        <h3>🎬 Roteiro</h3>${tabelaRoteiro(x.roteiro)}
+        <h3>✍️ Legenda</h3><p>${esc(semTravessao(x.legenda))}</p>
+      </div>
+      <div class="form-acoes">
+        <span class="espaco"></span>
+        <button type="button" class="botao botao-leve" id="tend-copiar">📋 Copiar roteiro</button>
+        <button type="button" class="botao botao-principal" id="tend-salvar">💾 Salvar nos meus roteiros</button>
+      </div>`, true);
+    $("#tend-copiar").addEventListener("click", async (e) => {
+      try { await navigator.clipboard.writeText(textoTendencia(x)); e.target.textContent = "copiado ✓"; }
+      catch (erro) { recado("Não consegui copiar. Selecione o texto e copie.", true); }
+    });
+    $("#tend-salvar").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      const linha = await gravar("roteiros", {
+        fonte: "manual", url: "", perfil: "@leh.gsilva", de_quem: "minha", titulo: semTravessao(x.titulo).slice(0, 200),
+        transcricao: textoTendencia(x), legenda: semTravessao(x.legenda || ""), tags: ["tendencia"].concat(x.tema ? [String(x.tema).split(/[ ,(]/)[0].toLowerCase()] : []),
+        obs: `Ideia da aba Tendências (${dataBR(String(busca.created_at).slice(0, 10))}). ${semTravessao(x.por_que_esta_bombando || "")}`, status: "pronto"
+      });
+      if (linha) {
+        trocarNaLista(dados.roteiros, linha); ordenarRoteiros();
+        e.target.textContent = "salvo na aba Roteiros ✓";
+        if (x.status !== "feito") { await mudarItem(busca, x.id, { status: "quero" }); if (abaAtual() === "tendencias") renderTendencias($("#area")); }
+      } else e.target.disabled = false;
+    });
+  }
+
+  function renderTendencias(area) {
+    const temas = temasTend(), plataformas = plataformasTend();
+    const buscas = dados.tendencias;
+    const atual = buscas.find((b) => b.id === estadoTend.selecionada) || buscas[0] || null;
+    const ultima = buscas[0];
+    const diasDesde = ultima ? Math.floor((Date.now() - new Date(ultima.created_at)) / 86400000) : null;
+    const itens = atual ? (atual.itens || []) : [];
+    const temasNaBusca = Array.from(new Set(itens.map((x) => x.tema).filter(Boolean)));
+    const filtrados = itens.filter((x) =>
+      (estadoTend.tema === "todos" || (estadoTend.tema === "quero" ? x.status === "quero" : x.tema === estadoTend.tema)) &&
+      (estadoTend.plataforma === "todas" || new RegExp(estadoTend.plataforma, "i").test(x.plataforma || "") || /duas|ambas/i.test(x.plataforma || "")));
+    const quando = (b) => { const d = new Date(b.created_at); return `${dois(d.getDate())}/${dois(d.getMonth() + 1)} às ${dois(d.getHours())}:${dois(d.getMinutes())}`; };
+
+    area.innerHTML = `
+      <section class="cartao rot-topo">
+        <p class="rot-frase">Eu pesquiso o que está em alta no Instagram e no TikTok nos seus temas e te mostro como trazer para a sua realidade. Atualizo sozinha quando você abre esta aba e a última busca tem mais de ${DIAS_PARA_ATUALIZAR} dias.</p>
+        <div class="rot-linha">
+          <span class="dica" style="flex:1">${ultima ? `🗓️ Última busca: ${quando(ultima)} (${diasDesde === 0 ? "hoje" : diasDesde === 1 ? "ontem" : `há ${diasDesde} dias`})` : "🗓️ Nenhuma busca ainda."}</span>
+          <button type="button" class="botao botao-principal" id="tend-buscar" ${estadoTend.buscando ? "disabled" : ""}>🔎 Buscar tendências agora</button>
+        </div>
+        <div id="tend-aviso" class="rot-aviso" aria-live="polite" hidden></div>
+        <details class="tend-temas">
+          <summary>🎯 Meus temas e plataformas (${temas.length} temas · ${plataformas.join(" e ") || "nenhuma"})</summary>
+          <div class="tend-temas-corpo">
+            <div class="tend-chips">${temas.map((t, i) => `<span class="tend-chip">${esc(t)}<button type="button" data-tirar-tema="${i}" aria-label="Tirar o tema ${esc(t)}">×</button></span>`).join("")}</div>
+            <form class="rot-linha" id="tend-novo-tema"><input class="campo-busca" name="tema" placeholder="+ Adicionar um tema, ex: Receitas com milho" style="flex:1"><button type="submit" class="botao botao-leve">Adicionar</button>
+              ${temas.join("|") !== TEMAS_PADRAO.join("|") ? `<button type="button" class="botao botao-leve" id="tend-padrao">Voltar aos temas iniciais</button>` : ""}</form>
+            <div class="chips" role="group" aria-label="Plataformas">
+              ${["Instagram", "TikTok"].map((p) => `<button type="button" data-plataforma-config="${p}" aria-pressed="${plataformas.includes(p)}">${p === "Instagram" ? "📸" : "🎵"} ${p}</button>`).join("")}
+            </div>
+          </div>
+        </details>
+      </section>
+      ${atual ? `
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>📈 Em alta agora <span class="dica">(${itens.length})</span></h2>
+          ${buscas.length > 1 ? `<select class="filtro" id="tend-historico" aria-label="Buscas anteriores">${buscas.map((b) => `<option value="${esc(b.id)}" ${b.id === atual.id ? "selected" : ""}>Busca de ${quando(b)}</option>`).join("")}</select>` : ""}
+        </div>
+        ${atual.resumo ? `<p class="tend-resumo">🧭 ${esc(atual.resumo)}</p>` : ""}
+        ${atual.sem_busca ? `<p class="dica">⚠️ Nesta busca não consegui pesquisar na internet, então as ideias vieram do que o Gemini já sabe.</p>` : ""}
+        <div class="ferramentas" style="margin:12px 0">
+          <div class="chips" role="group" aria-label="Filtrar por tema">
+            ${[["todos", "Todos"], ["quero", "⭐ Quero fazer"]].concat(temasNaBusca.map((t) => [t, t])).map(([v, t]) => `<button type="button" data-tema="${esc(v)}" aria-pressed="${estadoTend.tema === v}">${esc(t)}</button>`).join("")}
+          </div>
+          <div class="chips" role="group" aria-label="Filtrar por plataforma">
+            ${[["todas", "Todas"], ["instagram", "📸 Instagram"], ["tiktok", "🎵 TikTok"]].map(([v, t]) => `<button type="button" data-plataforma="${v}" aria-pressed="${estadoTend.plataforma === v}">${t}</button>`).join("")}
+          </div>
+        </div>
+        <div class="tend-grade">${filtrados.length ? filtrados.map(cardTendencia).join("") : `<p class="frase-vazia">Nenhuma tendência com esse filtro.</p>`}</div>
+        ${(atual.fontes || []).length ? `<details class="tend-fontes"><summary>📚 Onde eu pesquisei (${atual.fontes.length})</summary><ul class="lista-simples">${atual.fontes.slice(0, 20).map((f) => `<li><a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.titulo)}</a></li>`).join("")}</ul></details>` : ""}
+      </section>` : `
+      <section class="cartao"><p class="frase-vazia">📭 Ainda não tenho tendências guardadas. ${chaveGemini() ? "Clique em Buscar tendências agora." : "Salve a chave grátis do Gemini na aba 🔥 Virais e volte aqui."}</p></section>`}`;
+
+    avisoTend(estadoTend.aviso ? estadoTend.aviso.tipo : null, estadoTend.aviso ? estadoTend.aviso.html : "", estadoTend.aviso ? estadoTend.aviso.acao : null);
+    $("#tend-buscar").addEventListener("click", () => buscarTendencias(false));
+    const hist = $("#tend-historico");
+    if (hist) hist.addEventListener("change", (e) => { estadoTend.selecionada = e.target.value; estadoTend.tema = "todos"; renderTendencias(area); });
+    $$("[data-tema]", area).forEach((b) => b.addEventListener("click", () => { estadoTend.tema = b.dataset.tema; renderTendencias(area); }));
+    $$("[data-plataforma]", area).forEach((b) => b.addEventListener("click", () => { estadoTend.plataforma = b.dataset.plataforma; renderTendencias(area); }));
+    $$("[data-tirar-tema]", area).forEach((b) => b.addEventListener("click", async () => {
+      const lista = temasTend(); lista.splice(Number(b.dataset.tirarTema), 1);
+      if (!lista.length) { recado("Deixe pelo menos um tema.", true); return; }
+      if (await salvarConfig(CHAVE_TEMAS, JSON.stringify(lista))) { renderTendencias(area); $(".tend-temas", area).open = true; }
+    }));
+    $("#tend-novo-tema").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const novo = e.target.elements.tema.value.trim();
+      if (!novo) return;
+      const lista = temasTend(); if (!lista.includes(novo)) lista.push(novo);
+      if (await salvarConfig(CHAVE_TEMAS, JSON.stringify(lista))) { recado("Tema adicionado ✓. Ele entra na próxima busca."); renderTendencias(area); $(".tend-temas", area).open = true; }
+    });
+    const padrao = $("#tend-padrao");
+    if (padrao) padrao.addEventListener("click", async () => { if (await salvarConfig(CHAVE_TEMAS, JSON.stringify(TEMAS_PADRAO))) { renderTendencias(area); $(".tend-temas", area).open = true; } });
+    $$("[data-plataforma-config]", area).forEach((b) => b.addEventListener("click", async () => {
+      const lista = plataformasTend(); const p = b.dataset.plataformaConfig;
+      const nova = lista.includes(p) ? lista.filter((x) => x !== p) : lista.concat([p]);
+      if (!nova.length) { recado("Deixe pelo menos uma plataforma.", true); return; }
+      if (await salvarConfig(CHAVE_PLATAFORMAS, JSON.stringify(nova))) { renderTendencias(area); $(".tend-temas", area).open = true; }
+    }));
+    const grade = $(".tend-grade", area);
+    if (grade) grade.addEventListener("click", async (e) => {
+      const botao = e.target.closest("[data-acao]");
+      if (!botao || !atual) return;
+      const x = (atual.itens || []).find((i) => i.id === botao.closest("[data-item]").dataset.item);
+      if (!x) return;
+      if (botao.dataset.acao === "roteiro") verRoteiroTendencia(atual, x);
+      if (botao.dataset.acao === "quero" || botao.dataset.acao === "feito") {
+        const alvo = botao.dataset.acao;
+        botao.disabled = true;
+        if (await mudarItem(atual, x.id, { status: x.status === alvo ? "nova" : alvo })) renderTendencias(area);
+        else botao.disabled = false;
+      }
+    });
+
+    /* atualização sozinha: ao abrir a aba, se a última busca tiver mais de 3 dias */
+    if (!estadoTend.autoTentado && chaveGemini() && (diasDesde === null || diasDesde >= DIAS_PARA_ATUALIZAR) && !avisosMostrados.has("tabela-tendencias")) {
+      estadoTend.autoTentado = true;
+      buscarTendencias(true);
+    }
   }
 
   /* ---------------------------------------------------------------

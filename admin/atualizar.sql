@@ -268,7 +268,6 @@ create policy "dona apaga configuracoes" on public.configuracoes for delete to a
 revoke all on public.roteiros, public.configuracoes from anon;
 grant select, insert, update, delete on public.roteiros, public.configuracoes to authenticated;
 
--- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
 
 
 create table if not exists public.virais (
@@ -323,5 +322,33 @@ create policy "dona apaga virais" on public.virais for delete to authenticated u
 
 revoke all on public.virais from anon;
 grant select, insert, update, delete on public.virais to authenticated;
+
+-- ---------- aba Tendências ----------
+create table if not exists public.tendencias (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  nichos       text[] not null default '{}',
+  plataformas  text[] not null default '{}',
+  resumo       text not null default '',
+  itens        jsonb not null default '[]'::jsonb,
+  fontes       jsonb not null default '[]'::jsonb,
+  sem_busca    boolean not null default false
+);
+
+create index if not exists tendencias_created_at_idx on public.tendencias (created_at desc);
+
+-- A TRANCA: só você, logada, lê, cria, edita e apaga
+alter table public.tendencias enable row level security;
+drop policy if exists "dona le tendencias" on public.tendencias;
+create policy "dona le tendencias" on public.tendencias for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria tendencias" on public.tendencias;
+create policy "dona cria tendencias" on public.tendencias for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita tendencias" on public.tendencias;
+create policy "dona edita tendencias" on public.tendencias for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga tendencias" on public.tendencias;
+create policy "dona apaga tendencias" on public.tendencias for delete to authenticated using (public.e_a_dona());
+
+revoke all on public.tendencias from anon;
+grant select, insert, update, delete on public.tendencias to authenticated;
 
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
