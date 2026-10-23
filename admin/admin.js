@@ -75,7 +75,7 @@
     if (codigo === "42703" || codigo === "PGRST204" || msg.includes("column"))
       return `A tabela "${tabela}" está sem algum campo que o painel usa. Rode o banco.sql de novo no Supabase. O resto do painel continua funcionando.`;
     if (codigo === "42501" || msg.includes("permission") || msg.includes("row-level security"))
-      return `Sem permissão para usar a tabela "${tabela}". Confira se você entrou com o e-mail contato.leticiagsilva@gmail.com e se o banco.sql foi rodado.`;
+      return `Sem permissão para usar a tabela "${tabela}". Confira se você entrou com um dos e-mails liberados no banco.sql e se ele foi rodado.`;
     if (codigo === "23514") return "Algum campo está com um valor que o banco não aceita.";
     if (codigo === "23502") return "Faltou preencher um campo obrigatório.";
     if (msg.includes("fetch") || msg.includes("network")) return "Sem conexão com o banco agora. Confira a sua internet e tente de novo.";
@@ -1047,5 +1047,11 @@
      --------------------------------------------------------------- */
   $("#area").innerHTML = `<div class="cartao"><p class="frase-vazia">Carregando os seus dados...</p></div>`;
   await carregarTudo();
+  /* confere se o e-mail que entrou está liberado como dono no banco.sql (senão as listas viriam vazias sem explicação) */
+  try {
+    const { data, error } = await banco.rpc("e_a_dona");
+    if (!error && data === false)
+      avisar("dona", `Você entrou com ${sessao.user.email || "um e-mail"}, mas esse e-mail não está liberado como dono do painel. Por isso as listas aparecem vazias e nada salva. Coloque esse e-mail na parte 1 do banco.sql e rode o arquivo de novo no Supabase.`);
+  } catch (erro) { /* se a função ainda não existe, os avisos das tabelas já explicam */ }
   mostrarAba();
 })();
