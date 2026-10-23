@@ -56,7 +56,30 @@
     const div = document.createElement("div");
     div.className = "aviso";
     div.textContent = texto;
+    /* quando falta tabela ou campo, dá para copiar o SQL completo com um clique */
+    if (/banco\.sql/.test(texto)) {
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "botao botao-leve aviso-botao";
+      botao.textContent = "Copiar o SQL";
+      botao.addEventListener("click", copiarSQL);
+      div.appendChild(botao);
+      const passos = document.createElement("small");
+      passos.textContent = "Depois cole no Supabase: SQL Editor, New query, cole e clique em Run. Pode rodar quantas vezes quiser, não apaga nada.";
+      div.appendChild(passos);
+    }
     $("#avisos").appendChild(div);
+  }
+  async function copiarSQL() {
+    try {
+      const resposta = await fetch("atualizar.sql", { cache: "no-store" });
+      if (!resposta.ok) throw new Error("sem arquivo");
+      const sql = await resposta.text();
+      await navigator.clipboard.writeText(sql);
+      recado("SQL copiado. Agora cole no SQL Editor do Supabase e clique em Run.");
+    } catch (erro) {
+      recado("Não consegui copiar sozinha. Abra o arquivo banco.sql da pasta do portfólio e copie de lá.", true);
+    }
   }
   let recadoTempo = null;
   function recado(texto, erro) {
