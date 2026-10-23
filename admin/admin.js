@@ -1622,10 +1622,15 @@ ${blocos}`;
      na tabela "configuracoes" (nunca no código).
      ================================================================= */
   const CHAVE_GEMINI = "gemini_api_key";
-  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
+  const CHAVE_GROQ = "groq_api_key";
+  const MODELOS_GROQ = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"];
+  const MODELOS_GROQ_BUSCA = ["groq/compound", "groq/compound-mini"];
   const estadoVir = { aviso: null, busca: "", form: {} };
   const analisando = new Set();
   const chaveGemini = () => String(dados.config[CHAVE_GEMINI] || "").trim();
+  const chaveGroq = () => String(dados.config[CHAVE_GROQ] || "").trim();
+  const temIA = () => !!(chaveGemini() || chaveGroq());
   const semTravessao = (t) => String(t == null ? "" : t).replace(new RegExp("\\s*[" + String.fromCharCode(8212, 8211) + "]\\s*", "g"), ", ");
   /* FORMATO DOS ROTEIROS DA LETÍCIA: tabela Tempo | Cena / ângulo | Fala | Texto na tela.
      Cena em primeira pessoa com as siglas dela, e toda fala marcada com o tipo. */
@@ -1687,36 +1692,94 @@ ${blocos}`;
     return v.toLocaleString("pt-BR");
   }
 
-  /* ---- Gemini ---- */
-  async function perguntarGemini(prompt, temperatura) {
-    const chave = chaveGemini();
-    let ultimoErro = "";
-    for (const modelo of MODELOS_GEMINI) {
-      let resposta, corpo = null;
-      try {
-        resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
-          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: temperatura == null ? 0.7 : temperatura } })
-        });
-        try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
-      } catch (erro) { throw new Error("Não consegui falar com o Gemini. Confira a internet e tente de novo."); }
-      if (resposta.ok) {
-        const texto = corpo && corpo.candidates && corpo.candidates[0] && corpo.candidates[0].content && (corpo.candidates[0].content.parts || []).map((p) => p.text || "").join("");
-        if (!texto) throw new Error("O Gemini não devolveu resposta dessa vez. Tente de novo.");
-        try { return JSON.parse(texto.replace(/^```(json)?|```$/g, "").trim()); }
-        catch (erro) { throw new Error("A resposta veio bagunçada. Clique para tentar de novo."); }
-      }
-      const status = resposta.status;
-      const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
-      if (status === 404 || motivo.includes("not found")) { ultimoErro = "modelo"; continue; }
-      if (status === 400 && motivo.includes("api key")) throw new Error("A chave do Gemini não foi aceita. Confira se copiou a chave inteira e salve de novo.");
-      if (status === 401 || status === 403) throw new Error("A chave do Gemini não foi aceita ou está sem permissão. Gere uma nova em aistudio.google.com/apikey e salve de novo.");
-      if (status === 429) throw new Error("Você chegou no limite grátis do Gemini por agora. Espere 1 minuto e tente de novo (se for o limite do dia, ele volta amanhã).");
-      if (status >= 500) throw new Error("O Gemini está sobrecarregado agora. Tente de novo em 1 minuto.");
-      throw new Error("A análise não deu certo agora. Tente de novo em instantes.");
+  /* ---- Inteligência artificial: Gemini primeiro, Groq de reserva ----
+     Cada modelo do Gemini tem o seu próprio limite grátis: quando um acaba,
+     tenta o próximo. Se todos acabarem e houver chave do Groq (também grátis),
+     o Groq responde no lugar. */
+  const limiteDe = (status, motivo) => status === 429 || /quota|exhausted|rate/.test(motivo);
+  async function chamarGemini(modelo, chave, corpoPedido) {
+    let resposta, corpo = null;
+    try {
+      resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": chave }, body: JSON.stringify(corpoPedido)
+      });
+      try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
+    } catch (erro) { return { falha: "rede" }; }
+    if (resposta.ok) {
+      const candidato = corpo && corpo.candidates && corpo.candidates[0];
+      const texto = candidato && candidato.content && (candidato.content.parts || []).map((p) => p.text || "").join("");
+      return texto ? { texto, candidato } : { falha: "vazio" };
     }
-    throw new Error(ultimoErro === "modelo" ? "Não encontrei um modelo do Gemini disponível para a sua chave. Tente gerar uma chave nova." : "A análise não deu certo agora.");
+    const status = resposta.status;
+    const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
+    if (status === 404 || motivo.includes("not found")) return { falha: "modelo" };
+    if ((status === 400 && motivo.includes("api key")) || status === 401 || status === 403) return { falha: "chave" };
+    if (limiteDe(status, motivo)) return { falha: "limite" };
+    if (status === 400 && (motivo.includes("search") || motivo.includes("tool"))) return { falha: "sem-busca" };
+    if (status >= 500) return { falha: "ocupado" };
+    return { falha: "outro" };
+  }
+  async function chamarGroq(modelo, prompt, temperatura, pedirJSON) {
+    let resposta, corpo = null;
+    try {
+      resposta = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + chaveGroq() },
+        body: JSON.stringify(Object.assign({ model: modelo, messages: [{ role: "user", content: prompt }], temperature: temperatura == null ? 0.7 : temperatura },
+          pedirJSON ? { response_format: { type: "json_object" } } : {}))
+      });
+      try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
+    } catch (erro) { return { falha: "rede" }; }
+    if (resposta.ok) {
+      const mensagem = corpo && corpo.choices && corpo.choices[0] && corpo.choices[0].message;
+      return mensagem && mensagem.content ? { texto: mensagem.content, mensagem } : { falha: "vazio" };
+    }
+    const status = resposta.status;
+    const motivo = String((corpo && corpo.error && corpo.error.message) || "").toLowerCase();
+    if (status === 401 || status === 403 || motivo.includes("api key")) return { falha: "chave" };
+    if (status === 404 || motivo.includes("does not exist") || motivo.includes("decommissioned")) return { falha: "modelo" };
+    if (limiteDe(status, motivo) || status === 413) return { falha: "limite" };
+    if (status >= 500) return { falha: "ocupado" };
+    return { falha: "outro" };
+  }
+  function lerJSON(texto) {
+    const limpo = String(texto || "").replace(/```json|```/g, "");
+    const i = limpo.indexOf("{"), j = limpo.lastIndexOf("}");
+    if (i < 0 || j <= i) throw new Error("A resposta veio bagunçada. Clique para tentar de novo.");
+    try { return JSON.parse(limpo.slice(i, j + 1)); }
+    catch (erro) { throw new Error("A resposta veio bagunçada. Clique para tentar de novo."); }
+  }
+  function erroDaIA(falhas) {
+    if (falhas.includes("chave-gemini") && !chaveGroq()) return "A chave do Gemini não foi aceita. Confira se copiou a chave inteira e salve de novo na aba Virais.";
+    if (falhas.includes("chave-groq")) return "A chave do Groq não foi aceita. Confira se copiou a chave inteira e salve de novo na aba Virais.";
+    if (falhas.includes("limite")) return chaveGroq()
+      ? "O Gemini e o Groq chegaram no limite grátis por agora. Espere alguns minutos e tente de novo (o limite do dia volta amanhã, sem pagar nada)."
+      : "O Gemini chegou no limite grátis por agora. Você não precisa pagar: o limite volta sozinho (o do dia volta amanhã). Para não ficar esperando, salve também a chave grátis do Groq na aba 🔥 Virais e eu uso ele de reserva.";
+    if (falhas.includes("rede")) return "Não consegui falar com a inteligência artificial. Confira a internet e tente de novo.";
+    if (falhas.includes("ocupado")) return "O serviço está sobrecarregado agora. Tente de novo em 1 minuto.";
+    return "Não deu certo agora. Tente de novo em instantes.";
+  }
+
+  /* pergunta e devolve JSON (Gemini, e se acabar o limite, Groq) */
+  async function perguntarGemini(prompt, temperatura) {
+    const falhas = [];
+    if (chaveGemini()) {
+      for (const modelo of MODELOS_GEMINI) {
+        const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: temperatura == null ? 0.7 : temperatura } });
+        if (r.texto) return lerJSON(r.texto);
+        if (r.falha === "chave") { falhas.push("chave-gemini"); break; }
+        falhas.push(r.falha);
+      }
+    }
+    if (chaveGroq()) {
+      for (const modelo of MODELOS_GROQ) {
+        const r = await chamarGroq(modelo, prompt, temperatura, true);
+        if (r.texto) return lerJSON(r.texto);
+        if (r.falha === "chave") { falhas.push("chave-groq"); break; }
+        falhas.push(r.falha);
+      }
+    }
+    throw new Error(erroDaIA(falhas));
   }
 
   /* transcrição pela Supadata (a mesma chave da aba Roteiros) */
@@ -1828,7 +1891,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
 
   /* ---- analisar ---- */
   async function analisarViral(dadosForm, existente) {
-    if (!chaveGemini()) { avisoVir("erro", SEM_CHAVE_GEMINI); const c = $("#vir-chave"); if (c) c.focus(); return; }
+    if (!temIA()) { avisoVir("erro", SEM_CHAVE_GEMINI); const c = $("#vir-chave"); if (c) c.focus(); return; }
     const link = dadosForm.url ? limparLink(dadosForm.url) : "";
     if (dadosForm.url && !link) { avisoVir("erro", "🤔 Esse link não parece certo. Cole o link completo do vídeo, começando com https://"); return; }
     const fonte = (link && fonteDoLink(link)) || "manual";
@@ -1963,7 +2026,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
       const f = e.target.elements;
       const ideia = f.ideia.value.trim();
       if (!ideia) { recado("Escreva a sua ideia primeiro.", true); f.ideia.focus(); return; }
-      if (!chaveGemini()) { fecharModal(); avisoVir("erro", SEM_CHAVE_GEMINI); return; }
+      if (!temIA()) { fecharModal(); avisoVir("erro", SEM_CHAVE_GEMINI); return; }
       const botao = $("#vir-gerar");
       botao.disabled = true;
       const caixa = $("#vir-andamento");
@@ -2094,6 +2157,13 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
           ${chaveGemini() ? `<button type="button" class="botao botao-leve" id="vir-tirar-chave">Remover</button>` : ""}
           <span class="dica">${chaveGemini() ? "✅ Chave salva." : `Pegue grátis em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.`} ${chaveSupadata() ? "🎧 Transcrição pela Supadata ligada." : "🎧 Para ouvir pelo link, salve também a chave da Supadata na aba Roteiros."}</span>
         </div>
+        <div class="rot-config">
+          <label for="vir-chave-groq">🛟 Chave do Groq (grátis, reserva para quando o Gemini chegar no limite)</label>
+          <input class="campo-busca" id="vir-chave-groq" type="password" autocomplete="off" spellcheck="false" placeholder="${chaveGroq() ? "salva, termina em ••••" + esc(chaveGroq().slice(-4)) : "cole aqui a chave do Groq (começa com gsk_)"}">
+          <button type="button" class="botao botao-leve" id="vir-salvar-groq">💾 Salvar</button>
+          ${chaveGroq() ? `<button type="button" class="botao botao-leve" id="vir-tirar-groq">Remover</button>` : ""}
+          <span class="dica">${chaveGroq() ? "✅ Reserva ligada: se o Gemini chegar no limite, eu uso o Groq sozinha." : `Pegue grátis em <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> (entre com a conta Google, clique em "Create API Key"). Não pede cartão. Vale para as abas Virais e Tendências.`}</span>
+        </div>
       </section>
       <section class="cartao">
         <div class="cartao-topo">
@@ -2132,6 +2202,26 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
         const { error } = await banco.from("configuracoes").delete().eq("chave", CHAVE_GEMINI);
         if (error) throw error;
         delete dados.config[CHAVE_GEMINI];
+        recado("Chave removida");
+        renderVirais(area);
+      } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); }
+    });
+    $("#vir-salvar-groq").addEventListener("click", async () => {
+      const valor = $("#vir-chave-groq").value.trim();
+      if (!valor) { recado("Cole a chave no campo antes de salvar.", true); $("#vir-chave-groq").focus(); return; }
+      if (await salvarConfig(CHAVE_GROQ, valor)) {
+        recado("Chave do Groq salva ✓");
+        if (estadoVir.aviso && /limite|Gemini/.test(estadoVir.aviso.html)) avisoVir(null);
+        renderVirais(area);
+      }
+    });
+    const tirarGroq = $("#vir-tirar-groq");
+    if (tirarGroq) tirarGroq.addEventListener("click", async () => {
+      if (!confirm("Remover a chave do Groq deste painel?")) return;
+      try {
+        const { error } = await banco.from("configuracoes").delete().eq("chave", CHAVE_GROQ);
+        if (error) throw error;
+        delete dados.config[CHAVE_GROQ];
         recado("Chave removida");
         renderVirais(area);
       } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); }
@@ -2197,53 +2287,48 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
     } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); return false; }
   }
 
-  /* Gemini com busca no Google: devolve o JSON e as fontes que ele usou */
-  function extrairJSON(texto) {
-    const limpo = String(texto || "").replace(/```json|```/g, "");
-    const i = limpo.indexOf("{"), j = limpo.lastIndexOf("}");
-    if (i < 0 || j <= i) throw new Error("A resposta veio bagunçada. Tente buscar de novo.");
-    return JSON.parse(limpo.slice(i, j + 1));
+  function fontesUnicas(lista) {
+    const vistos = new Set();
+    return lista.filter((f) => f && f.link && !vistos.has(f.link) && vistos.add(f.link)).slice(0, 25);
   }
+  /* pesquisa na internet: Gemini com Google, depois Groq com busca, e por último sem busca */
   async function perguntarGeminiComBusca(prompt) {
-    const chave = chaveGemini();
-    for (const modelo of MODELOS_GEMINI) {
-      let resposta, corpo = null;
-      try {
-        resposta = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": chave },
-          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.8 } })
-        });
-        try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
-      } catch (erro) { throw new Error("Não consegui falar com o Gemini. Confira a internet e tente de novo."); }
-      if (resposta.ok) {
-        const candidato = corpo && corpo.candidates && corpo.candidates[0];
-        const texto = candidato && candidato.content && (candidato.content.parts || []).map((p) => p.text || "").join("");
-        if (!texto) throw new Error("O Gemini não devolveu resposta dessa vez. Tente de novo.");
-        let json;
-        try { json = extrairJSON(texto); } catch (erro) { throw new Error("A resposta veio bagunçada. Tente buscar de novo."); }
-        const vistos = new Set();
-        const fontes = ((candidato.groundingMetadata && candidato.groundingMetadata.groundingChunks) || [])
-          .map((c) => c && c.web).filter((w) => w && w.uri)
-          .filter((w) => { const k = w.title || w.uri; if (vistos.has(k)) return false; vistos.add(k); return true; })
-          .map((w) => ({ titulo: w.title || w.uri, link: w.uri }));
-        return { json, fontes, comBusca: true };
+    const falhas = [];
+    if (chaveGemini()) {
+      for (const modelo of MODELOS_GEMINI) {
+        const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.8 } });
+        if (r.texto) {
+          const json = lerJSON(r.texto);
+          const fontes = ((r.candidato.groundingMetadata && r.candidato.groundingMetadata.groundingChunks) || [])
+            .map((c) => c && c.web).filter((w) => w && w.uri).map((w) => ({ titulo: w.title || w.uri, link: w.uri }));
+          return { json, fontes: fontesUnicas(fontes), comBusca: true, motor: "Gemini" };
+        }
+        if (r.falha === "chave") { falhas.push("chave-gemini"); break; }
+        falhas.push(r.falha);
       }
-      const status = resposta.status;
-      const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
-      if (status === 404 || motivo.includes("not found")) continue;
-      if (status === 400 && motivo.includes("api key")) throw new Error("A chave do Gemini não foi aceita. Confira na aba Virais e salve de novo.");
-      if (status === 400 && (motivo.includes("search") || motivo.includes("tool"))) {
-        /* sem a busca no Google disponível: pede só com o que o Gemini já sabe */
-        const json = await perguntarGemini(prompt, 0.8);
-        return { json, fontes: [], comBusca: false };
-      }
-      if (status === 401 || status === 403) throw new Error("A chave do Gemini não foi aceita ou está sem permissão. Gere uma nova em aistudio.google.com/apikey e salve na aba Virais.");
-      if (status === 429) throw new Error("Você chegou no limite grátis do Gemini por agora. Espere alguns minutos e tente de novo (se for o limite do dia, ele volta amanhã).");
-      if (status >= 500) throw new Error("O Gemini está sobrecarregado agora. Tente de novo em 1 minuto.");
-      throw new Error("A busca não deu certo agora. Tente de novo em instantes.");
     }
-    throw new Error("Não encontrei um modelo do Gemini disponível para a sua chave. Tente gerar uma chave nova.");
+    if (chaveGroq()) {
+      for (const modelo of MODELOS_GROQ_BUSCA) {
+        const r = await chamarGroq(modelo, prompt, 0.8, false);
+        if (r.texto) {
+          const json = lerJSON(r.texto);
+          const fontes = [];
+          ((r.mensagem && r.mensagem.executed_tools) || []).forEach((ferramenta) => {
+            const resultados = (ferramenta && ferramenta.search_results && ferramenta.search_results.results) || [];
+            resultados.forEach((s) => { if (s && s.url) fontes.push({ titulo: s.title || s.url, link: s.url }); });
+          });
+          return { json, fontes: fontesUnicas(fontes), comBusca: true, motor: "Groq" };
+        }
+        if (r.falha === "chave") { falhas.push("chave-groq"); break; }
+        falhas.push(r.falha);
+      }
+    }
+    /* sem busca na internet disponível agora: pede só com o que a inteligência artificial já sabe */
+    if (falhas.includes("sem-busca") || falhas.includes("outro") || (chaveGroq() && !falhas.includes("chave-groq"))) {
+      try { return { json: await perguntarGemini(prompt, 0.8), fontes: [], comBusca: false, motor: "" }; }
+      catch (erro) { /* usa a mensagem abaixo */ }
+    }
+    throw new Error(erroDaIA(falhas));
   }
 
   function promptTendencias(temas, plataformas) {
@@ -2290,7 +2375,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
 
   async function buscarTendencias(automatica) {
     if (estadoTend.buscando) return;
-    if (!chaveGemini()) { avisoTend("erro", `✨ Para eu pesquisar as tendências, falta a chave grátis do Gemini. É a mesma da aba <a href="#virais">🔥 Virais</a>: salve ela lá e volte aqui.`); return; }
+    if (!temIA()) { avisoTend("erro", `✨ Para eu pesquisar as tendências, falta a chave grátis do Gemini. É a mesma da aba <a href="#virais">🔥 Virais</a>: salve ela lá e volte aqui.`); return; }
     const temas = temasTend(), plataformas = plataformasTend();
     if (!temas.length || !plataformas.length) { avisoTend("erro", "Escolha pelo menos um tema e uma plataforma."); return; }
     estadoTend.buscando = true;
@@ -2299,7 +2384,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
     andar();
     const relogio = setInterval(andar, 3000);
     try {
-      const { json, fontes, comBusca } = await perguntarGeminiComBusca(promptTendencias(temas, plataformas));
+      const { json, fontes, comBusca, motor } = await perguntarGeminiComBusca(promptTendencias(temas, plataformas));
       const itens = (Array.isArray(json.tendencias) ? json.tendencias : []).filter((x) => x && x.titulo).map((x, i) => ({ ...x, id: "t" + Date.now() + i, status: "nova" }));
       if (!itens.length) throw new Error("Não encontrei tendências dessa vez. Tente buscar de novo.");
       const linha = await gravar("tendencias", { nichos: temas, plataformas, resumo: semTravessao(json.resumo || ""), itens, fontes, sem_busca: !comBusca });
@@ -2308,7 +2393,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
       if (!linha) { avisoTend("erro", "😕 Achei as tendências, mas não consegui guardar porque a tabela de tendências ainda não existe no Supabase. Clique em Copiar o SQL, cole no SQL Editor, clique em Run e busque de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
       dados.tendencias.unshift(linha);
       estadoTend.selecionada = linha.id;
-      avisoTend("ok", `✅ ${plural(itens.length, "tendência nova encontrada", "tendências novas encontradas")}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet, então as ideias vieram do que o Gemini já sabe"}.`);
+      avisoTend("ok", `✅ ${plural(itens.length, "tendência nova encontrada", "tendências novas encontradas")}${motor === "Groq" ? " (pelo Groq, porque o Gemini estava no limite)" : ""}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet, então as ideias vieram do que a inteligência artificial já sabe"}.`);
       if (abaAtual() === "tendencias") renderTendencias($("#area"));
     } catch (erro) {
       clearInterval(relogio);
@@ -2447,7 +2532,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
           ${buscas.length > 1 ? `<select class="filtro" id="tend-historico" aria-label="Buscas anteriores">${buscas.map((b) => `<option value="${esc(b.id)}" ${b.id === atual.id ? "selected" : ""}>Busca de ${quando(b)}</option>`).join("")}</select>` : ""}
         </div>
         ${atual.resumo ? `<p class="tend-resumo">🧭 ${esc(atual.resumo)}</p>` : ""}
-        ${atual.sem_busca ? `<p class="dica">⚠️ Nesta busca não consegui pesquisar na internet, então as ideias vieram do que o Gemini já sabe.</p>` : ""}
+        ${atual.sem_busca ? `<p class="dica">⚠️ Nesta busca não consegui pesquisar na internet, então as ideias vieram do que a inteligência artificial já sabe.</p>` : ""}
         <div class="ferramentas" style="margin:12px 0">
           <div class="chips" role="group" aria-label="Filtrar por tema">
             ${[["todos", "Todos"], ["quero", "⭐ Quero fazer"]].concat(temasNaBusca.map((t) => [t, t])).map(([v, t]) => `<button type="button" data-tema="${esc(v)}" aria-pressed="${estadoTend.tema === v}">${esc(t)}</button>`).join("")}
@@ -2459,7 +2544,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
         <div class="tend-grade">${filtrados.length ? filtrados.map(cardTendencia).join("") : `<p class="frase-vazia">Nenhuma tendência com esse filtro.</p>`}</div>
         ${(atual.fontes || []).length ? `<details class="tend-fontes"><summary>📚 Onde eu pesquisei (${atual.fontes.length})</summary><ul class="lista-simples">${atual.fontes.slice(0, 20).map((f) => `<li><a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.titulo)}</a></li>`).join("")}</ul></details>` : ""}
       </section>` : `
-      <section class="cartao"><p class="frase-vazia">📭 Ainda não tenho tendências guardadas. ${chaveGemini() ? "Clique em Buscar tendências agora." : "Salve a chave grátis do Gemini na aba 🔥 Virais e volte aqui."}</p></section>`}`;
+      <section class="cartao"><p class="frase-vazia">📭 Ainda não tenho tendências guardadas. ${temIA() ? "Clique em Buscar tendências agora." : "Salve a chave grátis do Gemini na aba 🔥 Virais e volte aqui."}</p></section>`}`;
 
     avisoTend(estadoTend.aviso ? estadoTend.aviso.tipo : null, estadoTend.aviso ? estadoTend.aviso.html : "", estadoTend.aviso ? estadoTend.aviso.acao : null);
     $("#tend-buscar").addEventListener("click", () => buscarTendencias(false));
@@ -2503,7 +2588,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
     });
 
     /* atualização sozinha: ao abrir a aba, se a última busca tiver mais de 3 dias */
-    if (!estadoTend.autoTentado && chaveGemini() && (diasDesde === null || diasDesde >= DIAS_PARA_ATUALIZAR) && !avisosMostrados.has("tabela-tendencias")) {
+    if (!estadoTend.autoTentado && temIA() && (diasDesde === null || diasDesde >= DIAS_PARA_ATUALIZAR) && !avisosMostrados.has("tabela-tendencias")) {
       estadoTend.autoTentado = true;
       buscarTendencias(true);
     }
