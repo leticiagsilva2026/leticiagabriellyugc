@@ -183,3 +183,89 @@ create policy "site registra visita" on public.visitas
 revoke all on public.eventos from anon;
 grant insert on public.eventos to anon;
 grant select, insert, update, delete on public.eventos to authenticated;
+
+
+-- 1) Biblioteca de roteiros (os seus e os de outras creators)
+create table if not exists public.roteiros (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  fonte        text not null default 'manual' check (fonte in ('instagram', 'tiktok', 'youtube', 'manual')),
+  url          text not null default '',
+  perfil       text not null default '',
+  de_quem      text not null default 'outra' check (de_quem in ('minha', 'outra')),
+  titulo       text not null default '',
+  transcricao  text not null default '',
+  legenda      text not null default '',
+  postado_em   date,
+  tags         text[] not null default '{}',
+  obs          text not null default '',
+  status       text not null default 'pronto' check (status in ('processando', 'pronto', 'falhou')),
+  erro         text,
+  segmentos    jsonb
+);
+
+-- Deixa a biblioteca rápida, do mais novo para o mais antigo
+create index if not exists roteiros_created_at_idx on public.roteiros (created_at desc);
+
+
+-- 2) Configurações do painel (chave e valor). Ex: a chave da Supadata.
+create table if not exists public.configuracoes (
+  chave       text primary key,
+  valor       text,
+  updated_at  timestamptz not null default now()
+);
+
+
+-- 3) Atualiza o campo updated_at sozinho sempre que uma linha muda
+create or replace function public.marcar_atualizacao()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists roteiros_atualizado on public.roteiros;
+create trigger roteiros_atualizado before update on public.roteiros
+  for each row execute function public.marcar_atualizacao();
+
+drop trigger if exists configuracoes_atualizado on public.configuracoes;
+create trigger configuracoes_atualizado before update on public.configuracoes
+  for each row execute function public.marcar_atualizacao();
+
+
+-- 4) A TRANCA (RLS): ligada nas duas tabelas
+alter table public.roteiros      enable row level security;
+alter table public.configuracoes enable row level security;
+
+
+-- 5) As regras: só você, logada, lê, cria, edita e apaga.
+--    Usa a mesma conferência de dona das outras tabelas (função e_a_dona,
+--    criada pelo banco.sql). Ninguém deslogado tem regra nenhuma.
+drop policy if exists "dona le roteiros" on public.roteiros;
+create policy "dona le roteiros" on public.roteiros for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria roteiros" on public.roteiros;
+create policy "dona cria roteiros" on public.roteiros for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita roteiros" on public.roteiros;
+create policy "dona edita roteiros" on public.roteiros for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga roteiros" on public.roteiros;
+create policy "dona apaga roteiros" on public.roteiros for delete to authenticated using (public.e_a_dona());
+
+drop policy if exists "dona le configuracoes" on public.configuracoes;
+create policy "dona le configuracoes" on public.configuracoes for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria configuracoes" on public.configuracoes;
+create policy "dona cria configuracoes" on public.configuracoes for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita configuracoes" on public.configuracoes;
+create policy "dona edita configuracoes" on public.configuracoes for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga configuracoes" on public.configuracoes;
+create policy "dona apaga configuracoes" on public.configuracoes for delete to authenticated using (public.e_a_dona());
+
+
+-- 6) Permissões de base: nada para quem não está logado
+revoke all on public.roteiros, public.configuracoes from anon;
+grant select, insert, update, delete on public.roteiros, public.configuracoes to authenticated;
+
+-- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

@@ -115,9 +115,11 @@
     campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
-    eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"]
+    eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
+    roteiros: ["fonte", "url", "perfil", "de_quem", "titulo", "transcricao", "legenda", "postado_em", "tags", "obs", "status", "erro"],
+    configuracoes: ["chave", "valor"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [] };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -149,16 +151,20 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
       buscar("campanhas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("marcados", (q) => q.select("*")),
       buscarEmPartes("visitas", desde),
-      buscarEmPartes("eventos", desde)
+      buscarEmPartes("eventos", desde),
+      buscar("roteiros", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
+      buscar("configuracoes", (q) => q.select("*"))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt;
+    dados.config = {};
+    cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
     mc.forEach((linha) => { if (linha.marcado !== false && linha.chave) marcados.add(linha.chave); });
   }
@@ -228,15 +234,16 @@
     if (campo.tipo === "select")
       return `<label class="${classe}">${esc(campo.rotulo)}<select name="${campo.nome}">${campo.opcoes.map(([valor, texto]) => `<option value="${esc(valor)}" ${String(v) === String(valor) ? "selected" : ""}>${esc(texto)}</option>`).join("")}</select>${dica}</label>`;
     if (campo.tipo === "textarea")
-      return `<label class="inteira">${esc(campo.rotulo)}<textarea name="${campo.nome}">${esc(v)}</textarea>${dica}</label>`;
+      return `<label class="inteira">${esc(campo.rotulo)}<textarea name="${campo.nome}" class="${campo.alto ? "alto" : ""}">${esc(v)}</textarea>${dica}</label>`;
     const lista = campo.lista ? `list="lista-${campo.nome}"` : "";
     const datalist = campo.lista ? `<datalist id="lista-${campo.nome}">${campo.lista.map((o) => `<option value="${esc(o)}">`).join("")}</datalist>` : "";
     const extra = campo.tipo === "number" ? `min="0" step="${campo.passo || 1}"` : "";
     return `<label class="${classe}">${esc(campo.rotulo)}${campo.obrigatorio ? " *" : ""}<input type="${campo.tipo || "text"}" name="${campo.nome}" value="${esc(v == null ? "" : v)}" ${lista} ${extra}>${datalist}${dica}</label>`;
   }
 
-  function formulario({ titulo, campos, valores = {}, aoSalvar, aoApagar }) {
+  function formulario({ titulo, campos, valores = {}, aoSalvar, aoApagar, larga, aviso }) {
     const html = `<form class="form-grade" id="form-modal" novalidate>
+      ${aviso ? `<div class="form-aviso inteira">${esc(aviso)}</div>` : ""}
       ${campos.map((c) => campoHTML(c, valores)).join("")}
       <div class="form-acoes inteira">
         ${aoApagar ? '<button type="button" class="botao botao-perigo" id="form-apagar">Apagar</button>' : ""}
@@ -244,7 +251,7 @@
         <button type="button" class="botao botao-leve" id="form-cancelar">Cancelar</button>
         <button type="submit" class="botao botao-principal" id="form-salvar">Salvar</button>
       </div></form>`;
-    abrirModal(titulo, html);
+    abrirModal(titulo, html, larga);
     const form = $("#form-modal");
     $("#form-cancelar").addEventListener("click", fecharModal);
     if (aoApagar) $("#form-apagar").addEventListener("click", async () => {
@@ -278,6 +285,7 @@
     marcas: ["Marcas", renderMarcas],
     calendario: ["Calendário", renderCalendario],
     campanhas: ["Campanhas", renderCampanhas],
+    roteiros: ["📜 Roteiros", renderRoteiros],
     checklist: ["Checklist do portfólio", renderChecklist]
   };
   const abaAtual = () => { const h = location.hash.replace("#", ""); return ABAS[h] ? h : "portfolio"; };
@@ -1145,6 +1153,461 @@
       if (!ok) caixa.checked = !caixa.checked;
       subRevisar(sub, B);
     };
+  }
+
+  /* =================================================================
+     ABA 6: ROTEIROS (transcrição de vídeos pela Supadata + biblioteca)
+     A chave da Supadata fica na tabela "configuracoes" (nunca no código).
+     ================================================================= */
+  const SUPADATA = "https://api.supadata.ai/v1";
+  const CHAVE_SUPADATA = "supadata_api_key";
+  const estadoRot = { busca: "", filtro: "todos", deQuem: "outra", link: "", aviso: null, saldo: null, saldoErro: "", saldoPedido: false };
+  const transcrevendo = new Set();
+  const NOME_FONTE = { instagram: "📸 Instagram", tiktok: "🎵 TikTok", youtube: "▶️ YouTube", manual: "✍️ Escrito na mão" };
+  const EMOJI_FONTE = { instagram: "📸", tiktok: "🎵", youtube: "▶️", manual: "✍️" };
+  const chaveSupadata = () => String(dados.config[CHAVE_SUPADATA] || "").trim();
+
+  /* ---- links ---- */
+  function limparLink(bruto) {
+    const texto = String(bruto || "").trim();
+    if (!/^https?:\/\//i.test(texto)) return null;
+    let u;
+    try { u = new URL(texto); } catch (erro) { return null; }
+    u.hash = "";
+    Array.from(u.searchParams.keys()).forEach((k) => {
+      if (/^utm_/i.test(k) || ["igsh", "igshid", "si", "feature", "is_from_webapp", "sender_device", "_r", "_t", "share_app_id"].includes(k)) u.searchParams.delete(k);
+    });
+    u.pathname = u.pathname.replace(/\/reels\//i, "/reel/");
+    return u.toString().replace(/\?$/, "");
+  }
+  function fonteDoLink(link) {
+    const host = (() => { try { return new URL(link).hostname.toLowerCase(); } catch (erro) { return ""; } })();
+    if (/(^|\.)instagram\.com$/.test(host)) return "instagram";
+    if (/(^|\.)tiktok\.com$/.test(host)) return "tiktok";
+    if (/(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(host)) return "youtube";
+    return "";
+  }
+  function perfilDoLink(link, fonte) {
+    try {
+      const partes = new URL(link).pathname.split("/").filter(Boolean);
+      if (fonte === "instagram" && partes.length >= 3 && ["reel", "p", "tv"].includes(partes[1])) return "@" + partes[0];
+      if (fonte === "tiktok" && partes[0] && partes[0].startsWith("@")) return partes[0];
+    } catch (erro) { /* sem perfil no link */ }
+    return "";
+  }
+  function idDoVideo(fonte, link) {
+    const s = String(link || "");
+    if (fonte === "instagram") return (s.match(/instagram\.com\/(?:[^/]+\/)?(?:reel|p|tv)\/([\w-]+)/i) || [])[1] || "";
+    if (fonte === "youtube") return idYT(s);
+    if (fonte === "tiktok") return (s.match(/\/video\/(\d+)/) || [])[1] || "";
+    return "";
+  }
+  function linkEmbed(fonte, id) {
+    if (fonte === "instagram") return `https://www.instagram.com/reel/${id}/embed`;
+    if (fonte === "youtube") return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&playsinline=1`;
+    if (fonte === "tiktok") return `https://www.tiktok.com/embed/v2/${id}`;
+    return "";
+  }
+
+  /* ---- Supadata ---- */
+  async function pedirSupadata(caminho, chave, parametros) {
+    const url = SUPADATA + caminho + (parametros ? "?" + new URLSearchParams(parametros).toString() : "");
+    const resposta = await fetch(url, { headers: { "x-api-key": chave } });
+    let corpo = null;
+    try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
+    return { status: resposta.status, corpo };
+  }
+  function erroSupadata(status, corpo) {
+    const codigo = String((corpo && (corpo.error || corpo.code)) || "").toLowerCase();
+    const detalhe = String((corpo && (corpo.details || corpo.message)) || "").toLowerCase();
+    if (codigo === "limit-exceeded" || status === 429) {
+      if (detalhe.includes("plan usage")) return "Acabaram os créditos do mês na Supadata. Eles voltam no começo do próximo ciclo, ou dá para trocar de plano no site deles.";
+      if (detalhe.includes("request rate") || detalhe.includes("rate limit")) return "Foram muitos pedidos seguidos. Espere 1 minuto e tente de novo.";
+      return "A Supadata pediu uma pausa. Espere 1 minuto e tente de novo.";
+    }
+    if (status === 401 || status === 403 || codigo.includes("unauthorized") || codigo.includes("api-key") || codigo.includes("forbidden"))
+      return "A chave da Supadata não foi aceita. Confira se copiou a chave inteira e salve de novo.";
+    if (status === 206 || codigo === "transcript-unavailable") return "VAZIO";
+    if (status === 404 || codigo === "not-found") return "Não encontrei esse vídeo. Confira se o link abre e se o perfil é público.";
+    if (status === 400 || codigo === "invalid-request") return "Esse link não foi aceito. Confira se é o link de um vídeo do Instagram, TikTok ou YouTube.";
+    return "A transcrição não deu certo agora. Tente de novo em alguns minutos.";
+  }
+  function textoDoResultado(c) {
+    const conteudo = c && c.content;
+    if (typeof conteudo === "string") return { texto: conteudo.trim(), segmentos: null, lang: c.lang };
+    if (Array.isArray(conteudo)) return { texto: conteudo.map((s) => (s && s.text) || "").join(" ").replace(/\s+/g, " ").trim(), segmentos: conteudo, lang: c.lang };
+    return { texto: "", segmentos: null, lang: c && c.lang };
+  }
+  const esperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const MSG_VAZIO = "Não achei fala nesse vídeo. Costuma ser reel só com música ou só com texto na tela.";
+
+  async function atualizarSaldo() {
+    const chave = chaveSupadata();
+    estadoRot.saldo = null; estadoRot.saldoErro = "";
+    if (!chave) { mostrarSaldo(); return; }
+    try {
+      const { status, corpo } = await pedirSupadata("/me", chave);
+      if (status === 200 && corpo) estadoRot.saldo = corpo;
+      else estadoRot.saldoErro = erroSupadata(status, corpo);
+    } catch (erro) { estadoRot.saldoErro = "Não consegui ver o saldo agora."; }
+    mostrarSaldo();
+  }
+  function textoSaldo() {
+    if (!chaveSupadata()) return "Sem chave salva ainda.";
+    if (estadoRot.saldoErro) return "⚠️ " + estadoRot.saldoErro;
+    const s = estadoRot.saldo;
+    if (!s) return "Conferindo o saldo...";
+    const usados = numero(s.usedCredits), maximo = numero(s.maxCredits);
+    return `📊 ${usados} de ${maximo} créditos usados este mês${s.plan ? ` (plano ${esc(s.plan)})` : ""}`;
+  }
+  function mostrarSaldo() { const el = $("#rot-saldo"); if (el) el.innerHTML = textoSaldo(); }
+
+  /* ---- aviso do topo (andamento e erros) ---- */
+  function avisoRot(tipo, html, acao) {
+    estadoRot.aviso = tipo ? { tipo, html, acao } : null;
+    desenharAvisoRot();
+  }
+  function desenharAvisoRot() {
+    const el = $("#rot-aviso");
+    if (!el) return;
+    const a = estadoRot.aviso;
+    if (!a) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.className = "rot-aviso " + a.tipo;
+    el.innerHTML = `<span>${a.html}</span>${a.acao ? `<button type="button" class="botao botao-leve" id="rot-aviso-acao">${esc(a.acao.texto)}</button>` : ""}`;
+    if (a.acao) $("#rot-aviso-acao").addEventListener("click", a.acao.fazer);
+  }
+  const SEM_CHAVE = `🔑 Para transcrever, falta a chave da Supadata. É grátis: crie uma conta em <a href="https://supadata.ai" target="_blank" rel="noopener">supadata.ai</a> (100 créditos por mês, sem cartão), copie a API key no painel deles e cole no campo "Chave da Supadata" aqui embaixo.`;
+
+  /* ---- transcrever ---- */
+  async function transcrever(linkBruto, deQuem, existente) {
+    const link = limparLink(linkBruto);
+    if (!link) { avisoRot("erro", "🤔 Esse link não parece certo. Cole o link completo do vídeo, começando com https://"); return; }
+    const fonte = fonteDoLink(link);
+    if (!fonte) { avisoRot("erro", "🤔 Esse link não é do Instagram, TikTok ou YouTube. Para outro tipo de vídeo, use \"Escrever na mão\"."); return; }
+    const chave = chaveSupadata();
+    if (!chave) { avisoRot("erro", SEM_CHAVE); const campo = $("#rot-chave"); if (campo) campo.focus(); return; }
+    let linha = existente || null;
+    if (!linha) {
+      const repetido = dados.roteiros.find((r) => r.url === link);
+      if (repetido) {
+        if (!confirm("Esse vídeo já está na sua biblioteca. Quer transcrever de novo?")) { avisoRot("info", "👍 Ok, deixei como estava. Ele já está na biblioteca."); return; }
+        linha = repetido;
+      }
+    }
+    linha = linha
+      ? await gravar("roteiros", { status: "processando", erro: null, url: link, fonte }, linha.id)
+      : await gravar("roteiros", { fonte, url: link, perfil: perfilDoLink(link, fonte), de_quem: deQuem === "minha" ? "minha" : "outra", status: "processando" });
+    if (!linha) { avisoRot("erro", "😕 Não consegui criar o roteiro na biblioteca. Confira se a tabela de roteiros foi criada no Supabase."); return; }
+    trocarNaLista(dados.roteiros, linha);
+    ordenarRoteiros();
+    transcrevendo.add(linha.id);
+    estadoRot.link = "";
+    redesenharRoteiros();
+
+    const inicio = Date.now();
+    const andamento = () => {
+      const s = Math.round((Date.now() - inicio) / 1000);
+      const tempo = s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${dois(s % 60)}s`;
+      avisoRot("andamento", `🎧 Ouvindo o vídeo… ${tempo}. Costuma levar de 3 a 4 minutos, pode deixar a aba aberta.`);
+    };
+    andamento();
+    const relogio = setInterval(andamento, 5000);
+
+    let resultado = null, mensagem = "";
+    try {
+      const primeiro = await pedirSupadata("/transcript", chave, { url: link, mode: "auto", text: "true", lang: "pt" });
+      if (primeiro.status === 200) resultado = primeiro.corpo;
+      else if (primeiro.status === 202 && primeiro.corpo && primeiro.corpo.jobId) {
+        const limite = Date.now() + 6 * 60 * 1000;
+        while (!resultado && !mensagem) {
+          if (Date.now() > limite) { mensagem = "Demorou mais de 6 minutos e eu desisti. Tente de novo mais tarde, vídeos longos às vezes demoram."; break; }
+          await esperar(5000);
+          const job = await pedirSupadata("/transcript/" + encodeURIComponent(primeiro.corpo.jobId), chave);
+          const st = job.corpo && String(job.corpo.status || "").toLowerCase();
+          if (job.status !== 200 && job.status !== 202) mensagem = erroSupadata(job.status, job.corpo);
+          else if (st === "completed") resultado = job.corpo.result || job.corpo;
+          else if (st === "failed") mensagem = erroSupadata(job.status, job.corpo && job.corpo.error ? (typeof job.corpo.error === "object" ? job.corpo.error : job.corpo) : job.corpo);
+        }
+      } else mensagem = erroSupadata(primeiro.status, primeiro.corpo);
+    } catch (erro) {
+      mensagem = "Não consegui falar com a Supadata. Confira a internet e tente de novo.";
+    }
+    clearInterval(relogio);
+    transcrevendo.delete(linha.id);
+
+    let final;
+    const { texto, segmentos, lang } = resultado ? textoDoResultado(resultado) : { texto: "" };
+    if (resultado && texto && lang !== "none") {
+      final = await gravar("roteiros", { transcricao: texto, segmentos, status: "pronto", erro: null }, linha.id);
+      if (final) trocarNaLista(dados.roteiros, final);
+      avisoRot("ok", "✅ Pronto. Revisa, dá um nome e salva.");
+      redesenharRoteiros();
+      atualizarSaldo();
+      if (final) editarRoteiro(final, "✅ Pronto. Revisa, dá um nome e salva.");
+      return;
+    }
+    const vazio = (resultado && (!texto || lang === "none")) || mensagem === "VAZIO";
+    const motivo = vazio ? MSG_VAZIO : mensagem;
+    final = await gravar("roteiros", { status: "falhou", erro: motivo }, linha.id);
+    if (final) trocarNaLista(dados.roteiros, final);
+    redesenharRoteiros();
+    atualizarSaldo();
+    if (vazio) avisoRot("erro", "🎶 " + MSG_VAZIO, { texto: "📝 Guardar assim mesmo", fazer: () => editarRoteiro(final || linha, "📝 Escreva aqui o texto do vídeo, se quiser.") });
+    else avisoRot("erro", "😕 " + esc(motivo));
+  }
+
+  /* ---- biblioteca ---- */
+  function ordenarRoteiros() { dados.roteiros.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || ""))); }
+  function tagsDe(r) { return Array.isArray(r.tags) ? r.tags.filter(Boolean) : []; }
+  function roteirosFiltrados() {
+    const b = estadoRot.busca.toLowerCase().trim();
+    return dados.roteiros.filter((r) => {
+      if (estadoRot.filtro === "minha" && r.de_quem !== "minha") return false;
+      if (estadoRot.filtro === "outra" && r.de_quem === "minha") return false;
+      if (estadoRot.filtro.startsWith("tag:") && !tagsDe(r).includes(estadoRot.filtro.slice(4))) return false;
+      if (!b) return true;
+      return [r.transcricao, r.perfil, r.titulo, r.obs, r.legenda].some((c) => String(c || "").toLowerCase().includes(b));
+    });
+  }
+  function cardRoteiro(r) {
+    const fonte = NOME_FONTE[r.fonte] ? r.fonte : "manual";
+    const id = idDoVideo(fonte, r.url);
+    const podeVer = !!(r.url && id && fonte !== "manual");
+    const rodando = transcrevendo.has(r.id);
+    const data = r.postado_em ? dataBR(r.postado_em) : (r.created_at ? dataBR(String(r.created_at).slice(0, 10)) : "");
+    const etiqueta = r.de_quem === "minha" ? `<span class="pilula p-minha">⭐ Meu</span>` : `<span class="pilula p-outra">👀 De outra</span>`;
+    let situacao = "";
+    if (r.status === "processando") situacao = `<p class="rot-status"><span class="rot-relogio" aria-hidden="true">⏳</span>${rodando ? "Transcrevendo agora..." : "Ficou pela metade. A transcrição foi interrompida."}</p>`;
+    if (r.status === "falhou") situacao = `<p class="rot-status falhou">⚠️ ${esc(r.erro || "A transcrição não deu certo.")}</p>`;
+    const acoes = [];
+    if (r.status === "pronto" || r.transcricao) acoes.push(`<button type="button" class="botao botao-leve" data-acao="copiar">📋 Copiar transcrição</button>`);
+    if (r.status === "falhou") acoes.push(`<button type="button" class="botao botao-leve" data-acao="editar">📂 Abrir mesmo assim</button>`);
+    if ((r.status === "processando" && !rodando) || r.status === "falhou") acoes.push(`<button type="button" class="botao botao-leve" data-acao="tentar">🔁 Tentar de novo</button>`);
+    if (r.status !== "falhou") acoes.push(`<button type="button" class="botao botao-leve" data-acao="editar">✏️ Editar</button>`);
+    acoes.push(`<button type="button" class="botao botao-leve" data-acao="apagar">🗑️ Apagar</button>`);
+    return `<article class="rot-card" data-id="${esc(r.id)}">
+      <div class="rot-capa f-${fonte}">
+        ${fonte === "youtube" && id ? `<img src="https://i.ytimg.com/vi/${esc(id)}/hqdefault.jpg" alt="" loading="lazy">` : `<span class="rot-capa-emoji" aria-hidden="true">${EMOJI_FONTE[fonte]}</span>`}
+        ${podeVer ? `<button type="button" class="rot-ver" data-acao="ver">▶ ver vídeo</button>` : ""}
+      </div>
+      <div class="rot-corpo">
+        <h3>${r.titulo ? esc(r.titulo) : `<span class="dica">Sem título</span>`}</h3>
+        <div class="rot-meta">
+          ${r.perfil ? `<strong>${esc(r.perfil)}</strong>` : ""}
+          ${etiqueta}
+          <span class="pilula">${NOME_FONTE[fonte]}</span>
+          ${tagsDe(r).map((t) => `<span class="pilula rot-tag">#${esc(t)}</span>`).join("")}
+          ${data ? `<span class="dica">📅 ${data}</span>` : ""}
+        </div>
+        ${situacao}
+        ${r.transcricao ? `<p class="rot-trecho">${esc(r.transcricao)}</p>` : (r.status === "pronto" ? `<p class="rot-trecho dica">Sem transcrição ainda.</p>` : "")}
+        <div class="rot-acoes">${acoes.join("")}</div>
+      </div>
+    </article>`;
+  }
+  function desenharListaRoteiros() {
+    const caixa = $("#rot-lista");
+    if (!caixa) return;
+    const lista = roteirosFiltrados();
+    if (!lista.length) {
+      caixa.innerHTML = `<p class="frase-vazia">${dados.roteiros.length ? "🔎 Nenhum roteiro com essa busca ou filtro." : "📭 Sua biblioteca ainda está vazia. Cole o link de um reel lá em cima e clique em Transcrever, ou escreva um roteiro na mão."}</p>`;
+      return;
+    }
+    caixa.innerHTML = lista.map(cardRoteiro).join("");
+  }
+  function redesenharRoteiros() { if (abaAtual() === "roteiros") renderRoteiros($("#area")); }
+
+  function editarRoteiro(r, aviso) {
+    const novo = !r;
+    formulario({
+      titulo: novo ? "✍️ Escrever roteiro na mão" : "✏️ Editar roteiro",
+      larga: true,
+      aviso,
+      valores: r ? { ...r, tags: tagsDe(r).join(", ") } : { de_quem: estadoRot.deQuem },
+      campos: [
+        { nome: "titulo", rotulo: "Título", inteira: true },
+        { nome: "de_quem", rotulo: "De quem", tipo: "select", opcoes: [["outra", "👀 De outra pessoa"], ["minha", "⭐ Meu"]] },
+        { nome: "perfil", rotulo: "Perfil", dica: "Ex: @nomedaperfil" },
+        { nome: "url", rotulo: "Link do vídeo", tipo: "url", inteira: true },
+        { nome: "postado_em", rotulo: "Data de postagem", tipo: "date" },
+        { nome: "tags", rotulo: "Tags", dica: "Separe por vírgula. Ex: gancho, skincare, unboxing" },
+        { nome: "legenda", rotulo: "Legenda do post", tipo: "textarea" },
+        { nome: "transcricao", rotulo: "Transcrição", tipo: "textarea", alto: true },
+        { nome: "obs", rotulo: "Minhas notas", tipo: "textarea" }
+      ],
+      aoSalvar: async (obj) => {
+        const link = obj.url ? limparLink(obj.url) : "";
+        if (obj.url && !link) { recado("O link precisa começar com https://", true); return false; }
+        obj.url = link || "";
+        obj.fonte = (link && fonteDoLink(link)) || "manual";
+        obj.tags = String(obj.tags || "").split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean);
+        if (obj.perfil && !obj.perfil.startsWith("@")) obj.perfil = "@" + obj.perfil.replace(/^@+/, "");
+        if (!obj.perfil && link) obj.perfil = perfilDoLink(link, obj.fonte);
+        obj.de_quem = obj.de_quem === "minha" ? "minha" : "outra";
+        obj.status = "pronto";
+        obj.erro = null;
+        const linha = await gravar("roteiros", obj, r && r.id);
+        if (!linha) return false;
+        trocarNaLista(dados.roteiros, linha);
+        ordenarRoteiros();
+        recado("Roteiro salvo ✓");
+        if (estadoRot.aviso && estadoRot.aviso.tipo !== "andamento") avisoRot(null);
+        redesenharRoteiros();
+        return true;
+      },
+      aoApagar: r ? async () => {
+        if (!(await apagar("roteiros", r.id))) return false;
+        dados.roteiros = dados.roteiros.filter((x) => x.id !== r.id);
+        recado("Roteiro apagado");
+        redesenharRoteiros();
+        return true;
+      } : null
+    });
+  }
+
+  /* ---- estudar com o Claude: monta o prompt e copia ---- */
+  async function estudarComClaude() {
+    const outras = dados.roteiros.filter((r) => r.de_quem !== "minha" && String(r.transcricao || "").trim()).slice(0, 10);
+    if (!outras.length) { avisoRot("erro", "🧠 Para estudar, guarde primeiro alguns roteiros marcados como \"De outra\" e com transcrição."); return; }
+    const meusAssuntos = Array.from(new Set(dados.videos.map((v) => v.nicho).filter((n) => n && !/^destaques?$/i.test(n))));
+    const blocos = outras.map((r, i) => {
+      const texto = String(r.transcricao).trim();
+      return `Roteiro ${i + 1}: ${r.perfil || "perfil não informado"} (${NOME_FONTE[r.fonte] ? NOME_FONTE[r.fonte].replace(/^\S+\s/, "") : "vídeo"})${r.titulo ? `, "${r.titulo}"` : ""}\n${texto.length > 3000 ? texto.slice(0, 3000) + "..." : texto}`;
+    }).join("\n\n");
+    const prompt = `Você é minha estrategista de conteúdo. Eu sou a Letícia Gabrielly, creator UGC (@leh.gsilva).
+Meus assuntos: ${meusAssuntos.length ? meusAssuntos.join(", ") : "UGC para marcas de beleza, casa, maternidade e lifestyle"}.
+
+Abaixo ${outras.length === 1 ? "está 1 roteiro recente" : `estão ${outras.length} roteiros recentes`} de outras creators, transcritos dos vídeos delas.
+
+Quero que você:
+1. Liste os assuntos que estão em alta nesses vídeos.
+2. Mostre as expressões e frases que estão prendendo a atenção.
+3. Identifique os padrões de gancho dos primeiros segundos e dê um exemplo real, tirado das transcrições, para cada padrão.
+4. Escreva 5 roteiros novos para o MEU assunto, reaproveitando a estrutura desses vídeos (não o conteúdo). Cada roteiro com gancho, desenvolvimento e chamada final, separados em blocos de tempo.
+
+Escreva tudo em português do Brasil, com linguagem natural de amiga que usou e indica, sem ficar robotizado e sem usar travessão.
+
+ROTEIROS DE REFERÊNCIA
+
+${blocos}`;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      avisoRot("ok", `🧠 Prompt copiado ✓ com ${plural(outras.length, "roteiro", "roteiros")} de outras creators. Agora abra o Claude, cole com Ctrl+V e envie.`, { texto: "Abrir o Claude", fazer: () => window.open("https://claude.ai/new", "_blank", "noopener") });
+    } catch (erro) {
+      abrirModal("🧠 Prompt para o Claude", `<p class="dica" style="margin-bottom:8px">Não consegui copiar sozinha. Selecione o texto abaixo, copie e cole no Claude.</p><textarea class="campo-roteiro" readonly style="min-height:320px">${esc(prompt)}</textarea>`, true);
+    }
+  }
+
+  /* ---- a aba ---- */
+  function renderRoteiros(area) {
+    const chave = chaveSupadata();
+    const todasTags = Array.from(new Set(dados.roteiros.flatMap(tagsDe))).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    if (estadoRot.filtro.startsWith("tag:") && !todasTags.includes(estadoRot.filtro.slice(4))) estadoRot.filtro = "todos";
+    const chips = [["todos", "Todos"], ["minha", "⭐ Meus"], ["outra", "👀 De outras"]].concat(todasTags.map((t) => ["tag:" + t, "#" + t]));
+    area.innerHTML = `
+      <section class="cartao rot-topo">
+        <p class="rot-frase">Cole o link de um reel e eu transcrevo. Serve pros seus e pros das outras, com etiqueta pra você separar.</p>
+        <form class="rot-linha" id="rot-form" novalidate>
+          <input class="campo-busca rot-link" id="rot-link" type="url" inputmode="url" placeholder="Cole aqui: instagram.com/reel/... · tiktok.com/... · youtube.com/..." value="${esc(estadoRot.link)}" aria-label="Link do vídeo">
+          <select class="filtro" id="rot-dequem" aria-label="De quem é o vídeo">
+            <option value="outra" ${estadoRot.deQuem !== "minha" ? "selected" : ""}>👀 De outra pessoa</option>
+            <option value="minha" ${estadoRot.deQuem === "minha" ? "selected" : ""}>⭐ Meu</option>
+          </select>
+          <button type="submit" class="botao botao-principal">🎧 Transcrever</button>
+          <button type="button" class="botao botao-leve" id="rot-manual">✍️ + Escrever na mão</button>
+        </form>
+        <div id="rot-aviso" class="rot-aviso" aria-live="polite" hidden></div>
+        <div class="rot-config">
+          <label for="rot-chave">🔑 Chave da Supadata</label>
+          <input class="campo-busca" id="rot-chave" type="password" autocomplete="off" spellcheck="false" placeholder="${chave ? "salva, termina em ••••" + esc(chave.slice(-4)) : "cole aqui a sua API key"}">
+          <button type="button" class="botao botao-leve" id="rot-salvar-chave">💾 Salvar</button>
+          ${chave ? `<button type="button" class="botao botao-leve" id="rot-tirar-chave">Remover</button>` : ""}
+          <span class="dica" id="rot-saldo">${textoSaldo()}</span>
+        </div>
+      </section>
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>📚 Biblioteca de roteiros <span class="dica">(${dados.roteiros.length})</span></h2>
+          <button type="button" class="botao botao-principal" id="rot-claude">🧠 Estudar com o Claude</button>
+        </div>
+        <div class="ferramentas" style="margin-bottom:14px">
+          <input class="campo-busca" id="rot-busca" style="flex:1 1 300px" type="search" placeholder="🔎 Buscar na transcrição, perfil, título ou notas" value="${esc(estadoRot.busca)}">
+          <div class="chips" role="group" aria-label="Filtrar roteiros">
+            ${chips.map(([v, t]) => `<button type="button" data-filtro="${esc(v)}" aria-pressed="${estadoRot.filtro === v}">${esc(t)}</button>`).join("")}
+          </div>
+        </div>
+        <div id="rot-lista" class="rot-lista"></div>
+      </section>`;
+
+    desenharAvisoRot();
+    desenharListaRoteiros();
+    if (chave && !estadoRot.saldoPedido) { estadoRot.saldoPedido = true; atualizarSaldo(); }
+
+    $("#rot-link").addEventListener("input", (e) => { estadoRot.link = e.target.value; });
+    $("#rot-dequem").addEventListener("change", (e) => { estadoRot.deQuem = e.target.value; });
+    $("#rot-form").addEventListener("submit", (e) => { e.preventDefault(); transcrever($("#rot-link").value, $("#rot-dequem").value); });
+    $("#rot-manual").addEventListener("click", () => {
+      const link = limparLink($("#rot-link").value);
+      editarRoteiro(null);
+      if (link) { const campo = $("#form-modal").elements.url; if (campo) campo.value = link; }
+    });
+    $("#rot-salvar-chave").addEventListener("click", async () => {
+      const valor = $("#rot-chave").value.trim();
+      if (!valor) { recado("Cole a chave no campo antes de salvar.", true); $("#rot-chave").focus(); return; }
+      try {
+        const { error } = await banco.from("configuracoes").upsert({ chave: CHAVE_SUPADATA, valor, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        dados.config[CHAVE_SUPADATA] = valor;
+        recado("Chave salva ✓");
+        if (estadoRot.aviso && /Supadata/.test(estadoRot.aviso.html)) avisoRot(null);
+        estadoRot.saldoPedido = true;
+        renderRoteiros(area);
+        atualizarSaldo();
+      } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); }
+    });
+    const tirar = $("#rot-tirar-chave");
+    if (tirar) tirar.addEventListener("click", async () => {
+      if (!confirm("Remover a chave da Supadata deste painel?")) return;
+      try {
+        const { error } = await banco.from("configuracoes").delete().eq("chave", CHAVE_SUPADATA);
+        if (error) throw error;
+        delete dados.config[CHAVE_SUPADATA];
+        estadoRot.saldo = null; estadoRot.saldoErro = "";
+        recado("Chave removida");
+        renderRoteiros(area);
+      } catch (erro) { recado(traduzErro(erro, "configuracoes"), true); }
+    });
+    $("#rot-claude").addEventListener("click", estudarComClaude);
+    $("#rot-busca").addEventListener("input", (e) => { estadoRot.busca = e.target.value; desenharListaRoteiros(); });
+    $$("[data-filtro]", area).forEach((b) => b.addEventListener("click", () => { estadoRot.filtro = b.dataset.filtro; renderRoteiros(area); }));
+    $("#rot-lista").addEventListener("click", async (e) => {
+      const botao = e.target.closest("[data-acao]");
+      if (!botao) return;
+      const card = botao.closest(".rot-card");
+      const r = card && dados.roteiros.find((x) => String(x.id) === card.dataset.id);
+      if (!r) return;
+      const acao = botao.dataset.acao;
+      if (acao === "ver") {
+        const fonte = r.fonte, id = idDoVideo(fonte, r.url);
+        const capa = card.querySelector(".rot-capa");
+        capa.classList.add("tocando");
+        capa.innerHTML = `<iframe src="${esc(linkEmbed(fonte, id))}" title="Vídeo ${esc(r.titulo || r.perfil || "")}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+      }
+      if (acao === "copiar") {
+        try { await navigator.clipboard.writeText(r.transcricao || ""); const antes = botao.textContent; botao.textContent = "copiado ✓"; setTimeout(() => { botao.textContent = antes; }, 1800); }
+        catch (erro) { recado("Não consegui copiar. Abra em Editar e copie de lá.", true); }
+      }
+      if (acao === "editar") editarRoteiro(r);
+      if (acao === "tentar") {
+        if (!r.url) { editarRoteiro(r); return; }
+        transcrever(r.url, r.de_quem, r);
+      }
+      if (acao === "apagar") {
+        if (!confirm("Apagar este roteiro? Isso não tem volta.")) return;
+        if (await apagar("roteiros", r.id)) { dados.roteiros = dados.roteiros.filter((x) => x.id !== r.id); recado("Roteiro apagado"); renderRoteiros(area); }
+      }
+    });
   }
 
   /* ---------------------------------------------------------------
