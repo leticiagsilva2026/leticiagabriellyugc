@@ -822,3 +822,19 @@ body[data-aba="meudia"] #lembretes { display: none; }
   .sc-prev-tirar { justify-self: end; }
   .sc-tempo-dia { grid-template-columns: 1fr; }
 }
+
+/* ---------- Semana corrida: faixa de dias, prazo e mudar de dia ---------- */
+.sc-faixa { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 10px; margin-bottom: 4px; scroll-snap-type: x proximity; }
+.sc-faixa button { flex: 0 0 auto; scroll-snap-align: start; display: grid; gap: 1px; justify-items: center; min-width: 74px; padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); background: var(--branco); color: var(--tinta); font: 600 .78rem var(--fonte); cursor: pointer; border-bottom-width: 4px; }
+.sc-faixa button small { font-size: .68rem; color: var(--texto); font-weight: 600; }
+.sc-faixa button[aria-pressed="true"] { background: var(--verde-escuro); color: #fff; border-color: var(--verde-escuro); }
+.sc-faixa button[aria-pressed="true"] small { color: rgba(255,255,255,.85); }
+.sc-faixa .sc-faixa-livre { border-bottom-color: var(--verde-escuro); }
+.sc-faixa .sc-faixa-medio { border-bottom-color: #c98500; }
+.sc-faixa .sc-faixa-cheio { border-bottom-color: var(--vermelho); }
+.sc-um-dia { grid-template-columns: 1fr; max-width: 640px; }
+.sc-grupo li { align-items: center; flex-wrap: wrap; }
+.sc-grupo li > span { flex: 1; min-width: 0; }
+.sc-prazo { font-style: normal; font-size: .66rem; font-weight: 800; color: var(--verde-texto); background: var(--verde-claro); padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
+.sc-mover { font: 600 .74rem var(--fonte); padding: 3px 4px; border: 1px solid var(--borda); border-radius: 6px; background: var(--branco); color: var(--texto); max-width: 54px; cursor: pointer; }
+.sc-mover:focus { max-width: none; }

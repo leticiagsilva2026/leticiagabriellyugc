@@ -124,7 +124,7 @@
     cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"],
     gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"],
     ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"],
-    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id", "recorrencia", "dias_semana", "intervalo_dias", "data_fim", "lembrete_min", "area"],
+    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id", "recorrencia", "dias_semana", "intervalo_dias", "data_fim", "lembrete_min", "area", "prazo"],
     tarefas_ocorrencias: ["tarefa_id", "data", "status", "nova_data"]
   };
   const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], tarefasOcorrencias: [], config: {} };
@@ -4805,13 +4805,13 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       const camp = t.campanha_id ? dados.campanhas.find((c) => String(c.id) === String(t.campanha_id)) : null;
       const base = (data, chave, extra) => Object.assign({
         chave, grupo: "minhas", propria: t, titulo: `${compromisso ? "🗓️" : "✅"} ${t.titulo}`,
-        sub: [recorrente(t) ? `🔁 ${descricaoRepeticao(t)}` : "", camp ? `📋 ${nomeCamp(camp)}` : "", t.obs ? String(t.obs).slice(0, 80) : ""].filter(Boolean).join(" · "),
+        sub: [recorrente(t) ? `🔁 ${descricaoRepeticao(t)}` : "", t.prazo ? `📦 entregar até ${dataBR(t.prazo).slice(0, 5)}` : "", camp ? `📋 ${nomeCamp(camp)}` : "", t.obs ? String(t.obs).slice(0, 80) : ""].filter(Boolean).join(" · "),
         data, hora: t.hora ? horaBonita(t.hora) : "", tempo: numero(t.tempo_min),
         peso: (t.prioridade === "alta" ? 22 : t.prioridade === "baixa" ? 2 : 11) + (compromisso && data && diasDe(data) === 0 ? 20 : 0), valor: 0,
         abrir: camp ? () => formCampanha(camp) : () => formTarefa(t), editar: () => formTarefa(t), campanha: camp
       }, extra);
       if (!recorrente(t)) {
-        itens.push(base(t.data ? String(t.data).slice(0, 10) : null, `tarefa-${t.id}`, {
+        itens.push(base(t.data ? String(t.data).slice(0, 10) : t.prazo ? String(t.prazo).slice(0, 10) : null, `tarefa-${t.id}`, {
           concluir: { rotulo: compromisso ? "Feito" : "Concluir", recado: "Concluída ✓", fazer: atualiza("tarefas", dados.tarefas, t.id, { feita: true, feita_em: new Date().toISOString() }) }
         }));
         return;
@@ -5036,6 +5036,7 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
         { nome: "area", rotulo: "É de", tipo: "select", opcoes: [["trabalho", "🎬 Trabalho"], ["casa", "🏠 Casa"]] },
         { tipo: "secao", rotulo: "🕒 Quando" },
         { nome: "data", rotulo: "Dia (ou o primeiro dia, se repetir)", tipo: "date" },
+        { nome: "prazo", rotulo: "📦 Entregar até (opcional)", tipo: "date", dica: "Se tiver prazo, a Semana corrida distribui antes dele." },
         { nome: "hora", rotulo: "Horário (opcional)", tipo: "time" },
         { nome: "tempo_min", rotulo: "Tempo que leva", tipo: "select", opcoes: [["10", "10 min"], ["15", "15 min"], ["30", "30 min"], ["45", "45 min"], ["60", "1 hora"], ["90", "1h30"], ["120", "2 horas"], ["180", "3 horas"], ["240", "4 horas"]] },
         { nome: "lembrete_min", rotulo: "Me lembrar", tipo: "select", opcoes: LEMBRAR, dica: "Funciona quando tem horário." },
@@ -5734,6 +5735,10 @@ Português do Brasil, nunca use travessão.`;
   }
 
   /* junta as tarefas: o que o Meu Dia mostra + as próximas etapas da esteira de cada campanha */
+  const prazoDe = (t) => (t && t.prazo ? String(t.prazo).slice(0, 10) : null);
+  const diaDe = (t) => (t && t.data ? String(t.data).slice(0, 10) : null);
+  const CHAVE_SEM_FIXOS = "semana_fixados";
+  const fixadosSemana = () => lerJSONConfig(CHAVE_SEM_FIXOS, {});
   function tarefasDaSemana() {
     const hoje = isoLocal(hoje0()), fim = somaDias(hoje, 6);
     const lista = [];
@@ -5743,17 +5748,20 @@ Português do Brasil, nunca use travessão.`;
       if (!i.propria && !tipoTempo) return;
       const c = i.campanha;
       const etapa = i.chave.startsWith("camp-") ? i.chave.split("-").slice(2).join("-") : null;
-      if (i.dataOriginal && i.dataOriginal > fim && !(c && etapa && c.prazo && String(c.prazo).slice(0, 10) <= fim)) return; /* fora desta semana */
+      if (!i.propria && i.dataOriginal && i.dataOriginal > fim && !(c && etapa && c.prazo && String(c.prazo).slice(0, 10) <= fim)) return; /* fora desta semana (as tarefas dela entram: dá para adiantar) */
       const fixo = (i.chave.startsWith("cal-") || i.chave.startsWith("cron-") || i.recorrente || (i.propria && lerHora(i.propria.hora) != null)) ? (i.dataOriginal || i.data) : null;
       const daCasa = !!(i.propria && i.propria.area === "casa");
       lista.push({
         chave: i.chave, titulo: semTravessao(i.titulo), tipoTempo, grupo: daCasa ? "casa" : i.propria ? "minhas" : GRUPO_DO_TEMPO[tipoTempo] || "admin",
         area: daCasa ? "casa" : "trabalho", estaSemana: !!(i.propria && i.propria.prioridade !== "baixa"),
         porVideo: ["gravacao", "edicao"].includes(tipoTempo), qtd: c ? Math.max(1, numero(c.qtd)) : 1,
-        /* tarefa dela sem horário: o dia é uma preferência, não prazo (pode ir para o próximo dia livre) */
-        alvo: i.dataOriginal || null, limite: c && c.prazo && etapa ? String(c.prazo).slice(0, 10) : i.propria ? null : i.dataOriginal || null,
+        /* tarefa dela: "entregar até" é o limite; o dia escolhido é só por onde começar
+           (sem prazo, pode ir para o próximo dia livre) */
+        alvo: i.propria && !i.recorrente ? (prazoDe(i.propria) || diaDe(i.propria)) : i.dataOriginal || null,
+        limite: c && c.prazo && etapa ? String(c.prazo).slice(0, 10) : i.propria ? (i.recorrente ? null : prazoDe(i.propria)) : i.dataOriginal || null,
+        diaEscolhido: i.propria && !i.recorrente ? diaDe(i.propria) : null, prazoProprio: i.propria && !i.recorrente ? prazoDe(i.propria) : null,
         atual: i.data || null, fixo: fixo && fixo < hoje ? hoje : fixo, propria: i.propria || null, recorrente: !!i.recorrente,
-        essencial: i.propria ? i.propria.prioridade === "alta" : !!((i.dataOriginal && i.dataOriginal <= fim) || (c && c.prazo && etapa && String(c.prazo).slice(0, 10) <= fim)),
+        essencial: i.propria ? i.propria.prioridade === "alta" || !!(prazoDe(i.propria) && prazoDe(i.propria) <= fim) : !!((i.dataOriginal && i.dataOriginal <= fim) || (c && c.prazo && etapa && String(c.prazo).slice(0, 10) <= fim)),
         campanha: c || null, score: i.score || 0
       });
     });
@@ -5780,10 +5788,13 @@ Português do Brasil, nunca use travessão.`;
         anterior = chave;
       });
     });
+    /* o que ela mudou de dia à mão fica naquele dia (até ela soltar) */
+    const fixados = fixadosSemana();
+    lista.forEach((t) => { if (fixados[t.chave] && !t.fixo && fixados[t.chave] >= hoje) { t.fixo = fixados[t.chave]; t.fixadoPorMim = true; } });
     lista.forEach((t) => {
       t.min = duracaoDe(t);
       /* "foco": o que pede concentração vai, de preferência, para os dias com ajuda */
-      t.foco = t.area === "trabalho" && (["gravacao", "edicao", "escrita"].includes(t.grupo) || (t.min || 0) / (t.porVideo ? Math.max(1, t.qtd) : 1) >= 45);
+      t.foco = t.area === "trabalho" && (["gravacao", "edicao", "escrita"].includes(t.grupo) || (t.propria && /(grav|edi[cçt]|roteir|script|capta)/i.test(t.propria.titulo)) || (t.min || 0) / (t.porVideo ? Math.max(1, t.qtd) : 1) >= 45);
     });
     return lista;
   }
@@ -5839,7 +5850,7 @@ Português do Brasil, nunca use travessão.`;
       const janela = (a, b) => dias.filter((d) => d.iso >= a && d.iso <= b);
       let desde = t.aposPedaco && jaPostos.has(t.aposPedaco) ? (termino[t.base] || hoje) : comecoMinimo(t);
       /* tarefa dela com dia escolhido: a partir daquele dia (se não couber, nos dias seguintes) */
-      if (t.propria && t.alvo && t.alvo > desde) desde = t.alvo;
+      if (t.diaEscolhido && t.diaEscolhido > desde && !(t.prazoProprio && t.diaEscolhido > t.prazoProprio)) desde = t.diaEscolhido;
       /* depende de algo que só termina depois desta semana */
       if (desde > fim) {
         if (t.essencial && t.limite && t.limite <= fim && !avisos.some((a) => a.base === t.base)) avisos.push({ tipo: "conflito", base: t.base, texto: `${porChave[t.base] ? porChave[t.base].titulo : t.titulo}: só dá para começar depois de ${dataBR(desde).slice(0, 5)}, mas a entrega é ${dataBR(t.limite).slice(0, 5)}.` });
@@ -5943,7 +5954,7 @@ Português do Brasil, nunca use travessão.`;
   }
 
   /* ---- caixa "o que você precisa fazer?": entende cada linha sem IA ---- */
-  const PALAVRAS_TRABALHO = /\b(edit|grav|roteir|post|reels?|stories|story|marca|campanha|e-?mail|briefing|v[ií]deo|cliente|contrato|publi|carross|captar|capta[cç][aã]o|tiktok|instagram|portf[oó]lio|m[ií]dia kit|or[cç]amento|proposta|ugc|canva|thumb|legenda)/i;
+  const PALAVRAS_TRABALHO = /\b(edit|grav|roteir|post|reels?|stories|story|marca|campanha|e-?mail|briefing|v[ií]deo|cliente|contrato|publi|carross|captar|capta[cç][aã]o|tiktok|instagram|portf[oó]lio|m[ií]dia kit|or[cç]amento|proposta|ugc|canva|thumb|legenda|relat[oó]rio|planilha|nota fiscal|fatura|reuni[aã]o|call|entrega|cronograma|pauta|parceria|publicidade)/i;
   function lerLinhaTarefa(linha) {
     let t = " " + linha.trim() + " ";
     const r = { titulo: "", qtd: 1, min: null, porUnidade: false, area: "trabalho", dia: "", prioridade: "media" };
@@ -5952,6 +5963,24 @@ Português do Brasil, nunca use travessão.`;
     const dias = [["hoje", 0], ["amanh[ãa]", 1], ["depois de amanh[ãa]", 2]];
     /* \b não funciona com acento ("amanhã"): borda feita à mão */
     const borda = (re) => new RegExp(`(?<![\\wÀ-ÿ])(?:${re})(?![\\wÀ-ÿ])`, "i");
+    /* prazo de entrega: "até sexta", "até dia 30", "entregar até 28/10", "prazo quinta" */
+    const DOW = { domingo: 0, segunda: 1, "terça": 2, terca: 2, quarta: 3, quinta: 4, sexta: 5, "sábado": 6, sabado: 6 };
+    const quandoE = (x) => {
+      x = x.toLowerCase().replace("-feira", "");
+      if (x === "hoje") return isoLocal(hojeD);
+      if (/^amanh/.test(x)) return isoLocal(maisDias(hojeD, 1));
+      if (DOW[x] != null) return isoLocal(maisDias(hojeD, (DOW[x] - hojeD.getDay() + 7) % 7));
+      const dm = /^(\d{1,2})(?:\/(\d{1,2}))?$/.exec(x);
+      if (dm) {
+        const dia = Number(dm[1]); let mes = dm[2] ? Number(dm[2]) - 1 : hojeD.getMonth(); let ano = hojeD.getFullYear();
+        let d = new Date(ano, mes, dia);
+        if (d < hojeD) d = dm[2] ? new Date(ano + 1, mes, dia) : new Date(ano, mes + 1, dia);
+        return d.getDate() === dia ? isoLocal(d) : null;
+      }
+      return null;
+    };
+    const ate = borda(`(?:entregar at[ée]|entrega at[ée]|at[ée]|prazo|entregar|entrega)\\s+(?:o |a |dia |na |no )?(hoje|amanh[ãa]|domingo|segunda|ter[cç]a|quarta|quinta|sexta|s[áa]bado|\\d{1,2}(?:\\/\\d{1,2})?)(?:-feira)?`).exec(t);
+    if (ate) { const p = quandoE(ate[1]); if (p) { r.prazo = p; t = t.replace(ate[0], " "); } }
     for (const [re, n] of dias.slice().reverse()) { const m = borda(re); if (m.test(t)) { r.dia = isoLocal(maisDias(hojeD, n)); t = t.replace(m, " "); break; } }
     if (!r.dia) {
       const nomes = ["domingo", "segunda", "ter[cç]a", "quarta", "quinta", "sexta", "s[áa]bado"];
@@ -5996,7 +6025,8 @@ Português do Brasil, nunca use travessão.`;
         <label>Quantas<input type="number" min="1" max="20" class="sc-prev-qtd" value="${r.qtd}"></label>
         <label>Tempo ${r.qtd > 1 ? "de cada" : ""}<select class="sc-prev-min ${r.min ? "" : "sc-falta"}"><option value="">Quanto tempo?</option>${tempos.map((m) => `<option value="${m}" ${r.min === m ? "selected" : ""}>${fmtTempo(m)}</option>`).join("")}${r.min && !temOpcao ? `<option value="${r.min}" selected>${fmtTempo(r.min)}</option>` : ""}</select></label>
         <label>É de<select class="sc-prev-area"><option value="trabalho" ${r.area === "trabalho" ? "selected" : ""}>🎬 Trabalho</option><option value="casa" ${r.area === "casa" ? "selected" : ""}>🏠 Casa</option></select></label>
-        <label>Dia<select class="sc-prev-dia"><option value="">Qualquer dia (eu escolho)</option>${dias.map((d) => `<option value="${d.iso}" ${r.dia === d.iso ? "selected" : ""}>${nomeDiaCurto(d)}</option>`).join("")}</select></label>
+        <label>📦 Entregar até<input type="date" class="sc-prev-prazo" value="${r.prazo || ""}" min="${isoLocal(hoje0())}"></label>
+        <label>Fazer no dia<select class="sc-prev-dia"><option value="">Eu distribuo</option>${dias.map((d) => `<option value="${d.iso}" ${r.dia === d.iso ? "selected" : ""}>${nomeDiaCurto(d)}</option>`).join("")}</select></label>
         <label>Importância<select class="sc-prev-prio"><option value="alta" ${r.prioridade === "alta" ? "selected" : ""}>🔴 Alta</option><option value="media" ${r.prioridade === "media" ? "selected" : ""}>🟡 Normal</option><option value="baixa" ${r.prioridade === "baixa" ? "selected" : ""}>🟢 Pode esperar</option></select></label>
         <button type="button" class="botao botao-leve sc-prev-tirar" aria-label="Tirar esta linha">✕</button>
       </div>
@@ -6005,14 +6035,16 @@ Português do Brasil, nunca use travessão.`;
   async function adicionarDaCaixa(caixa) {
     const linhas = $$(".sc-prev", caixa).map((li) => ({
       titulo: $(".sc-prev-titulo", li).value.trim(), qtd: Math.max(1, Math.min(20, numero($(".sc-prev-qtd", li).value) || 1)), min: numero($(".sc-prev-min", li).value),
-      area: $(".sc-prev-area", li).value, dia: $(".sc-prev-dia", li).value, prioridade: $(".sc-prev-prio", li).value, li
+      area: $(".sc-prev-area", li).value, dia: $(".sc-prev-dia", li).value, prazo: $(".sc-prev-prazo", li).value || null, prioridade: $(".sc-prev-prio", li).value, li
     })).filter((l) => l.titulo);
+    const diaDepois = linhas.find((l) => l.dia && l.prazo && l.dia > l.prazo);
+    if (diaDepois) { $(".sc-prev-dia", diaDepois.li).focus(); recado(`"${diaDepois.titulo}": o dia escolhido é depois do prazo de entrega.`, true); return false; }
     const semTempo = linhas.find((l) => !l.min);
     if (semTempo) { $(".sc-prev-min", semTempo.li).focus(); recado(`Quanto tempo leva "${semTempo.titulo}"?`, true); return false; }
     const criadas = [];
     for (const l of linhas) {
       for (let n = 1; n <= l.qtd; n++) {
-        const linha = await gravar("tarefas", { titulo: l.qtd > 1 ? `${l.titulo} (${n} de ${l.qtd})` : l.titulo, tipo: "tarefa", area: l.area, data: l.dia || null, hora: "", prioridade: l.prioridade, tempo_min: l.min, feita: false, recorrencia: "nenhuma", lembrete_min: 30 });
+        const linha = await gravar("tarefas", { titulo: l.qtd > 1 ? `${l.titulo} (${n} de ${l.qtd})` : l.titulo, tipo: "tarefa", area: l.area, data: l.dia || null, prazo: l.prazo, hora: "", prioridade: l.prioridade, tempo_min: l.min, feita: false, recorrencia: "nenhuma", lembrete_min: 30 });
         if (!linha) return false;
         trocarNaLista(dados.tarefas, linha);
         criadas.push(linha);
@@ -6122,7 +6154,11 @@ Português do Brasil, nunca use travessão.`;
         <div class="form-acoes"><span class="dica">Prazos de entrega não mudam. Nada é cancelado.</span><span class="espaco"></span><button type="button" class="botao botao-principal" id="sc-aplicar">✅ Aplicar reorganização</button></div>
       </section>` : `<section class="cartao"><p class="frase-vazia">✅ A sua agenda já está organizada assim. Nada para mudar.</p></section>`}
 
-      <section class="sc-dias">${r.dias.map((d) => {
+      <nav class="sc-faixa" aria-label="Ver um dia">
+        <button type="button" data-ver-dia="" aria-pressed="${!estadoSemana.diaVisto}">Semana toda</button>
+        ${r.dias.map((d) => { const n = d.usado > d.cap || d.usadoCasa > d.capCasa ? "cheio" : d.cap && d.usado > d.cap * 0.85 ? "medio" : "livre"; return `<button type="button" class="sc-faixa-${n}" data-ver-dia="${d.iso}" aria-pressed="${estadoSemana.diaVisto === d.iso}"><b>${d.k === 0 ? "Hoje" : d.k === 1 ? "Amanhã" : DIAS_SEMANA_LONGO[d.dow].slice(0, 3)}</b><small>${dataBR(d.iso).slice(0, 5)}${d.ajuda ? " 🤝" : ""}</small><small>${d.tarefas.filter((x) => !x.preparo).length} · ${fmtTempo(d.usado + d.usadoCasa)}</small></button>`; }).join("")}
+      </nav>
+      <section class="sc-dias ${estadoSemana.diaVisto ? "sc-um-dia" : ""}">${r.dias.filter((d) => !estadoSemana.diaVisto || d.iso === estadoSemana.diaVisto).map((d) => {
         const pct = d.cap ? Math.min(100, Math.round((d.usado / d.cap) * 100)) : d.usado ? 100 : 0;
         const nivel = d.usado > d.cap ? "cheio" : d.cap && d.usado > d.cap * 0.85 ? "medio" : "livre";
         const grupos = {};
@@ -6132,7 +6168,7 @@ Português do Brasil, nunca use travessão.`;
             <span class="sc-horas">🎬 ${fmtTempo(d.usado)} / ${d.cap ? fmtTempo(d.cap) : "0"}${d.capCasa || d.usadoCasa ? `<br>🏠 ${fmtTempo(d.usadoCasa)} / ${d.capCasa ? fmtTempo(d.capCasa) : "0"}` : ""}</span></header>
           <div class="sc-barra" title="Trabalho"><i style="width:${pct}%"></i></div>
           ${d.capCasa || d.usadoCasa ? `<div class="sc-barra sc-barra-casa ${d.usadoCasa > d.capCasa ? "cheia" : ""}" title="Casa"><i style="width:${d.capCasa ? Math.min(100, Math.round((d.usadoCasa / d.capCasa) * 100)) : 100}%"></i></div>` : ""}
-          ${d.tarefas.length ? Object.keys(grupos).map((g) => `<div class="sc-grupo"><small>${NOME_GRUPO[g] || g}</small><ul>${grupos[g].map((x) => `<li class="${x.preparo ? "sc-prep" : ""} ${x.estoura ? "sc-estoura" : ""}"><span>${x.preparo ? "🧰 " : x.fixa ? "📌 " : x.futura ? "⏭️ " : ""}${esc(x.titulo)}${x.essencial && !x.preparo ? ' <em class="sc-ess">essencial</em>' : ""}${x.passouEtapa ? ' <em class="sc-alerta">depois do prazo da etapa</em>' : ""}</span><b>${fmtTempo(x.min)}</b></li>`).join("")}</ul></div>`).join("") : `<p class="dica">${d.cap || d.capCasa ? "🌿 Livre" : "Dia sem tempo marcado"}</p>`}
+          ${d.tarefas.length ? Object.keys(grupos).map((g) => `<div class="sc-grupo"><small>${NOME_GRUPO[g] || g}</small><ul>${grupos[g].map((x) => `<li class="${x.preparo ? "sc-prep" : ""} ${x.estoura ? "sc-estoura" : ""}"><span>${x.preparo ? "🧰 " : x.fixa ? "📌 " : x.futura ? "⏭️ " : ""}${esc(x.titulo)}${x.essencial && !x.preparo ? ' <em class="sc-ess">essencial</em>' : ""}${x.passouEtapa ? ' <em class="sc-alerta">depois do prazo da etapa</em>' : ""}${(x.prazoProprio || x.limite) && !x.preparo && !x.fixa ? ` <em class="sc-prazo">📦 até ${dataBR(x.prazoProprio || x.limite).slice(0, 5)}</em>` : ""}</span><b>${fmtTempo(x.min)}</b>${x.preparo || (x.fixa && !x.fixadoPorMim) ? "" : `<select class="sc-mover" data-mover-chave="${esc(x.base)}" aria-label="Mudar de dia"><option value="">↔️</option>${r.dias.filter((o) => o.iso !== d.iso).map((o) => `<option value="${o.iso}">${nomeDiaCurto(o)}</option>`).join("")}${x.fixadoPorMim ? '<option value="__soltar">🔓 Deixar o painel escolher</option>' : ""}</select>`}</li>`).join("")}</ul></div>`).join("") : `<p class="dica">${d.cap || d.capCasa ? "🌿 Livre" : "Dia sem tempo marcado"}</p>`}
           <button type="button" class="md-link sc-imp-link" data-imp-dia="${d.iso}">🚧 Imprevisto neste dia</button>
         </article>`;
       }).join("")}</section>
@@ -6158,6 +6194,29 @@ Português do Brasil, nunca use travessão.`;
       });
       $(".sc-prev-min", previa) && ($(".sc-prev-min.sc-falta", previa) || $(".sc-prev-titulo", previa)).focus();
     });
+    /* ver um dia de cada vez */
+    $$("[data-ver-dia]", area).forEach((b) => b.addEventListener("click", () => { estadoSemana.diaVisto = b.dataset.verDia || ""; renderSemana(area); }));
+    /* mudar de dia à mão: fica fixa naquele dia (até ela soltar) */
+    $$(".sc-mover", area).forEach((s) => s.addEventListener("change", async () => {
+      if (!s.value) return;
+      s.disabled = true;
+      const chave = s.dataset.moverChave;
+      const t = r.tarefas.find((x) => x.chave === chave);
+      const fixados = Object.assign({}, fixadosSemana());
+      Object.keys(fixados).forEach((k) => { if (fixados[k] < isoLocal(hoje0())) delete fixados[k]; });
+      if (s.value === "__soltar") {
+        delete fixados[chave];
+        /* tarefa dela volta a ser "eu distribuo" (o prazo de entrega continua) */
+        if (t && t.propria) { const linha = await gravar("tarefas", { data: null }, t.propria.id); if (linha) trocarNaLista(dados.tarefas, linha); }
+      } else {
+        fixados[chave] = s.value;
+        if (t && t.propria) { const linha = await gravar("tarefas", { data: s.value }, t.propria.id); if (linha) trocarNaLista(dados.tarefas, linha); }
+        else { const plano = Object.assign({}, lerPlanoSemana(), { [chave]: s.value }); await salvarConfig(CHAVE_SEM_PLANO, JSON.stringify(plano)); }
+        if (t && (t.prazoProprio || t.limite) && s.value > (t.prazoProprio || t.limite)) recado(`Atenção: ${dataBR(s.value).slice(0, 5)} é depois da entrega (${dataBR(t.prazoProprio || t.limite).slice(0, 5)}).`, true);
+      }
+      if (await salvarConfig(CHAVE_SEM_FIXOS, JSON.stringify(fixados))) { if (s.value === "__soltar") recado("Pronto, eu escolho o melhor dia de novo ✓"); else if (!(t && (t.prazoProprio || t.limite) && s.value > (t.prazoProprio || t.limite))) recado(`Mudado para ${nomeDiaCurto(r.dias.find((d) => d.iso === s.value)).toLowerCase()} ✓`); renderSemana(area); }
+      else s.disabled = false;
+    }));
     $("#sc-imprevisto").addEventListener("click", () => editarImprevisto());
     $("#sc-tempo").addEventListener("click", editarTempoSemana);
     $("#sc-duracoes").addEventListener("click", () => editarDuracoes());

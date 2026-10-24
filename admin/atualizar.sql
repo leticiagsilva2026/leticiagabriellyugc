@@ -626,4 +626,7 @@ grant select, insert, delete on public.campanha_historico to authenticated;
 -- ---------- Semana corrida: tarefa de trabalho ou de casa ----------
 alter table public.tarefas add column if not exists area text not null default 'trabalho';
 
+-- ---------- Semana corrida: prazo de entrega das tarefas ----------
+alter table public.tarefas add column if not exists prazo date;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
