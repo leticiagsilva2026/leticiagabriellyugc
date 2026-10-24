@@ -122,9 +122,10 @@
     tendencias: ["nichos", "plataformas", "resumo", "itens", "fontes", "sem_busca"],
     marcas_sugeridas: ["nichos", "resumo", "itens", "fontes", "sem_busca"],
     cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"],
-    gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"]
+    gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"],
+    ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -156,7 +157,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -170,9 +171,10 @@
       buscar("tendencias", (q) => q.select("*").order("created_at", { ascending: false }).limit(60)),
       buscar("marcas_sugeridas", (q) => q.select("*").order("created_at", { ascending: false }).limit(100)),
       buscar("cronograma", (q) => q.select("*").order("data", { ascending: true }).order("ordem", { ascending: true }).limit(2000)),
-      buscar("gastos", (q) => q.select("*").order("data", { ascending: false }).limit(5000))
+      buscar("gastos", (q) => q.select("*").order("data", { ascending: false }).limit(5000)),
+      buscar("ganhos", (q) => q.select("*").order("created_at", { ascending: false }).limit(5000))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -3714,14 +3716,18 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
   const LIMITE_ALERTA = 0.8;
 
   /* ganhos do Financeiro: o que foi RECEBIDO no mês (pelo dia do pagamento) + o que ainda está para receber */
+  /* cada entrada (campanha ou ganho avulso) vira o mesmo formato para somar junto */
+  const entradaDeGanho = (g) => ({
+    avulso: true, id: g.id, origem: g, cliente: g.descricao, campanha: g.tipo, trabalho: g.tipo, qtd: 1, valor: g.valor,
+    pagamento: g.recebido ? "pago" : "pendente", data_pagamento: g.recebido ? (g.data_recebido || g.data_receber || g.data_trabalho) : g.data_receber,
+    mes: String((g.recebido ? (g.data_recebido || g.data_receber || g.data_trabalho) : (g.data_receber || g.data_trabalho)) || g.created_at || "").slice(0, 7)
+  });
+  const entradaDeCampanha = (c) => Object.assign({}, c, { avulso: false, origem: c, mes: String(c.pagamento === "pago" ? (c.data_pagamento || diaDoTrabalho(c)) : (c.data_pagamento || c.prazo || diaDoTrabalho(c))).slice(0, 7) });
   function entradasDoMes(ym) {
     const mesAtual = isoLocal(hoje0()).slice(0, 7);
-    const recebidas = dados.campanhas.filter((c) => c.pagamento === "pago" && String(c.data_pagamento || diaDoTrabalho(c)).slice(0, 7) === ym);
-    const previstas = dados.campanhas.filter((c) => {
-      if (c.pagamento === "pago") return false;
-      const mes = String(c.data_pagamento || c.prazo || diaDoTrabalho(c)).slice(0, 7);
-      return ym === mesAtual ? mes <= ym : mes === ym;
-    });
+    const todas = dados.campanhas.map(entradaDeCampanha).concat(dados.ganhos.map(entradaDeGanho));
+    const recebidas = todas.filter((e) => e.pagamento === "pago" && e.mes === ym);
+    const previstas = todas.filter((e) => e.pagamento !== "pago" && (ym === mesAtual ? e.mes <= ym : e.mes === ym));
     const recebido = recebidas.reduce((s, c) => s + numero(c.valor), 0);
     const aReceber = previstas.reduce((s, c) => s + numero(c.valor), 0);
     const porTipo = {};
@@ -3810,6 +3816,50 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
     });
   }
 
+  function formGanho(g, padrao) {
+    formulario({
+      titulo: g ? "Editar ganho" : "Adicionar ganho",
+      valores: g || Object.assign({ tipo: "Afiliação", forma: "Pix", recebido: false, data_receber: isoLocal(new Date()), valor: "" }, padrao || {}),
+      campos: [
+        { nome: "descricao", rotulo: "De onde veio", obrigatorio: true, inteira: true, dica: "ex: Comissão Shopee, Edição para a loja X", lista: Array.from(new Set(dados.ganhos.map((x) => x.descricao).filter(Boolean))).slice(0, 60) },
+        { nome: "tipo", rotulo: "Tipo de ganho", tipo: "select", opcoes: TIPOS_TRABALHO.map((t) => [t, t]) },
+        { nome: "valor", rotulo: "Valor (R$)", tipo: "number", passo: "0.01", obrigatorio: true },
+        { nome: "forma", rotulo: "Como vou receber", tipo: "select", opcoes: FORMAS_RECEBER.map((f) => [f, f]) },
+        { nome: "data_trabalho", rotulo: "Dia que trabalhei (opcional)", tipo: "date" },
+        { nome: "data_receber", rotulo: "Dia previsto para receber", tipo: "date" },
+        { nome: "recebido", rotulo: "Já recebi", tipo: "checkbox" },
+        { nome: "data_recebido", rotulo: "Dia que recebi", tipo: "date", dica: "Se marcar Já recebi e deixar vazio, conto hoje." },
+        { nome: "obs", rotulo: "Anotações", tipo: "textarea" }
+      ],
+      aoSalvar: async (obj) => {
+        if (!(numero(obj.valor) > 0)) { recado("Coloque o valor do ganho.", true); return false; }
+        if (obj.recebido && !obj.data_recebido) obj.data_recebido = isoLocal(new Date());
+        if (!obj.recebido) obj.data_recebido = null;
+        if (!obj.data_receber && !obj.data_trabalho && !obj.recebido) obj.data_receber = isoLocal(new Date());
+        const linha = await gravar("ganhos", obj, g && g.id);
+        if (!linha) return false;
+        trocarNaLista(dados.ganhos, linha);
+        recado(obj.recebido ? "Ganho salvo e somado ao mês ✓" : "Ganho salvo como a receber ✓");
+        atualizarLembretes();
+        mostrarAba();
+        return true;
+      },
+      aoApagar: g ? async () => {
+        if (!(await apagar("ganhos", g.id))) return false;
+        dados.ganhos = dados.ganhos.filter((x) => x.id !== g.id);
+        recado("Ganho apagado");
+        atualizarLembretes();
+        mostrarAba();
+        return true;
+      } : null
+    });
+    /* "Dia que recebi" só aparece quando marcar "Já recebi" */
+    const form = $("#form-modal");
+    const ajustar = () => { form.elements.data_recebido.closest("label").hidden = !form.elements.recebido.checked; };
+    form.elements.recebido.addEventListener("change", ajustar);
+    ajustar();
+  }
+
   async function trazerFixos(ym) {
     const anterior = andarMes(ym, -1);
     const fixos = dados.gastos.filter((g) => g.fixo && String(g.data).slice(0, 7) === anterior);
@@ -3877,6 +3927,7 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
           </div>
           <div class="rot-linha">
             <button type="button" class="botao botao-leve" id="fin-fixos">🔁 Trazer gastos fixos do mês passado</button>
+            <button type="button" class="botao botao-principal fin-botao-ganho" id="fin-add-ganho"><svg class="ic"><use href="#i-mais"/></svg>Adicionar ganho</button>
             <button type="button" class="botao botao-principal" id="fin-add"><svg class="ic"><use href="#i-mais"/></svg>Adicionar gasto</button>
           </div>
         </div>
@@ -3902,10 +3953,32 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
           <h2 class="achar-titulo" style="margin-top:0">💳 Como estou pagando</h2>
           ${formas.length ? `<ul class="camp-tipos">${formas.map(([f, v]) => `<li><div class="linha"><span>${esc(f)}</span><b>${moeda(v)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v / formas[0][1]) * 100)}%"></i></div><small>${Math.round((v / contas.totalGastos) * 100)}% dos gastos</small></li>`).join("")}</ul>` : `<p class="frase-vazia">Nada ainda.</p>`}
           <h2 class="achar-titulo">💼 Dinheiro que entrou</h2>
-          ${contas.ganhos.tipos.length ? `<ul class="camp-tipos">${contas.ganhos.tipos.map(([t, v]) => `<li><div class="linha"><span>${esc(t)}</span><b>${moeda(v.total)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v.total / contas.ganhos.tipos[0][1].total) * 100)}%"></i></div></li>`).join("")}</ul>` : `<p class="frase-vazia">Nada recebido neste mês ainda. Quando você marcar uma campanha como Recebido, ela aparece aqui.</p>`}
-          ${contas.ganhos.recebidas.length || contas.ganhos.previstas.length ? `<ul class="cron-mudancas fin-entradas">${contas.ganhos.recebidas.map((c) => `<li><span>✅ <b>${esc(c.cliente || c.campanha)}</b> <span class="dica">${esc(c.campanha)} · ${dataBR(c.data_pagamento).slice(0, 5)}</span></span><b>${moeda(c.valor)}</b></li>`).join("")}${contas.ganhos.previstas.map((c) => `<li class="fin-prevista"><span>⏳ <b>${esc(c.cliente || c.campanha)}</b> <span class="dica">a receber${c.data_pagamento ? " em " + dataBR(c.data_pagamento).slice(0, 5) : ""}</span></span><b>${moeda(c.valor)}</b></li>`).join("")}</ul>` : ""}
+          ${contas.ganhos.tipos.length ? `<ul class="camp-tipos">${contas.ganhos.tipos.map(([t, v]) => `<li><div class="linha"><span>${esc(t)}</span><b>${moeda(v.total)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v.total / contas.ganhos.tipos[0][1].total) * 100)}%"></i></div></li>`).join("")}</ul>` : `<p class="frase-vazia">Nada recebido neste mês ainda.</p>`}
         </section>
       </div>
+
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>💵 Ganhos do mês <span class="dica">(${moeda(contas.ganhos.recebido)} recebido · ${moeda(contas.ganhos.aReceber)} a receber)</span></h2>
+          <button type="button" class="botao botao-leve" id="fin-add-ganho2"><svg class="ic"><use href="#i-mais"/></svg>Adicionar ganho</button>
+        </div>
+        ${contas.ganhos.recebidas.length || contas.ganhos.previstas.length ? `<div class="tabela-caixa"><table>
+          <thead><tr><th>De onde veio</th><th>Tipo</th><th>Trabalhei em</th><th>Receber em</th><th>Valor</th><th>Situação</th></tr></thead>
+          <tbody>${contas.ganhos.previstas.concat(contas.ganhos.recebidas).map((e) => {
+            const g = e.origem;
+            const trabalhei = e.avulso ? g.data_trabalho : diaDoTrabalho(g);
+            const receber = e.avulso ? g.data_receber : g.data_pagamento;
+            const atrasado = e.pagamento !== "pago" && receber && diasAte(receber) < 0;
+            return `<tr class="clicavel" data-entrada="${e.avulso ? "g" : "c"}:${esc(e.id)}">
+              <td><strong>${esc(e.avulso ? g.descricao : (g.cliente || g.campanha))}</strong><br><small class="dica">${e.avulso ? "ganho avulso" : "📋 campanha: " + esc(g.campanha)}</small></td>
+              <td><span class="pilula p-conteudo">${esc(e.trabalho || "Outro")}</span></td>
+              <td style="white-space:nowrap">${trabalhei ? dataBR(trabalhei).slice(0, 5) : "<span class='dica'>-</span>"}</td>
+              <td style="white-space:nowrap">${receber ? dataBR(receber).slice(0, 5) : "<span class='dica'>-</span>"}${atrasado ? `<span class="etiqueta-prazo atrasado">atrasado</span>` : ""}</td>
+              <td style="white-space:nowrap">${moeda(e.valor)}</td>
+              <td>${e.pagamento === "pago" ? `<span class="pilula p-pago">✅ Recebido ${e.data_pagamento ? dataBR(e.data_pagamento).slice(0, 5) : ""}</span>` : `<span class="pilula p-pendente">⏳ A receber</span> <button type="button" class="botao botao-leve camp-recebi" data-receber-entrada>💰 Recebi</button>`}</td>
+            </tr>`;
+          }).join("")}</tbody></table></div>` : `<p class="frase-vazia">Nenhum ganho neste mês. As campanhas entram sozinhas, e os outros ganhos (afiliação, edição, captação…) você adiciona no botão Adicionar ganho.</p>`}
+      </section>
 
       <section class="cartao">
         <div class="cartao-topo">
@@ -3916,6 +3989,7 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       </section>
 
       <section class="cartao">
+        <h2 class="achar-titulo" style="margin-top:0">💸 Gastos do mês</h2>
         <div class="ferramentas" style="margin-bottom:12px">
           <div class="chips" role="group" aria-label="Filtrar gastos">
             ${[["todas", "Todos"], ["apagar", "🧾 A pagar"]].concat(pares.map(([n]) => [n, n])).map(([v, t]) => `<button type="button" data-cat="${esc(v)}" aria-pressed="${estadoFin.categoria === v}">${esc(t)}</button>`).join("")}
@@ -3939,6 +4013,24 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     $("#fin-depois").addEventListener("click", () => { estadoFin.mes = andarMes(ym, 1); renderFinanceiro(area); });
     $("#fin-add").addEventListener("click", () => formGasto(null, ym === isoLocal(hoje0()).slice(0, 7) ? null : { data: ym + "-01" }));
     $("#fin-fixos").addEventListener("click", () => trazerFixos(ym));
+    const novoGanho = () => formGanho(null, ym === isoLocal(hoje0()).slice(0, 7) ? null : { data_receber: ym + "-01" });
+    $("#fin-add-ganho").addEventListener("click", novoGanho);
+    $("#fin-add-ganho2").addEventListener("click", novoGanho);
+    $$("[data-entrada]", area).forEach((tr) => tr.addEventListener("click", async (e) => {
+      const [tipo, id] = [tr.dataset.entrada.slice(0, 1), tr.dataset.entrada.slice(2)];
+      const item = tipo === "g" ? dados.ganhos.find((x) => String(x.id) === id) : dados.campanhas.find((x) => String(x.id) === id);
+      if (!item) return;
+      if (e.target.closest("[data-receber-entrada]")) {
+        e.target.disabled = true;
+        const hoje = isoLocal(new Date());
+        const linha = tipo === "g"
+          ? await gravar("ganhos", { recebido: true, data_recebido: hoje }, item.id)
+          : await gravar("campanhas", Object.assign({ pagamento: "pago", data_pagamento: hoje }, concluida(item) && etapaDe(item) !== "Entregue" ? {} : { status: "Recebido" }), item.id);
+        if (linha) { trocarNaLista(tipo === "g" ? dados.ganhos : dados.campanhas, linha); recado("Recebido ✓"); atualizarLembretes(); renderFinanceiro(area); } else e.target.disabled = false;
+        return;
+      }
+      if (tipo === "g") formGanho(item); else formCampanha(item);
+    }));
     $("#fin-dicas").addEventListener("click", () => dicasFinanceiras(ym, contas));
     $$("[data-cat]", area).forEach((b) => b.addEventListener("click", () => { estadoFin.categoria = b.dataset.cat; renderFinanceiro(area); }));
     $$("[data-gasto]", area).forEach((tr) => tr.addEventListener("click", async (e) => {
@@ -3989,6 +4081,9 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     const ym = isoLocal(hoje0()).slice(0, 7);
     const alerta = alertaFinanceiro(contasDoMes(ym));
     if (alerta) itens.push({ chave: "fin-" + ym + "-" + alerta.tipo, tipo: alerta.tipo, texto: alerta.texto.replace(/^(🚨|⚠️) /, "$1 <b>Financeiro:</b> "), aba: "financeiro" });
+    dados.ganhos.forEach((g) => {
+      if (!g.recebido && g.data_receber && diasAte(g.data_receber) < 0) itens.push({ chave: "ganho-" + g.id, tipo: "cuidado", texto: `💵 O ganho <b>${esc(g.descricao)}</b> (${moeda(g.valor)}) era para ${dataBR(g.data_receber)} e ainda está como a receber.`, aba: "financeiro" });
+    });
     const contasVencidas = dados.gastos.filter((g) => g.pago === false && diasAte(g.data) != null && diasAte(g.data) <= 0);
     if (contasVencidas.length) itens.push({ chave: "contas-" + isoLocal(hoje0()), tipo: "cuidado", texto: `🧾 ${plural(contasVencidas.length, "conta a pagar venceu ou vence hoje", "contas a pagar venceram ou vencem hoje")} (${moeda(contasVencidas.reduce((s, g) => s + numero(g.valor), 0))}).`, aba: "financeiro" });
     return itens;

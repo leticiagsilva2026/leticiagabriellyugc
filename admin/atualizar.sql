@@ -483,4 +483,31 @@ alter table public.campanhas add column if not exists roteiro_status text not nu
 -- ---------- Campanhas: como fechei (direto ou plataforma) ----------
 alter table public.campanhas add column if not exists origem text not null default 'direto';
 
+-- ---------- Financeiro: ganhos avulsos (afiliação, edição, captação e outros) ----------
+create table if not exists public.ganhos (
+  id            uuid primary key default gen_random_uuid(),
+  created_at    timestamptz not null default now(),
+  descricao     text not null default '',
+  tipo          text not null default 'Afiliação',
+  valor         numeric(12,2) not null default 0 check (valor >= 0),
+  forma         text not null default 'Pix',
+  data_trabalho date,
+  data_receber  date,
+  recebido      boolean not null default false,
+  data_recebido date,
+  obs           text not null default ''
+);
+create index if not exists ganhos_datas_idx on public.ganhos (data_recebido, data_receber);
+alter table public.ganhos enable row level security;
+drop policy if exists "dona le ganhos" on public.ganhos;
+create policy "dona le ganhos" on public.ganhos for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria ganhos" on public.ganhos;
+create policy "dona cria ganhos" on public.ganhos for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita ganhos" on public.ganhos;
+create policy "dona edita ganhos" on public.ganhos for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga ganhos" on public.ganhos;
+create policy "dona apaga ganhos" on public.ganhos for delete to authenticated using (public.e_a_dona());
+revoke all on public.ganhos from anon;
+grant select, insert, update, delete on public.ganhos to authenticated;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

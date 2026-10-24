@@ -544,3 +544,5 @@ code { font-size: .78rem; background: var(--gelo); padding: 1px 5px; border-radi
 .fin-entradas .fin-prevista { opacity: .7; border-style: dashed; }
 .form-grade [hidden] { display: none !important; }
 .form-nota { border-top: 0; padding: 10px 12px; background: var(--verde-claro); border-radius: var(--raio-p); font-weight: 600; font-size: .82rem; }
+.fin-botao-ganho { background: var(--terracota); border-color: var(--terracota); }
+.fin-botao-ganho:hover { filter: brightness(.95); }
