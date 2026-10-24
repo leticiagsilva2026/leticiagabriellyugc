@@ -862,7 +862,7 @@
   const TIPOS_TRABALHO = ["Conteúdo UGC", "UGC Tech", "Afiliação", "TikTok Shop", "Design no Canva", "Edição de vídeo", "Captação de conteúdo", "Publicidade (no meu perfil)", "Outro"];
   const FORMAS_RECEBER = ["Pix", "Transferência", "Boleto", "Cartão", "Dinheiro", "Comissão", "Permuta (produto)"];
   const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["4", "4 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
-  const PLATAFORMAS_UGC = ["Seu Influencer", "Squid", "BrandLovers", "Inflr", "Influency.me", "Airfluencers", "TikTok Shop", "Shopee", "Amazon", "Hotmart"];
+  const PLATAFORMAS_UGC = ["Seu Influencer", "Spark", "Wake", "Brand Lovers", "Mis", "Squid", "Novid", "Pikko", "Pimbel", "Tribo"];
   const ehPlataforma = (c) => !!(c && c.origem && c.origem !== "direto");
   const MARCA_CAMPOS = [["razao", "Razão social"], ["cnpj", "CNPJ"], ["endereco", "Endereço"], ["responsavel", "Responsável"], ["email", "E-mail"], ["telefone", "Telefone"]];
   const NOME_ANEXO = { roteiro: "📜 Roteiro", contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
@@ -1122,7 +1122,8 @@
         { nome: "cliente", rotulo: "Marca", lista: dados.marcas.map((m) => m.nome) },
         { nome: "trabalho", rotulo: "Tipo de trabalho", tipo: "select", opcoes: TIPOS_TRABALHO.map((t) => [t, t]) },
         { nome: "origem_tipo", rotulo: "Como fechei", tipo: "select", opcoes: [["direto", "🤝 Eu mesma fechei (Instagram, WhatsApp, e-mail)"], ["plataforma", "📲 Por uma plataforma"]] },
-        { nome: "plataforma", rotulo: "Qual plataforma", lista: PLATAFORMAS_UGC.concat(Array.from(new Set(dados.campanhas.filter(ehPlataforma).map((x) => x.origem)))), dica: "O contrato já é feito por lá, então não precisa dos dados da marca." },
+        { nome: "plataforma", rotulo: "Qual plataforma", tipo: "select", opcoes: Array.from(new Set(PLATAFORMAS_UGC.concat(dados.campanhas.filter(ehPlataforma).map((x) => x.origem)))).map((p) => [p, p]).concat([["__outra", "Outra (escrever)"]]), dica: "O contrato já é feito por lá, então não precisa dos dados da marca." },
+        { nome: "plataforma_outra", rotulo: "Nome da plataforma" },
         { nome: "qtd", rotulo: "Quantidade de entregas (vídeos, posts...)", tipo: "number" },
         { tipo: "secao", rotulo: "📅 Datas e andamento" },
         { nome: "data_trabalho", rotulo: "Dia que fechei a campanha", tipo: "date", obrigatorio: true, dica: "Define em qual mês ela entra no resumo das campanhas." },
@@ -1149,8 +1150,8 @@
         MARCA_CAMPOS.forEach(([k]) => { marca[k] = obj["md_" + k] || ""; delete obj["md_" + k]; });
         obj.marca_dados = marca;
         obj.uso_meses = numero(obj.uso_meses);
-        obj.origem = obj.origem_tipo === "plataforma" ? (obj.plataforma || "Plataforma") : "direto";
-        delete obj.origem_tipo; delete obj.plataforma;
+        obj.origem = obj.origem_tipo === "plataforma" ? ((obj.plataforma === "__outra" ? obj.plataforma_outra : obj.plataforma) || "Plataforma") : "direto";
+        delete obj.origem_tipo; delete obj.plataforma; delete obj.plataforma_outra;
         /* recebeu: o pagamento fica como recebido e entra no Financeiro (no dia de hoje, se não tiver outro dia) */
         if (obj.status === "Recebido") obj.pagamento = "pago";
         const jaEraPago = c && c.pagamento === "pago";
@@ -1197,12 +1198,14 @@
     const ajustarOrigem = () => {
       const plataforma = form.elements.origem_tipo.value === "plataforma";
       form.elements.plataforma.closest("label").hidden = !plataforma;
+      form.elements.plataforma_outra.closest("label").hidden = !plataforma || form.elements.plataforma.value !== "__outra";
       if (secaoMarca) secaoMarca.hidden = plataforma;
       if (secaoPlataforma) secaoPlataforma.hidden = !plataforma;
       MARCA_CAMPOS.forEach(([k]) => { form.elements["md_" + k].closest("label").hidden = plataforma; });
       $$('[data-anexo="marca"], #camp-gerar-contrato', bloco).forEach((el) => { (el.closest("label") || el).hidden = plataforma; });
     };
     form.elements.origem_tipo.addEventListener("change", ajustarOrigem);
+    form.elements.plataforma.addEventListener("change", ajustarOrigem);
     ajustarOrigem();
     if (!c) return;
     const desenharAnexos = () => {
