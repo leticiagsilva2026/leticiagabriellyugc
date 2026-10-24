@@ -636,3 +636,4 @@ body[data-aba="meudia"] #lembretes { display: none; }
 .md-alerta span { font-size: .84rem; opacity: .9; }
 .md-alerta[hidden] { display: none; }
 .md-topo .md-agenda .botao { width: auto; flex: 0 0 auto; }
+.camp-canais .trilho i { background: var(--terracota); }

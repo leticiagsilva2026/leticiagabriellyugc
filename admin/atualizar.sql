@@ -570,4 +570,8 @@ create policy "dona apaga ocorrencias" on public.tarefas_ocorrencias for delete 
 revoke all on public.tarefas_ocorrencias from anon;
 grant select, insert, update, delete on public.tarefas_ocorrencias to authenticated;
 
+-- ---------- Campanhas: por onde fechei (abordagem, inbound, plataforma, recorrente, agência...) ----------
+alter table public.campanhas add column if not exists canal text not null default '';
+update public.campanhas set canal = 'plataforma' where canal = '' and origem is not null and origem <> 'direto';
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

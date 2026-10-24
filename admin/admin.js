@@ -112,7 +112,7 @@
     videos: ["titulo", "link", "nicho", "formato", "marca", "destaque", "ordem", "visivel"],
     marcas: ["nome", "instagram", "email", "telefone", "situacao", "obs", "ultimo_contato"],
     calendario: ["titulo", "marca", "tipo", "data", "status"],
-    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem", "contrato_ok"],
+    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem", "contrato_ok", "canal"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
@@ -871,7 +871,11 @@
   const FORMAS_RECEBER = ["Pix", "Transferência", "Boleto", "Cartão", "Dinheiro", "Comissão", "Permuta (produto)"];
   const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["4", "4 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
   const PLATAFORMAS_UGC = ["Seu Influencer", "Spark", "Wake", "Brand Lovers", "Mis", "Squid", "Novid", "Pikko", "Pimbel", "Tribo"];
-  const ehPlataforma = (c) => !!(c && c.origem && c.origem !== "direto");
+  /* por onde a campanha foi fechada (para saber de onde vêm mais trabalhos) */
+  const CANAIS = [["abordagem", "🎯", "Abordagem (eu procurei a marca)"], ["inbound", "📥", "Inbound (a marca me procurou)"], ["plataforma", "📲", "Plataforma"], ["recorrente", "🔁", "Contrato recorrente"], ["agencia", "🏢", "Agência"], ["indicacao", "🤝", "Indicação"], ["outro", "✨", "Outro"]];
+  const canalDe = (c) => (c && c.canal ? c.canal : c && c.origem && c.origem !== "direto" ? "plataforma" : "");
+  const infoCanal = (k) => CANAIS.find((x) => x[0] === k) || ["", "❔", "Não informado"];
+  const ehPlataforma = (c) => canalDe(c) === "plataforma";
   const MARCA_CAMPOS = [["razao", "Razão social"], ["cnpj", "CNPJ"], ["endereco", "Endereço"], ["responsavel", "Responsável"], ["email", "E-mail"], ["telefone", "Telefone"]];
   const NOME_ANEXO = { roteiro: "📜 Roteiro", contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
   const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1, mes: isoLocal(hoje0()).slice(0, 7) };
@@ -1013,6 +1017,26 @@
             <div class="trilho"><i style="width:${Math.max(2, (v.total / (topo[1].total || 1)) * 100)}%"></i></div>
             <small>${plural(v.trabalhos, "trabalho", "trabalhos")} · ${plural(v.qtd, "entrega", "entregas")} · média de ${moeda(v.total / v.qtd)} por entrega · ${Math.round((v.total / (r.total || 1)) * 100)}% do mês</small>
           </li>`).join("")}</ul>` : `<p class="frase-vazia">Nenhum trabalho neste mês ainda.</p>`}
+        ${(() => {
+          /* por onde fechei: no mês escolhido, ou em tudo quando o período é "Tudo" */
+          const base = estadoCamp.mes === "tudo" ? dados.campanhas : r.doMes;
+          if (!base.length) return "";
+          const por = {};
+          base.forEach((c) => { const k = canalDe(c) || "nao"; por[k] = por[k] || { n: 0, total: 0 }; por[k].n++; por[k].total += numero(c.valor); });
+          const lista = Object.entries(por).sort((a, b) => b[1].n - a[1].n || b[1].total - a[1].total);
+          const informadas = lista.filter(([k]) => k !== "nao");
+          const mais = informadas[0];
+          const melhorValor = informadas.slice().sort((a, b) => b[1].total / b[1].n - a[1].total / a[1].n)[0];
+          const nome = (k) => (k === "nao" ? "❔ Não informado" : `${infoCanal(k)[1]} ${infoCanal(k)[2].replace(/ \(.*\)$/, "")}`);
+          return `<h3 class="achar-titulo">🧭 Por onde você fechou ${estadoCamp.mes === "tudo" ? "(todas as campanhas)" : `em ${nomeMesISO(ym).split(" ")[0].toLowerCase()}`}</h3>
+            ${mais ? `<p class="tend-resumo">🏆 Você fechou mais por <b>${esc(nome(mais[0]))}</b> (${mais[1].n} de ${base.length}).${melhorValor && melhorValor[0] !== mais[0] ? ` O que paga melhor por campanha é <b>${esc(nome(melhorValor[0]))}</b> (média de ${moeda(melhorValor[1].total / melhorValor[1].n)}).` : ""}</p>` : ""}
+            <ul class="camp-tipos camp-canais">${lista.map(([k, v]) => `<li>
+              <div class="linha"><span>${esc(nome(k))}</span><b>${plural(v.n, "campanha", "campanhas")}</b></div>
+              <div class="trilho"><i style="width:${Math.max(2, (v.n / lista[0][1].n) * 100)}%"></i></div>
+              <small>${moeda(v.total)} no total · média de ${moeda(v.total / v.n)} · ${Math.round((v.n / base.length) * 100)}% das campanhas</small>
+            </li>`).join("")}</ul>
+            ${por.nao ? `<p class="dica">❔ ${plural(por.nao.n, "campanha está", "campanhas estão")} sem "Como fechei". Abra e escolha o canal para o resumo ficar certinho.</p>` : ""}`;
+        })()}
       </section>
 
       ${usos.length ? `<section class="cartao">
@@ -1083,7 +1107,7 @@
           <td style="width:36px"><button type="button" class="botao-icone ${c.favorita ? "ligado" : ""}" data-estrela title="${c.favorita ? "Tirar destaque" : "Destacar"}"><svg class="ic"><use href="#i-estrela"/></svg></button></td>
           <td style="white-space:nowrap">${dataBR(diaDoTrabalho(c)).slice(0, 5)}</td>
           <td><strong>${esc(c.campanha)}</strong>${c.roteiro_status && c.roteiro_status !== "sem" ? `<br><small class="dica">📜 ${c.roteiro_status === "aprovado" ? "roteiro aprovado" : c.roteiro_status === "enviado" ? "roteiro enviado" : "roteiro não enviado"}</small>` : ""}${anexos ? ` <span class="dica" title="${plural(anexos, "arquivo", "arquivos")}">📎${anexos}</span>` : ""}${avisoPrazo(c)}</td>
-          <td>${esc(c.cliente)}${ehPlataforma(c) ? `<br><small class="dica">📲 via ${esc(c.origem)}</small>` : ""}</td>
+          <td>${esc(c.cliente)}${canalDe(c) ? `<br><small class="dica">${infoCanal(canalDe(c))[1]} ${ehPlataforma(c) ? `via ${esc(c.origem)}` : canalDe(c) === "agencia" && c.origem !== "direto" ? (/ag[eê]ncia/i.test(c.origem) ? esc(c.origem) : `agência ${esc(c.origem)}`) : esc(infoCanal(canalDe(c))[2].replace(/ \(.*\)$/, "").toLowerCase())}</small>` : ""}</td>
           <td><span class="pilula p-conteudo">${esc(c.trabalho || "Conteúdo UGC")}</span></td>
           <td><span class="pilula p-s${passo}">${esc(ETAPA_ROTULO[etapaDe(c)] || etapaDe(c))}</span></td>
           <td style="white-space:nowrap">${moeda(c.valor)}</td>
@@ -1118,8 +1142,8 @@
   function formCampanha(c) {
     const md = (c && c.marca_dados) || {};
     const valores = c
-      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c), status: etapaDe(c), roteiro_status: c.roteiro_status || "nao", origem_tipo: ehPlataforma(c) ? "plataforma" : "direto", plataforma: ehPlataforma(c) ? c.origem : "" }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
-      : { trabalho: "Conteúdo UGC", origem_tipo: "direto", status: "Em andamento", roteiro_status: "nao", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
+      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c), status: etapaDe(c), roteiro_status: c.roteiro_status || "nao", canal: canalDe(c), plataforma: ehPlataforma(c) ? c.origem : PLATAFORMAS_UGC[0], agencia_nome: canalDe(c) === "agencia" && c.origem !== "direto" ? c.origem : "" }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
+      : { trabalho: "Conteúdo UGC", canal: "", status: "Em andamento", roteiro_status: "nao", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
     formulario({
       titulo: c ? "Editar trabalho" : "Adicionar trabalho",
       larga: true,
@@ -1129,7 +1153,8 @@
         { nome: "campanha", rotulo: "Nome do trabalho ou campanha", obrigatorio: true, inteira: true },
         { nome: "cliente", rotulo: "Marca", lista: dados.marcas.map((m) => m.nome) },
         { nome: "trabalho", rotulo: "Tipo de trabalho", tipo: "select", opcoes: TIPOS_TRABALHO.map((t) => [t, t]) },
-        { nome: "origem_tipo", rotulo: "Como fechei", tipo: "select", opcoes: [["direto", "🤝 Eu mesma fechei (Instagram, WhatsApp, e-mail)"], ["plataforma", "📲 Por uma plataforma"]] },
+        { nome: "canal", rotulo: "Como fechei", tipo: "select", opcoes: [["", "Escolha…"]].concat(CANAIS.map(([k, e, t]) => [k, `${e} ${t}`])), dica: "Serve para ver por onde você fecha mais campanhas." },
+        { nome: "agencia_nome", rotulo: "Qual agência", lista: Array.from(new Set(dados.campanhas.filter((x) => canalDe(x) === "agencia" && x.origem && x.origem !== "direto").map((x) => x.origem))) },
         { nome: "plataforma", rotulo: "Qual plataforma", tipo: "select", opcoes: Array.from(new Set(PLATAFORMAS_UGC.concat(dados.campanhas.filter(ehPlataforma).map((x) => x.origem)))).map((p) => [p, p]).concat([["__outra", "Outra (escrever)"]]), dica: "O contrato já é feito por lá, então não precisa dos dados da marca." },
         { nome: "plataforma_outra", rotulo: "Nome da plataforma" },
         { nome: "qtd", rotulo: "Quantidade de entregas (vídeos, posts...)", tipo: "number" },
@@ -1158,8 +1183,9 @@
         MARCA_CAMPOS.forEach(([k]) => { marca[k] = obj["md_" + k] || ""; delete obj["md_" + k]; });
         obj.marca_dados = marca;
         obj.uso_meses = numero(obj.uso_meses);
-        obj.origem = obj.origem_tipo === "plataforma" ? ((obj.plataforma === "__outra" ? obj.plataforma_outra : obj.plataforma) || "Plataforma") : "direto";
-        delete obj.origem_tipo; delete obj.plataforma; delete obj.plataforma_outra;
+        obj.origem = obj.canal === "plataforma" ? ((obj.plataforma === "__outra" ? obj.plataforma_outra : obj.plataforma) || "Plataforma")
+          : obj.canal === "agencia" ? (obj.agencia_nome || "direto") : "direto";
+        delete obj.plataforma; delete obj.plataforma_outra; delete obj.agencia_nome;
         /* recebeu: o pagamento fica como recebido e entra no Financeiro (no dia de hoje, se não tiver outro dia) */
         if (obj.status === "Recebido") obj.pagamento = "pago";
         const jaEraPago = c && c.pagamento === "pago";
@@ -1204,7 +1230,8 @@
     const secaoPlataforma = secoes.find((h) => h.textContent.includes("Fechada por plataforma"));
     if (secaoPlataforma) secaoPlataforma.classList.add("form-nota");
     const ajustarOrigem = () => {
-      const plataforma = form.elements.origem_tipo.value === "plataforma";
+      const plataforma = form.elements.canal.value === "plataforma";
+      form.elements.agencia_nome.closest("label").hidden = form.elements.canal.value !== "agencia";
       form.elements.plataforma.closest("label").hidden = !plataforma;
       form.elements.plataforma_outra.closest("label").hidden = !plataforma || form.elements.plataforma.value !== "__outra";
       if (secaoMarca) secaoMarca.hidden = plataforma;
@@ -1212,7 +1239,7 @@
       MARCA_CAMPOS.forEach(([k]) => { form.elements["md_" + k].closest("label").hidden = plataforma; });
       $$('[data-anexo="marca"], #camp-gerar-contrato', bloco).forEach((el) => { (el.closest("label") || el).hidden = plataforma; });
     };
-    form.elements.origem_tipo.addEventListener("change", ajustarOrigem);
+    form.elements.canal.addEventListener("change", ajustarOrigem);
     form.elements.plataforma.addEventListener("change", ajustarOrigem);
     ajustarOrigem();
     if (!c) return;
