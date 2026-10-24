@@ -623,4 +623,7 @@ create policy "dona apaga historico" on public.campanha_historico for delete to 
 revoke all on public.campanha_historico from anon;
 grant select, insert, delete on public.campanha_historico to authenticated;
 
+-- ---------- Semana corrida: tarefa de trabalho ou de casa ----------
+alter table public.tarefas add column if not exists area text not null default 'trabalho';
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

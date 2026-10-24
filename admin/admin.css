@@ -794,3 +794,31 @@ body[data-aba="meudia"] #lembretes { display: none; }
 .sc-dur-campo input { width: 84px; }
 .sc-regras { margin: 0 0 20px; }
 @media (max-width: 640px) { .sc-botoes { width: 100%; } .sc-botoes .botao { flex: 1; justify-content: center; } }
+
+/* ---------- Semana corrida: caixa, casa e ajuda ---------- */
+.sc-caixa textarea#sc-caixa-texto { width: 100%; font: inherit; font-size: .95rem; padding: 12px; border: 1px solid var(--borda); border-radius: var(--raio-p); resize: vertical; min-height: 110px; background: var(--branco); }
+.sc-caixa-botoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.sc-caixa-botoes .espaco { flex: 1; }
+.sc-prev-lista { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.sc-prev { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 10px; display: grid; gap: 8px; background: var(--fundo); }
+.sc-prev-titulo { font: 700 .92rem var(--fonte); padding: 8px 10px; border: 1px solid var(--borda); border-radius: 8px; width: 100%; }
+.sc-prev-campos { display: grid; grid-template-columns: 80px 1fr 1fr 1.4fr 1fr auto; gap: 8px; align-items: end; }
+.sc-prev-campos label { display: grid; gap: 3px; font-size: .74rem; font-weight: 700; color: var(--texto); }
+.sc-prev-campos input, .sc-prev-campos select { font: 500 .82rem var(--fonte); padding: 7px 8px; border: 1px solid var(--borda); border-radius: 8px; background: var(--branco); min-width: 0; }
+.sc-prev-campos .sc-falta { border-color: var(--terracota); box-shadow: 0 0 0 2px var(--terracota-claro); }
+.sc-prev-tirar { padding: 7px 10px !important; }
+.sc-tempo-dia { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: var(--raio-p); }
+.sc-tempo-cab { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sc-tempo-dia > label { display: grid; gap: 3px; font-size: .78rem; font-weight: 700; color: var(--texto); }
+.sc-tempo-dia select { min-width: 0; width: 100%; }
+.sc-ajuda { display: inline-flex; gap: 6px; align-items: center; font-size: .82rem; font-weight: 700; color: var(--verde-texto); cursor: pointer; }
+.sc-ajuda input { width: 18px; height: 18px; }
+.sc-ajuda-chip { display: inline-block; margin-left: 6px; font-size: .7rem; font-weight: 800; padding: 1px 8px; border-radius: 999px; background: var(--verde-claro); color: var(--verde-texto); vertical-align: 2px; }
+.sc-barra-casa i { background: var(--terracota) !important; }
+.sc-barra-casa.cheia i { background: var(--vermelho) !important; }
+.sc-horas { text-align: right; line-height: 1.4; }
+@media (max-width: 640px) {
+  .sc-prev-campos { grid-template-columns: 1fr 1fr; }
+  .sc-prev-tirar { justify-self: end; }
+  .sc-tempo-dia { grid-template-columns: 1fr; }
+}

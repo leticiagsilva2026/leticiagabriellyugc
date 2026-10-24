@@ -124,7 +124,7 @@
     cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"],
     gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"],
     ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"],
-    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id", "recorrencia", "dias_semana", "intervalo_dias", "data_fim", "lembrete_min"],
+    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id", "recorrencia", "dias_semana", "intervalo_dias", "data_fim", "lembrete_min", "area"],
     tarefas_ocorrencias: ["tarefa_id", "data", "status", "nova_data"]
   };
   const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], tarefasOcorrencias: [], config: {} };
@@ -5027,12 +5027,13 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       titulo: t ? (recorrente(t) ? "Editar atividade que se repete" : "Editar") : "Nova tarefa ou compromisso",
       larga: true,
       valores: t ? Object.assign({}, t, { campanha_id: t.campanha_id == null ? "" : String(t.campanha_id), tempo_min: String(t.tempo_min), hora: horaInput(t.hora), recorrencia: t.recorrencia || "nenhuma", lembrete_min: String(t.lembrete_min == null ? 30 : t.lembrete_min), intervalo_dias: t.intervalo_dias || 15 })
-        : Object.assign({ tipo: "tarefa", prioridade: "media", tempo_min: "30", data: isoLocal(new Date()), campanha_id: "", recorrencia: "nenhuma", intervalo_dias: 15, lembrete_min: "30" }, padrao || {}),
+        : Object.assign({ tipo: "tarefa", area: "trabalho", prioridade: "media", tempo_min: "30", data: isoLocal(new Date()), campanha_id: "", recorrencia: "nenhuma", intervalo_dias: 15, lembrete_min: "30" }, padrao || {}),
       campos: [
         { tipo: "secao", rotulo: "📝 O que é" },
         { nome: "titulo", rotulo: "O que é", obrigatorio: true, inteira: true, dica: "ex: Stories para a internet da cidade, Levar o Davi no médico" },
-        { nome: "tipo", rotulo: "Tipo", tipo: "select", opcoes: [["tarefa", "✅ Tarefa (trabalho)"], ["compromisso", "🗓️ Compromisso pessoal"]] },
+        { nome: "tipo", rotulo: "Tipo", tipo: "select", opcoes: [["tarefa", "✅ Tarefa"], ["compromisso", "🗓️ Compromisso (consulta, escola, horário marcado)"]] },
         { nome: "prioridade", rotulo: "Importância", tipo: "select", opcoes: [["alta", "🔴 Alta"], ["media", "🟡 Média"], ["baixa", "🟢 Baixa"]] },
+        { nome: "area", rotulo: "É de", tipo: "select", opcoes: [["trabalho", "🎬 Trabalho"], ["casa", "🏠 Casa"]] },
         { tipo: "secao", rotulo: "🕒 Quando" },
         { nome: "data", rotulo: "Dia (ou o primeiro dia, se repetir)", tipo: "date" },
         { nome: "hora", rotulo: "Horário (opcional)", tipo: "time" },
@@ -5682,7 +5683,7 @@ Português do Brasil, nunca use travessão.`;
   const PREPAROS = [["preparo_gravacao", "Montar o equipamento para gravar", "🎬", "gravacao"], ["preparo_edicao", "Organizar os arquivos antes de editar", "🗂️", "edicao"]];
   const TEMPO_DA_ETAPA = { briefing_recebido: "briefing_ler", briefing_analisado: "briefing", roteiro_producao: "roteiro", roteiro_aprovacao: "cobranca", gravacao: "gravacao", edicao: "edicao", video_aprovacao: "cobranca", ajustes: "ajustes", aprovado: "entrega_arquivos" };
   const GRUPO_DO_TEMPO = { gravacao: "gravacao", edicao: "edicao", ajustes: "edicao", briefing_ler: "escrita", briefing: "escrita", roteiro: "escrita", cobranca: "admin", financeiro: "admin", contrato: "admin", conferir_uso: "admin", entrega_arquivos: "admin", post: "posts" };
-  const NOME_GRUPO = { gravacao: "🎥 Gravações", edicao: "✂️ Edições", escrita: "📝 Roteiros e briefings", admin: "💬 Marcas, contratos e dinheiro", posts: "📱 Posts", minhas: "✅ Minhas tarefas" };
+  const NOME_GRUPO = { gravacao: "🎥 Gravações", edicao: "✂️ Edições", escrita: "📝 Roteiros e briefings", admin: "💬 Marcas, contratos e dinheiro", posts: "📱 Posts", minhas: "✅ Minhas tarefas", casa: "🏠 Casa" };
   const lerJSONConfig = (chave, padrao) => { try { const v = JSON.parse(dados.config[chave] || "null"); return v && typeof v === "object" ? v : padrao; } catch (erro) { return padrao; } };
   function lerPlanoSemana() { return lerJSONConfig(CHAVE_SEM_PLANO, {}); }
   const tempoSemana = () => lerJSONConfig(CHAVE_SEM_TEMPO, null);
@@ -5691,8 +5692,14 @@ Português do Brasil, nunca use travessão.`;
   const estadoSemana = { desmarcadas: new Set() };
 
   /* capacidade de cada um dos 7 dias: tempo da semana menos os imprevistos */
+  /* tempo de casa por dia e os dias em que ela tem ajuda com as crianças */
+  const CHAVE_SEM_CASA = "semana_tempo_casa", CHAVE_SEM_AJUDA = "semana_ajuda";
+  const tempoCasaSemana = () => lerJSONConfig(CHAVE_SEM_CASA, {});
+  const diasDeAjuda = () => { const v = lerJSONConfig(CHAVE_SEM_AJUDA, []); return Array.isArray(v) ? v.map(Number) : []; };
   function diasDaSemanaCorrida() {
     const base = tempoSemana() || {};
+    const casa = tempoCasaSemana();
+    const ajuda = diasDeAjuda();
     const imp = imprevistosSemana();
     const dias = [];
     for (let k = 0; k < 7; k++) {
@@ -5701,7 +5708,8 @@ Português do Brasil, nunca use travessão.`;
       const normal = numero(base[dow]);
       const ajuste = imp[iso];
       const cap = ajuste ? Math.min(normal, numero(ajuste.min)) : normal;
-      dias.push({ iso, k, dow, normal, cap, imprevisto: ajuste || null, usado: 0, grupos: new Set(), tarefas: [] });
+      const capCasa = ajuste && !numero(ajuste.min) ? 0 : numero(casa[dow]);
+      dias.push({ iso, k, dow, normal, cap, capCasa, ajuda: ajuda.includes(dow), imprevisto: ajuste || null, usado: 0, usadoCasa: 0, grupos: new Set(), tarefas: [] });
     }
     return dias;
   }
@@ -5737,8 +5745,10 @@ Português do Brasil, nunca use travessão.`;
       const etapa = i.chave.startsWith("camp-") ? i.chave.split("-").slice(2).join("-") : null;
       if (i.dataOriginal && i.dataOriginal > fim && !(c && etapa && c.prazo && String(c.prazo).slice(0, 10) <= fim)) return; /* fora desta semana */
       const fixo = (i.chave.startsWith("cal-") || i.chave.startsWith("cron-") || i.recorrente || (i.propria && lerHora(i.propria.hora) != null)) ? (i.dataOriginal || i.data) : null;
+      const daCasa = !!(i.propria && i.propria.area === "casa");
       lista.push({
-        chave: i.chave, titulo: semTravessao(i.titulo), tipoTempo, grupo: i.propria ? "minhas" : GRUPO_DO_TEMPO[tipoTempo] || "admin",
+        chave: i.chave, titulo: semTravessao(i.titulo), tipoTempo, grupo: daCasa ? "casa" : i.propria ? "minhas" : GRUPO_DO_TEMPO[tipoTempo] || "admin",
+        area: daCasa ? "casa" : "trabalho", estaSemana: !!(i.propria && i.propria.prioridade !== "baixa"),
         porVideo: ["gravacao", "edicao"].includes(tipoTempo), qtd: c ? Math.max(1, numero(c.qtd)) : 1,
         /* tarefa dela sem horário: o dia é uma preferência, não prazo (pode ir para o próximo dia livre) */
         alvo: i.dataOriginal || null, limite: c && c.prazo && etapa ? String(c.prazo).slice(0, 10) : i.propria ? null : i.dataOriginal || null,
@@ -5761,7 +5771,7 @@ Português do Brasil, nunca use travessão.`;
         if (alvo && alvo > fim && !(c.prazo && String(c.prazo).slice(0, 10) <= fim)) return;
         const chave = `camp-${c.id}-${k}`;
         lista.push({
-          chave, titulo: `${ETAPA_EST[k].emoji} ${ETAPA_EST[k].acao}: ${c.cliente || c.campanha}`, tipoTempo, grupo: GRUPO_DO_TEMPO[tipoTempo] || "admin",
+          chave, titulo: `${ETAPA_EST[k].emoji} ${ETAPA_EST[k].acao}: ${c.cliente || c.campanha}`, tipoTempo, grupo: GRUPO_DO_TEMPO[tipoTempo] || "admin", area: "trabalho",
           porVideo: ["gravacao", "edicao"].includes(tipoTempo), qtd: Math.max(1, numero(c.qtd)), alvo, limite: c.prazo ? String(c.prazo).slice(0, 10) : alvo,
           atual: lerPlanoSemana()[chave] || alvo, fixo: null, propria: null, recorrente: false, futura: true, depende: anterior,
           espera: k === "roteiro_aprovacao" ? 2 : 0, /* cobrar a aprovação do roteiro: uns 2 dias depois de enviar */
@@ -5770,7 +5780,11 @@ Português do Brasil, nunca use travessão.`;
         anterior = chave;
       });
     });
-    lista.forEach((t) => { t.min = duracaoDe(t); });
+    lista.forEach((t) => {
+      t.min = duracaoDe(t);
+      /* "foco": o que pede concentração vai, de preferência, para os dias com ajuda */
+      t.foco = t.area === "trabalho" && (["gravacao", "edicao", "escrita"].includes(t.grupo) || (t.min || 0) / (t.porVideo ? Math.max(1, t.qtd) : 1) >= 45);
+    });
     return lista;
   }
 
@@ -5785,11 +5799,13 @@ Português do Brasil, nunca use travessão.`;
     const porChave = Object.fromEntries(tarefas.map((t) => [t.chave, t]));
     const semDuracao = tarefas.filter((t) => !t.min && (t.essencial || (t.alvo && t.alvo <= fim)));
     const inicio = {}, termino = {}, avisos = [];
-    const precisa = (t, d) => t.min + (preparoDe(t.grupo) && !d.grupos.has(t.grupo) ? preparoDe(t.grupo) : 0);
-    const cabe = (t, d) => d.usado + precisa(t, d) <= d.cap;
+    /* casa usa o tempo de casa; trabalho usa o tempo de trabalho (com a preparação) */
+    const ehCasa = (t) => t.area === "casa";
+    const precisa = (t, d) => t.min + (!ehCasa(t) && preparoDe(t.grupo) && !d.grupos.has(t.grupo) ? preparoDe(t.grupo) : 0);
+    const cabe = (t, d) => (ehCasa(t) ? d.usadoCasa + t.min <= d.capCasa : d.usado + precisa(t, d) <= d.cap);
     const colocar = (t, d, extra) => {
-      const prep = preparoDe(t.grupo) && !d.grupos.has(t.grupo) ? preparoDe(t.grupo) : 0;
-      d.usado += t.min + prep;
+      const prep = !ehCasa(t) && preparoDe(t.grupo) && !d.grupos.has(t.grupo) ? preparoDe(t.grupo) : 0;
+      if (ehCasa(t)) d.usadoCasa += t.min; else d.usado += t.min + prep;
       if (prep) d.tarefas.push({ preparo: true, grupo: t.grupo, min: prep, titulo: PREPAROS.find((x) => x[3] === t.grupo)[1] });
       d.grupos.add(t.grupo);
       d.tarefas.push(Object.assign({}, t, extra || {}));
@@ -5819,9 +5835,11 @@ Português do Brasil, nunca use travessão.`;
       String(a.limite || "9999").localeCompare(String(b.limite || "9999")) || String(a.alvo || "9999").localeCompare(String(b.alvo || "9999")) || (b.essencial - a.essencial) || (b.score - a.score));
     const jaPostos = new Set();
     moveis.forEach((t) => {
-      if (!t.essencial && !t.alvo) { if (!podeEsperar.some((x) => x.base === t.base)) podeEsperar.push(t); return; }
+      if (!t.essencial && !t.alvo && !t.estaSemana) { if (!podeEsperar.some((x) => x.base === t.base)) podeEsperar.push(t); return; }
       const janela = (a, b) => dias.filter((d) => d.iso >= a && d.iso <= b);
-      const desde = t.aposPedaco && jaPostos.has(t.aposPedaco) ? (termino[t.base] || hoje) : comecoMinimo(t);
+      let desde = t.aposPedaco && jaPostos.has(t.aposPedaco) ? (termino[t.base] || hoje) : comecoMinimo(t);
+      /* tarefa dela com dia escolhido: a partir daquele dia (se não couber, nos dias seguintes) */
+      if (t.propria && t.alvo && t.alvo > desde) desde = t.alvo;
       /* depende de algo que só termina depois desta semana */
       if (desde > fim) {
         if (t.essencial && t.limite && t.limite <= fim && !avisos.some((a) => a.base === t.base)) avisos.push({ tipo: "conflito", base: t.base, texto: `${porChave[t.base] ? porChave[t.base].titulo : t.titulo}: só dá para começar depois de ${dataBR(desde).slice(0, 5)}, mas a entrega é ${dataBR(t.limite).slice(0, 5)}.` });
@@ -5830,7 +5848,15 @@ Português do Brasil, nunca use travessão.`;
       }
       const ate = t.alvo && t.alvo < fim ? (t.alvo < desde ? desde : t.alvo) : fim;
       const ateLimite = t.limite && t.limite < fim ? (t.limite < desde ? desde : t.limite) : fim;
-      const escolher = (lista) => lista.find((d) => d.grupos.has(t.grupo) && cabe(t, d)) || lista.find((d) => cabe(t, d));
+      /* o que pede concentração vai para os dias com ajuda; o que é curto fica nos outros dias
+         (guardando os dias com ajuda para o que precisa de foco); tarefas parecidas juntas */
+      const escolher = (lista) => {
+        const ok = lista.filter((d) => cabe(t, d));
+        /* urgente (importância alta) vai no primeiro dia que couber */
+        if (t.propria && t.propria.prioridade === "alta") return ok.sort((a, b) => a.iso.localeCompare(b.iso))[0];
+        const peso = (d) => (ehCasa(t) ? 0 : t.foco ? (d.ajuda ? 0 : 2) : (d.ajuda ? 1 : 0)) + (d.grupos.has(t.grupo) ? 0 : 0.5);
+        return ok.sort((a, b) => peso(a) - peso(b) || a.iso.localeCompare(b.iso))[0];
+      };
       let d = escolher(janela(desde, ate));
       let extra = null;
       if (!d) { d = escolher(janela(desde, ateLimite)); if (d) extra = { passouEtapa: !!t.campanha }; }
@@ -5845,6 +5871,7 @@ Português do Brasil, nunca use travessão.`;
         const camps = Array.from(new Set(d.tarefas.filter((x) => x.campanha && x.essencial).map((x) => x.campanha.cliente || x.campanha.campanha)));
         avisos.push({ tipo: camps.length > 1 ? "conflito" : "sobrecarga", texto: `${nomeDiaCurto(d)}: ${fmtTempo(d.usado)} de trabalho para ${d.cap ? fmtTempo(d.cap) : "nenhum tempo"} disponível${camps.length > 1 ? `. ${camps.join(" e ")} disputam o mesmo dia` : ""}.` });
       }
+      if (d.usadoCasa > d.capCasa) avisos.push({ tipo: "sobrecarga", texto: `🏠 ${nomeDiaCurto(d)}: ${fmtTempo(d.usadoCasa)} de coisas de casa para ${d.capCasa ? fmtTempo(d.capCasa) : "nenhum tempo"} livre.` });
     });
     Array.from(new Set(dias.flatMap((d) => d.tarefas.filter((x) => x.estoura && x.limite && d.iso >= x.limite).map((x) => x.base)))).forEach((b) => {
       const t = porChave[b];
@@ -5865,9 +5892,10 @@ Português do Brasil, nunca use travessão.`;
       const pedacosT = dias.filter((d) => d.tarefas.some((y) => y.base === b && !y.preparo));
       const est = noDia.tarefas.find((y) => y.base === b && y.estoura);
       mudancas.push({ chave: b, titulo: t.titulo, de: atual, para, propria: t.propria, divide: pedacosT.length > 1 ? pedacosT.map((d) => nomeDiaCurto(d).split(" ")[0].toLowerCase()).join(", ") : "",
-        motivo: est ? "não cabe em outro dia antes da entrega" : doGrupo && t.grupo !== "minhas" ? `junto com outras ${NOME_GRUPO[t.grupo].replace(/^\S+\s/, "").toLowerCase()}` : !atual ? "não tinha dia" : atual > para ? "antecipar para não apertar perto da entrega" : "o dia de antes estava cheio" });
+        motivo: est ? "não cabe em outro dia antes da entrega" : t.foco && noDia.ajuda ? "dia com ajuda: dá para ter foco" : doGrupo && !["minhas", "casa"].includes(t.grupo) ? `junto com outras ${NOME_GRUPO[t.grupo].replace(/^\S+\s/, "").toLowerCase()}` : !atual ? (t.area === "casa" ? "tem tempo de casa livre nesse dia" : "tem tempo livre nesse dia") : atual > para ? "antecipar para não apertar perto da entrega" : "o dia de antes estava cheio" });
     });
-    return { dias, avisos, mudancas, semDuracao, podeEsperar, totalCap, totalUso, tarefas };
+    const totalCasa = dias.reduce((s, d) => s + d.capCasa, 0), usoCasa = dias.reduce((s, d) => s + d.usadoCasa, 0);
+    return { dias, avisos, mudancas, semDuracao, podeEsperar, totalCap, totalUso, totalCasa, usoCasa, tarefas };
   }
   const nomeDiaCurto = (d) => (d.k === 0 ? "Hoje" : d.k === 1 ? "Amanhã" : `${DIAS_SEMANA_LONGO[d.dow]} ${dataBR(d.iso).slice(0, 5)}`);
 
@@ -5893,15 +5921,115 @@ Português do Brasil, nunca use travessão.`;
   /* ---- janelas de configuração ---- */
   function editarTempoSemana() {
     const atual = tempoSemana() || {};
+    const casa = tempoCasaSemana();
+    const ajuda = diasDeAjuda();
     const opcoes = [0, 30, 60, 90, 120, 150, 180, 210, 240, 300, 360, 420, 480];
-    abrirModal("🕒 Meu tempo para trabalhar", `<p class="dica">Quanto tempo, em média, você consegue trabalhar em cada dia da semana (sem contar casa, filhos e compromissos)?</p>
-      <div class="sc-tempo">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<label><span>${DIAS_SEMANA_LONGO[d]}</span><select data-dow="${d}">${opcoes.map((m) => `<option value="${m}" ${numero(atual[d]) === m ? "selected" : ""}>${m ? fmtTempo(m) : "Não trabalho"}</option>`).join("")}</select></label>`).join("")}</div>
-      <div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="sc-tempo-salvar">💾 Salvar</button></div>`);
+    const sel = (attr, d, valor, zero) => `<select ${attr}="${d}">${opcoes.map((m) => `<option value="${m}" ${numero(valor) === m ? "selected" : ""}>${m ? fmtTempo(m) : zero}</option>`).join("")}</select>`;
+    abrirModal("🕒 Meu tempo em cada dia", `<p class="dica">Pense num dia comum. Quanto tempo sobra para <b>trabalhar</b> e para as <b>coisas de casa</b>, sem contar o tempo com as crianças (brincar, dar atenção, cuidar)? Marque os dias em que você tem <b>ajuda</b>: neles eu coloco o que pede mais concentração.</p>
+      <div class="sc-tempo">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<div class="sc-tempo-dia">
+        <div class="sc-tempo-cab"><b>${DIAS_SEMANA_LONGO[d]}</b><label class="sc-ajuda"><input type="checkbox" data-ajuda="${d}" ${ajuda.includes(d) ? "checked" : ""}> 🤝 tenho ajuda</label></div>
+        <label>🎬 Trabalho ${sel("data-dow", d, atual[d], "Não trabalho")}</label>
+        <label>🏠 Casa ${sel("data-casa", d, casa[d], "Nada")}</label>
+      </div>`).join("")}</div>
+      <div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="sc-tempo-salvar">💾 Salvar</button></div>`, true);
     $("#sc-tempo-salvar").addEventListener("click", async () => {
-      const novo = {};
+      const novo = {}, novaCasa = {};
       $$("[data-dow]").forEach((s) => { novo[s.dataset.dow] = numero(s.value); });
-      if (await salvarConfig(CHAVE_SEM_TEMPO, JSON.stringify(novo))) { recado("Seu tempo foi salvo ✓"); fecharModal(); mostrarAba(); }
+      $$("[data-casa]").forEach((s) => { novaCasa[s.dataset.casa] = numero(s.value); });
+      const dias = $$("[data-ajuda]").filter((c) => c.checked).map((c) => Number(c.dataset.ajuda));
+      const ok = (await salvarConfig(CHAVE_SEM_TEMPO, JSON.stringify(novo))) && (await salvarConfig(CHAVE_SEM_CASA, JSON.stringify(novaCasa))) && (await salvarConfig(CHAVE_SEM_AJUDA, JSON.stringify(dias)));
+      if (ok) { recado("Seu tempo foi salvo ✓"); fecharModal(); mostrarAba(); }
     });
+  }
+
+  /* ---- caixa "o que você precisa fazer?": entende cada linha sem IA ---- */
+  const PALAVRAS_TRABALHO = /\b(edit|grav|roteir|post|reels?|stories|story|marca|campanha|e-?mail|briefing|v[ií]deo|cliente|contrato|publi|carross|captar|capta[cç][aã]o|tiktok|instagram|portf[oó]lio|m[ií]dia kit|or[cç]amento|proposta|ugc|canva|thumb|legenda)/i;
+  function lerLinhaTarefa(linha) {
+    let t = " " + linha.trim() + " ";
+    const r = { titulo: "", qtd: 1, min: null, porUnidade: false, area: "trabalho", dia: "", prioridade: "media" };
+    /* dia */
+    const hojeD = hoje0();
+    const dias = [["hoje", 0], ["amanh[ãa]", 1], ["depois de amanh[ãa]", 2]];
+    /* \b não funciona com acento ("amanhã"): borda feita à mão */
+    const borda = (re) => new RegExp(`(?<![\\wÀ-ÿ])(?:${re})(?![\\wÀ-ÿ])`, "i");
+    for (const [re, n] of dias.slice().reverse()) { const m = borda(re); if (m.test(t)) { r.dia = isoLocal(maisDias(hojeD, n)); t = t.replace(m, " "); break; } }
+    if (!r.dia) {
+      const nomes = ["domingo", "segunda", "ter[cç]a", "quarta", "quinta", "sexta", "s[áa]bado"];
+      nomes.forEach((nome, dow) => { const m = borda(`(?:na |no |dia de )?${nome}(?:-feira)?`); if (!r.dia && m.test(t)) { let k = (dow - hojeD.getDay() + 7) % 7; r.dia = isoLocal(maisDias(hojeD, k)); t = t.replace(m, " "); } });
+    }
+    /* importância */
+    if (/\b(urgente|importante|sem falta)\b/i.test(t)) { r.prioridade = "alta"; t = t.replace(/\b(urgente|importante|sem falta)\b/ig, " "); }
+    /* tempo: 1h30, 1h, 1 hora, 40 min, meia hora (com "cada" = por unidade) */
+    const cada = /\b(cada|por v[ií]deo|por unidade|cada um|cada uma)\b/i;
+    if (cada.test(t)) { r.porUnidade = true; t = t.replace(cada, " "); }
+    const hm = /(\d+)\s*h\s*(\d{1,2})\b/i.exec(t) || null;
+    if (hm) { r.min = Number(hm[1]) * 60 + Number(hm[2]); t = t.replace(hm[0], " "); }
+    else {
+      const h = /(\d+(?:[.,]\d+)?)\s*(h|hr|hrs|hora|horas)\b/i.exec(t);
+      const m = /(\d+)\s*(min|mins|minuto|minutos|m)\b/i.exec(t);
+      if (h) { r.min = Math.round(Number(h[1].replace(",", ".")) * 60); t = t.replace(h[0], " "); }
+      if (m) { r.min = (r.min || 0) + Number(m[1]); t = t.replace(m[0], " "); }
+      if (/\bmeia hora\b/i.test(t)) { r.min = 30; t = t.replace(/\bmeia hora\b/i, " "); }
+    }
+    /* quantidade: "3 vídeos", "2x", "3 vezes" */
+    const q = /\b(\d+)\s*(x|vezes|v[ií]deos?|posts?|roteiros?|reels|stories|edi[cç][oõ]es|unidades?)\b/i.exec(t);
+    if (q) {
+      r.qtd = Math.max(1, Math.min(20, Number(q[1])));
+      /* "Editar 3 vídeos" vira "Editar vídeo" (cada um ganha "1 de 3", "2 de 3"...) */
+      const singular = { "vídeos": "vídeo", "videos": "vídeo", "posts": "post", "roteiros": "roteiro", "edições": "edição", "edicoes": "edição", "unidades": "" };
+      const palavra = q[2].toLowerCase();
+      t = t.replace(q[0], /^(x|vezes)$/i.test(palavra) ? " " : r.qtd > 1 ? ` ${singular[palavra] != null ? singular[palavra] : palavra} ` : q[0]);
+    }
+    if (r.min && r.qtd > 1 && !r.porUnidade) r.min = Math.round(r.min / r.qtd);
+    r.area = PALAVRAS_TRABALHO.test(t) ? "trabalho" : "casa";
+    r.titulo = t.replace(/\s{2,}/g, " ").replace(/\s+([,.])/g, "$1").replace(/^[\s,.\-:;]+|[\s,.\-:;]+$/g, "").trim();
+    r.titulo = r.titulo.charAt(0).toUpperCase() + r.titulo.slice(1);
+    return r;
+  }
+  function linhaPrevia(r, i) {
+    const dias = diasDaSemanaCorrida();
+    const tempos = [5, 10, 15, 20, 30, 40, 45, 60, 90, 120, 150, 180, 240];
+    const temOpcao = r.min && tempos.includes(r.min);
+    return `<li class="sc-prev" data-linha="${i}">
+      <input class="sc-prev-titulo" value="${esc(r.titulo)}" aria-label="O que é" placeholder="O que é">
+      <div class="sc-prev-campos">
+        <label>Quantas<input type="number" min="1" max="20" class="sc-prev-qtd" value="${r.qtd}"></label>
+        <label>Tempo ${r.qtd > 1 ? "de cada" : ""}<select class="sc-prev-min ${r.min ? "" : "sc-falta"}"><option value="">Quanto tempo?</option>${tempos.map((m) => `<option value="${m}" ${r.min === m ? "selected" : ""}>${fmtTempo(m)}</option>`).join("")}${r.min && !temOpcao ? `<option value="${r.min}" selected>${fmtTempo(r.min)}</option>` : ""}</select></label>
+        <label>É de<select class="sc-prev-area"><option value="trabalho" ${r.area === "trabalho" ? "selected" : ""}>🎬 Trabalho</option><option value="casa" ${r.area === "casa" ? "selected" : ""}>🏠 Casa</option></select></label>
+        <label>Dia<select class="sc-prev-dia"><option value="">Qualquer dia (eu escolho)</option>${dias.map((d) => `<option value="${d.iso}" ${r.dia === d.iso ? "selected" : ""}>${nomeDiaCurto(d)}</option>`).join("")}</select></label>
+        <label>Importância<select class="sc-prev-prio"><option value="alta" ${r.prioridade === "alta" ? "selected" : ""}>🔴 Alta</option><option value="media" ${r.prioridade === "media" ? "selected" : ""}>🟡 Normal</option><option value="baixa" ${r.prioridade === "baixa" ? "selected" : ""}>🟢 Pode esperar</option></select></label>
+        <button type="button" class="botao botao-leve sc-prev-tirar" aria-label="Tirar esta linha">✕</button>
+      </div>
+    </li>`;
+  }
+  async function adicionarDaCaixa(caixa) {
+    const linhas = $$(".sc-prev", caixa).map((li) => ({
+      titulo: $(".sc-prev-titulo", li).value.trim(), qtd: Math.max(1, Math.min(20, numero($(".sc-prev-qtd", li).value) || 1)), min: numero($(".sc-prev-min", li).value),
+      area: $(".sc-prev-area", li).value, dia: $(".sc-prev-dia", li).value, prioridade: $(".sc-prev-prio", li).value, li
+    })).filter((l) => l.titulo);
+    const semTempo = linhas.find((l) => !l.min);
+    if (semTempo) { $(".sc-prev-min", semTempo.li).focus(); recado(`Quanto tempo leva "${semTempo.titulo}"?`, true); return false; }
+    const criadas = [];
+    for (const l of linhas) {
+      for (let n = 1; n <= l.qtd; n++) {
+        const linha = await gravar("tarefas", { titulo: l.qtd > 1 ? `${l.titulo} (${n} de ${l.qtd})` : l.titulo, tipo: "tarefa", area: l.area, data: l.dia || null, hora: "", prioridade: l.prioridade, tempo_min: l.min, feita: false, recorrencia: "nenhuma", lembrete_min: 30 });
+        if (!linha) return false;
+        trocarNaLista(dados.tarefas, linha);
+        criadas.push(linha);
+      }
+    }
+    /* já distribui o que ficou para "qualquer dia" (só essas tarefas novas) */
+    const novas = new Set(criadas.filter((c) => !c.data).map((c) => `tarefa-${c.id}`));
+    let distribuidas = [];
+    if (novas.size) {
+      const r = montarPlano();
+      distribuidas = r.mudancas.filter((m) => novas.has(m.chave));
+      if (distribuidas.length) await aplicarPlano(distribuidas);
+    }
+    const resumo = distribuidas.map((m) => `${m.titulo.replace(/^\S+\s/, "")} → ${nomeDiaCurto(diasDaSemanaCorrida().find((d) => d.iso === m.para)).toLowerCase()}`);
+    recado(`${plural(criadas.length, "tarefa adicionada", "tarefas adicionadas")} ✓${resumo.length ? ` Distribuí: ${resumo.slice(0, 3).join(", ")}${resumo.length > 3 ? "…" : ""}` : ""}`);
+    atualizarLembretes();
+    return true;
   }
   function editarImprevisto(isoInicial) {
     const imp = imprevistosSemana();
@@ -5945,9 +6073,9 @@ Português do Brasil, nunca use travessão.`;
       area.innerHTML = `<section class="cartao sc-boasvindas">
         <h2>🏃‍♀️ Semana corrida</h2>
         <p>Eu monto uma agenda realista para os próximos 7 dias com as suas tarefas de verdade (campanhas, posts, cobranças, contas e as suas tarefas), respeitando o tempo que você tem.</p>
-        <ol><li><b>Diga quanto tempo você tem</b> para trabalhar em cada dia.</li><li><b>Coloque quanto tempo cada coisa leva</b> (gravar um vídeo, editar…). O que você não souber, deixe em branco.</li><li>Eu sugiro a distribuição e você aplica com um clique.</li></ol>
+        <ol><li><b>Diga quanto tempo você tem</b> em cada dia para trabalhar e para a casa, e em quais dias tem ajuda com as crianças.</li><li><b>Coloque quanto tempo cada coisa leva</b> (gravar um vídeo, editar…). O que você não souber, deixe em branco.</li><li>Eu sugiro a distribuição e você aplica com um clique.</li></ol>
         <p class="dica">🔒 Nunca mudo prazo de entrega, não mando mensagem para marcas e não cancelo nada sozinha.</p>
-        <button type="button" class="botao botao-principal" id="sc-comecar">🕒 Começar: meu tempo por dia</button>
+        <button type="button" class="botao botao-principal" id="sc-comecar">🕒 Começar: meu tempo em cada dia</button>
       </section>`;
       $("#sc-comecar").addEventListener("click", editarTempoSemana);
       return;
@@ -5958,6 +6086,13 @@ Português do Brasil, nunca use travessão.`;
     const diasEstourados = r.dias.filter((d) => d.usado > d.cap);
     const essenciaisMin = r.dias.reduce((s, d) => s + d.tarefas.filter((x) => x.essencial || x.preparo).reduce((a, x) => a + x.min, 0), 0);
     area.innerHTML = `
+      <section class="cartao sc-caixa">
+        <h2 class="md-secao">➕ O que você precisa fazer?</h2>
+        <textarea id="sc-caixa-texto" rows="4" placeholder="Uma coisa por linha, do seu jeito. Ex.:&#10;Editar 3 vídeos 40 min cada&#10;Lavar roupa 1h&#10;Mercado amanhã 1h30&#10;Responder as marcas 20 min urgente">${esc(estadoSemana.rascunho || "")}</textarea>
+        <div class="sc-caixa-botoes"><span class="dica">Coloque quanto tempo leva. Se não disser o dia, eu escolho o melhor.</span><span class="espaco"></span><button type="button" class="botao botao-principal" id="sc-caixa-ler">Organizar ➜</button></div>
+        <div id="sc-caixa-previa"></div>
+      </section>
+
       <section class="cartao sc-topo">
         <div class="sc-topo-linha">
           <div><h2>🏃‍♀️ Sua semana</h2><p class="dica">${dataBR(r.dias[0].iso).slice(0, 5)} a ${dataBR(r.dias[6].iso).slice(0, 5)}</p></div>
@@ -5972,6 +6107,8 @@ Português do Brasil, nunca use travessão.`;
             : diasEstourados.length ? `🟡 <b>No total cabe</b> (${fmtTempo(r.totalUso)} de trabalho em ${fmtTempo(r.totalCap)}), mas ${diasEstourados.map((d) => nomeDiaCurto(d).toLowerCase()).join(" e ")} ${diasEstourados.length > 1 ? "passam" : "passa"} do seu tempo por causa dos prazos.`
             : `${r.totalUso > r.totalCap * 0.85 ? "🟡 Semana cheia, mas cabe:" : "🌿 Cabe tudo:"} ${fmtTempo(r.totalUso)} de trabalho em ${fmtTempo(r.totalCap)} disponíveis${r.totalCap - r.totalUso > 0 ? `, sobra ${fmtTempo(r.totalCap - r.totalUso)}` : ""}.`}
           <small>Essencial (prazo nesta semana): ${fmtTempo(essenciaisMin)} · ${plural(r.podeEsperar.length, "tarefa pode esperar", "tarefas podem esperar")}</small>
+          ${r.totalCasa || r.usoCasa ? `<small>🏠 Casa: ${fmtTempo(r.usoCasa)} de ${fmtTempo(r.totalCasa)} livres na semana</small>` : ""}
+          ${diasDeAjuda().length ? `<small>🤝 Dias com ajuda (${r.dias.filter((d) => d.ajuda).map((d) => DIAS_SEMANA_LONGO[d.dow].slice(0, 3).toLowerCase()).filter((v, i, a) => a.indexOf(v) === i).join(", ")}): deixei lá o que pede mais concentração.</small>` : ""}
         </div>
         ${r.avisos.length ? `<ul class="sc-avisos">${r.avisos.map((a) => `<li class="sc-${a.tipo}">${a.tipo === "conflito" ? "⚔️" : "⏰"} ${esc(a.texto)}</li>`).join("")}</ul>` : ""}
         ${r.semDuracao.length ? `<div class="sc-semdur">⏱️ <b>${plural(r.semDuracao.length, "tarefa ficou", "tarefas ficaram")} de fora porque não tem duração cadastrada:</b>
@@ -5991,10 +6128,11 @@ Português do Brasil, nunca use travessão.`;
         const grupos = {};
         d.tarefas.forEach((x) => { (grupos[x.grupo] = grupos[x.grupo] || []).push(x); });
         return `<article class="cartao sc-dia sc-${nivel}">
-          <header><div><b>${nomeDiaCurto(d)}</b>${d.imprevisto ? `<span class="sc-imp">🚧 ${d.imprevisto.min ? `só ${fmtTempo(d.imprevisto.min)}` : "indisponível"}${d.imprevisto.motivo ? ` · ${esc(d.imprevisto.motivo)}` : ""}</span>` : ""}</div>
-            <span class="sc-horas">${fmtTempo(d.usado)} / ${d.cap ? fmtTempo(d.cap) : "sem tempo"}</span></header>
-          <div class="sc-barra"><i style="width:${pct}%"></i></div>
-          ${d.tarefas.length ? Object.keys(grupos).map((g) => `<div class="sc-grupo"><small>${NOME_GRUPO[g] || g}</small><ul>${grupos[g].map((x) => `<li class="${x.preparo ? "sc-prep" : ""} ${x.estoura ? "sc-estoura" : ""}"><span>${x.preparo ? "🧰 " : x.fixa ? "📌 " : x.futura ? "⏭️ " : ""}${esc(x.titulo)}${x.essencial && !x.preparo ? ' <em class="sc-ess">essencial</em>' : ""}${x.passouEtapa ? ' <em class="sc-alerta">depois do prazo da etapa</em>' : ""}</span><b>${fmtTempo(x.min)}</b></li>`).join("")}</ul></div>`).join("") : `<p class="dica">${d.cap ? "🌿 Livre" : "Sem tempo para trabalhar"}</p>`}
+          <header><div><b>${nomeDiaCurto(d)}</b>${d.ajuda ? '<span class="sc-ajuda-chip">🤝 com ajuda</span>' : ""}${d.imprevisto ? `<span class="sc-imp">🚧 ${d.imprevisto.min ? `só ${fmtTempo(d.imprevisto.min)}` : "indisponível"}${d.imprevisto.motivo ? ` · ${esc(d.imprevisto.motivo)}` : ""}</span>` : ""}</div>
+            <span class="sc-horas">🎬 ${fmtTempo(d.usado)} / ${d.cap ? fmtTempo(d.cap) : "0"}${d.capCasa || d.usadoCasa ? `<br>🏠 ${fmtTempo(d.usadoCasa)} / ${d.capCasa ? fmtTempo(d.capCasa) : "0"}` : ""}</span></header>
+          <div class="sc-barra" title="Trabalho"><i style="width:${pct}%"></i></div>
+          ${d.capCasa || d.usadoCasa ? `<div class="sc-barra sc-barra-casa ${d.usadoCasa > d.capCasa ? "cheia" : ""}" title="Casa"><i style="width:${d.capCasa ? Math.min(100, Math.round((d.usadoCasa / d.capCasa) * 100)) : 100}%"></i></div>` : ""}
+          ${d.tarefas.length ? Object.keys(grupos).map((g) => `<div class="sc-grupo"><small>${NOME_GRUPO[g] || g}</small><ul>${grupos[g].map((x) => `<li class="${x.preparo ? "sc-prep" : ""} ${x.estoura ? "sc-estoura" : ""}"><span>${x.preparo ? "🧰 " : x.fixa ? "📌 " : x.futura ? "⏭️ " : ""}${esc(x.titulo)}${x.essencial && !x.preparo ? ' <em class="sc-ess">essencial</em>' : ""}${x.passouEtapa ? ' <em class="sc-alerta">depois do prazo da etapa</em>' : ""}</span><b>${fmtTempo(x.min)}</b></li>`).join("")}</ul></div>`).join("") : `<p class="dica">${d.cap || d.capCasa ? "🌿 Livre" : "Dia sem tempo marcado"}</p>`}
           <button type="button" class="md-link sc-imp-link" data-imp-dia="${d.iso}">🚧 Imprevisto neste dia</button>
         </article>`;
       }).join("")}</section>
@@ -6003,6 +6141,23 @@ Português do Brasil, nunca use travessão.`;
         <ul class="sc-lista">${r.podeEsperar.map((p) => { const t = r.tarefas.find((x) => x.chave === p.base) || p; return `<li><span>${esc(t.titulo)}</span><small>${t.alvo ? `prazo ${dataBR(t.alvo).slice(0, 5)}` : "sem prazo"} · ${fmtTempo(t.min)}</small></li>`; }).join("")}</ul></details></section>` : ""}
       <p class="dica sc-regras">🔒 A Semana Corrida só sugere. Prazos de entrega não mudam, nenhuma mensagem é enviada e nada é cancelado. 📌 = dia fixo (calendário, cronograma, rotina ou horário marcado) · ⏭️ = próxima etapa da esteira.</p>`;
 
+    /* caixa: lê as linhas, mostra para conferir e adiciona */
+    const caixaTexto = $("#sc-caixa-texto");
+    caixaTexto.addEventListener("input", () => { estadoSemana.rascunho = caixaTexto.value; });
+    const previa = $("#sc-caixa-previa");
+    $("#sc-caixa-ler").addEventListener("click", () => {
+      const linhas = caixaTexto.value.split(/\n|;/).map((l) => l.trim()).filter(Boolean);
+      if (!linhas.length) { recado("Escreva pelo menos uma coisa que você precisa fazer.", true); caixaTexto.focus(); return; }
+      previa.innerHTML = `<h3 class="form-secao">Confira e ajuste</h3><ul class="sc-prev-lista">${linhas.map((l, i) => linhaPrevia(lerLinhaTarefa(l), i)).join("")}</ul>
+        <div class="sc-caixa-botoes"><button type="button" class="botao botao-leve" id="sc-prev-mais">+ outra linha</button><span class="espaco"></span><button type="button" class="botao botao-principal" id="sc-prev-salvar">✅ Adicionar e distribuir</button></div>`;
+      previa.onclick = (e) => { const x = e.target.closest(".sc-prev-tirar"); if (x) x.closest(".sc-prev").remove(); };
+      $("#sc-prev-mais").addEventListener("click", () => { $(".sc-prev-lista", previa).insertAdjacentHTML("beforeend", linhaPrevia({ titulo: "", qtd: 1, min: null, area: "trabalho", dia: "", prioridade: "media" }, Date.now())); $(".sc-prev:last-child .sc-prev-titulo", previa).focus(); });
+      $("#sc-prev-salvar").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        if (await adicionarDaCaixa(previa)) { estadoSemana.rascunho = ""; renderSemana(area); } else e.target.disabled = false;
+      });
+      $(".sc-prev-min", previa) && ($(".sc-prev-min.sc-falta", previa) || $(".sc-prev-titulo", previa)).focus();
+    });
     $("#sc-imprevisto").addEventListener("click", () => editarImprevisto());
     $("#sc-tempo").addEventListener("click", editarTempoSemana);
     $("#sc-duracoes").addEventListener("click", () => editarDuracoes());
