@@ -597,4 +597,30 @@ create policy "dona apaga registro_rapido" on public.registro_rapido for delete 
 revoke all on public.registro_rapido from anon;
 grant select, insert, delete on public.registro_rapido to authenticated;
 
+-- ---------- Esteira de produção das campanhas ----------
+alter table public.campanhas add column if not exists esteira        text not null default '';
+alter table public.campanhas add column if not exists esteira_etapas text[] not null default '{}';
+alter table public.campanhas add column if not exists esteira_prazos jsonb not null default '{}'::jsonb;
+alter table public.campanhas add column if not exists responsavel    text not null default '';
+
+-- histórico de alterações de cada campanha (mudança de etapa, prazos, responsável, edições)
+create table if not exists public.campanha_historico (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  campanha_id  bigint not null references public.campanhas(id) on delete cascade,
+  de           text not null default '',
+  para         text not null default '',
+  nota         text not null default ''
+);
+create index if not exists campanha_historico_idx on public.campanha_historico (campanha_id, created_at desc);
+alter table public.campanha_historico enable row level security;
+drop policy if exists "dona le historico" on public.campanha_historico;
+create policy "dona le historico" on public.campanha_historico for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria historico" on public.campanha_historico;
+create policy "dona cria historico" on public.campanha_historico for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona apaga historico" on public.campanha_historico;
+create policy "dona apaga historico" on public.campanha_historico for delete to authenticated using (public.e_a_dona());
+revoke all on public.campanha_historico from anon;
+grant select, insert, delete on public.campanha_historico to authenticated;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

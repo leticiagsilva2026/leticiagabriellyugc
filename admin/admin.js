@@ -112,7 +112,7 @@
     videos: ["titulo", "link", "nicho", "formato", "marca", "destaque", "ordem", "visivel"],
     marcas: ["nome", "instagram", "email", "telefone", "situacao", "obs", "ultimo_contato"],
     calendario: ["titulo", "marca", "tipo", "data", "status"],
-    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem", "contrato_ok", "canal"],
+    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem", "contrato_ok", "canal", "esteira", "esteira_etapas", "esteira_prazos", "responsavel"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
@@ -878,10 +878,10 @@
   const ehPlataforma = (c) => canalDe(c) === "plataforma";
   const MARCA_CAMPOS = [["razao", "Razão social"], ["cnpj", "CNPJ"], ["endereco", "Endereço"], ["responsavel", "Responsável"], ["email", "E-mail"], ["telefone", "Telefone"]];
   const NOME_ANEXO = { roteiro: "📜 Roteiro", contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
-  const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1, mes: isoLocal(hoje0()).slice(0, 7) };
+  const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1, mes: isoLocal(hoje0()).slice(0, 7), vista: "lista" };
   const COLUNAS = [
     ["favorita", "", "bool"], ["data_trabalho", "Dia", "data"], ["campanha", "Trabalho", "texto"], ["cliente", "Marca", "texto"], ["trabalho", "Tipo", "texto"],
-    ["status", "Status", "funil"], ["valor", "Valor", "numero"], ["pagamento", "Pagamento", "texto"], ["uso", "Uso de imagem", "texto"]
+    ["status", "Esteira", "funil"], ["valor", "Valor", "numero"], ["pagamento", "Pagamento", "texto"], ["uso", "Uso de imagem", "texto"]
   ];
   const diaDoTrabalho = (c) => String(c.data_trabalho || c.prazo || c.criado_em || "").slice(0, 10);
   const mesDo = (c) => diaDoTrabalho(c).slice(0, 7);
@@ -914,7 +914,7 @@
     if (coluna === "uso") { const va = vencimentoUso(a), vb = vencimentoUso(b); return (va ? va.getTime() : 9e15) - (vb ? vb.getTime() : 9e15); }
     if (coluna === "data_trabalho") { const va = diaDoTrabalho(a), vb = diaDoTrabalho(b); return va.localeCompare(vb); }
     const va = a[coluna], vb = b[coluna];
-    if (tipo === "funil") return FUNIL.indexOf(etapaDe(a)) - FUNIL.indexOf(etapaDe(b));
+    if (tipo === "funil") return ETAPA_EST[etapaEsteira(a)].i - ETAPA_EST[etapaEsteira(b)].i;
     if (tipo === "numero") return numero(va) - numero(vb);
     if (tipo === "bool") return (va ? 1 : 0) - (vb ? 1 : 0);
     if (tipo === "data") { if (!va && !vb) return 0; if (!va) return 1; if (!vb) return -1; return String(va).localeCompare(String(vb)); }
@@ -1052,9 +1052,13 @@
 
       <section class="cartao">
         <div class="ferramentas" style="margin-bottom:12px">
+          <div class="chips" role="group" aria-label="Ver como">
+            ${[["lista", "📋 Lista"], ["esteira", "🧱 Esteira"]].map(([v, t]) => `<button type="button" data-vista="${v}" aria-pressed="${estadoCamp.vista === v}">${t}</button>`).join("")}
+          </div>
           <div class="chips" role="group" aria-label="Filtrar campanhas">
             ${[["todas", "Todas"], ["ativas", "Ativas"], ["areceber", "A receber"], ["finalizadas", "Finalizadas"]].map(([v, t]) => `<button type="button" data-filtro="${v}" aria-pressed="${estadoCamp.filtro === v}">${t}</button>`).join("")}
           </div>
+          ${estadoCamp.vista === "esteira" ? `<button type="button" class="botao botao-leve" id="es-modelos">⚙️ Etapas por serviço</button>` : ""}
           <input class="campo-busca" id="busca-camp" type="search" placeholder="Buscar trabalho, marca ou tipo" value="${esc(estadoCamp.busca)}">
           <span class="espaco"></span>
           <button type="button" class="botao botao-leve" id="contrato-base">📄 Meu contrato base</button>
@@ -1065,6 +1069,9 @@
       </section>`;
     desenharTabelaCamp();
     $$("[data-filtro]", area).forEach((b) => b.addEventListener("click", () => { estadoCamp.filtro = b.dataset.filtro; renderCampanhas(area); }));
+    $$("[data-vista]", area).forEach((b) => b.addEventListener("click", () => { estadoCamp.vista = b.dataset.vista; if (b.dataset.vista === "esteira" && estadoCamp.filtro === "todas") estadoCamp.filtro = "ativas"; renderCampanhas(area); }));
+    const modelosBtn = $("#es-modelos");
+    if (modelosBtn) modelosBtn.addEventListener("click", abrirModelosEsteira);
     $$("[data-periodo]", area).forEach((b) => b.addEventListener("click", () => { estadoCamp.mes = b.dataset.periodo === "tudo" ? "tudo" : ym; renderCampanhas(area); }));
     $("#camp-mes-antes").addEventListener("click", () => { estadoCamp.mes = andarMes(ym, -1); renderCampanhas(area); });
     $("#camp-mes-depois").addEventListener("click", () => { estadoCamp.mes = andarMes(ym, 1); renderCampanhas(area); });
@@ -1087,6 +1094,14 @@
   function desenharTabelaCamp() {
     const caixa = $("#tabela-camp");
     if (!caixa) return;
+    /* esteira: mostra todas as campanhas em produção (não só as fechadas no mês escolhido) */
+    if (estadoCamp.vista === "esteira") {
+      const b = estadoCamp.busca.toLowerCase();
+      desenharEsteira(caixa, dados.campanhas.filter((c) =>
+        (estadoCamp.filtro === "todas" || (estadoCamp.filtro === "ativas" ? c.ativa !== false : estadoCamp.filtro === "areceber" ? c.pagamento !== "pago" : c.ativa === false)) &&
+        (!b || [c.campanha, c.cliente, c.trabalho, c.responsavel].some((x) => String(x || "").toLowerCase().includes(b)))));
+      return;
+    }
     const lista = campanhasVisiveis();
     const cabecalho = COLUNAS.map(([col, rotulo]) => {
       const ativa = estadoCamp.coluna === col;
@@ -1109,7 +1124,7 @@
           <td><strong>${esc(c.campanha)}</strong>${c.roteiro_status && c.roteiro_status !== "sem" ? `<br><small class="dica">📜 ${c.roteiro_status === "aprovado" ? "roteiro aprovado" : c.roteiro_status === "enviado" ? "roteiro enviado" : "roteiro não enviado"}</small>` : ""}${anexos ? ` <span class="dica" title="${plural(anexos, "arquivo", "arquivos")}">📎${anexos}</span>` : ""}${avisoPrazo(c)}</td>
           <td>${esc(c.cliente)}${canalDe(c) ? `<br><small class="dica">${infoCanal(canalDe(c))[1]} ${ehPlataforma(c) ? `via ${esc(c.origem)}` : canalDe(c) === "agencia" && c.origem !== "direto" ? (/ag[eê]ncia/i.test(c.origem) ? esc(c.origem) : `agência ${esc(c.origem)}`) : esc(infoCanal(canalDe(c))[2].replace(/ \(.*\)$/, "").toLowerCase())}</small>` : ""}</td>
           <td><span class="pilula p-conteudo">${esc(c.trabalho || "Conteúdo UGC")}</span></td>
-          <td><span class="pilula p-s${passo}">${esc(ETAPA_ROTULO[etapaDe(c)] || etapaDe(c))}</span></td>
+          <td class="es-celula"><button type="button" class="es-celula-botao" data-esteira="${c.id}" title="Abrir a esteira">${ETAPA_EST[etapaEsteira(c)].emoji} ${esc(ETAPA_EST[etapaEsteira(c)].nome)}</button><span class="es-linha">${barraProgresso(c, true)}<span class="es-pct-mini">${progressoEsteira(c)}%</span></span>${seloRisco(c)}</td>
           <td style="white-space:nowrap">${moeda(c.valor)}</td>
           <td><span class="pilula ${c.pagamento === "pago" ? "p-pago" : "p-pendente"}">${c.pagamento === "pago" ? "Recebido" : "A receber"}</span>${c.pagamento === "pago" ? "" : ` <button type="button" class="botao botao-leve camp-recebi" data-recebi title="Marcar como recebido hoje">💰 Recebi</button>`}<br><small class="dica">${esc(c.forma_pagamento || "")}${c.data_pagamento ? " · " + dataBR(c.data_pagamento).slice(0, 5) : ""}</small></td>
           <td>${uso.tipo === "sem" ? `<span class="dica">${esc(uso.texto)}</span>` : `<span class="pilula ${uso.tipo === "vencido" ? "p-pendente" : uso.tipo === "vence" ? "p-pendente" : "p-pago"}">${uso.tipo === "vencido" ? "🔔 " : ""}${esc(uso.texto)}</span>`}</td>
@@ -1124,6 +1139,7 @@
       const tr = e.target.closest("tr");
       const c = tr && dados.campanhas.find((x) => String(x.id) === tr.dataset.id);
       if (!c) return;
+      if (e.target.closest("[data-esteira]")) { abrirEsteira(c); return; }
       if (e.target.closest("[data-recebi]")) {
         e.target.disabled = true;
         const linha = await gravar("campanhas", Object.assign({ pagamento: "pago", data_pagamento: isoLocal(new Date()) }, concluida(c) && etapaDe(c) !== "Entregue" ? {} : { status: "Recebido" }), c.id);
@@ -1195,6 +1211,12 @@
         const linha = await gravar("campanhas", obj, c && c.id);
         if (!linha) return false;
         if (c) trocarNaLista(dados.campanhas, linha); else dados.campanhas.unshift(linha);
+        /* histórico: o que mudou nesta edição */
+        const ROTULOS_HIST = { campanha: "nome", cliente: "marca", trabalho: "tipo", valor: "valor", qtd: "entregas", prazo: "entrega", data_pagamento: "pagamento previsto", status: "etapa", roteiro_status: "roteiro", pagamento: "situação do pagamento", canal: "como fechei", uso_meses: "uso de imagem" };
+        const fmt = (k, v) => (v == null || v === "" ? "vazio" : k === "valor" ? moeda(v) : /prazo|data_/.test(k) ? dataBR(v) : String(v));
+        const mudou = c ? Object.keys(ROTULOS_HIST).filter((k) => k in obj && String(obj[k] == null ? "" : obj[k]) !== String(c[k] == null ? "" : c[k])) : [];
+        if (!c) registrarHistorico(linha.id, "", ETAPA_EST[etapaEsteira(linha)].nome, "Campanha cadastrada");
+        else if (mudou.length) registrarHistorico(linha.id, "", "", `Editado: ${mudou.map((k) => `${ROTULOS_HIST[k]} ${fmt(k, c[k])} → ${fmt(k, obj[k])}`).join(" · ")}`);
         recado("Trabalho salvo");
         atualizarLembretes();
         mostrarAba();
@@ -1386,6 +1408,365 @@ Responda SOMENTE com JSON válido: { "contrato": "texto completo do contrato ada
         const linha = await gravar("campanhas", { anexos: (atual.anexos || []).concat([{ nome, caminho, tipo: "gerado", em: isoLocal(new Date()) }]) }, c.id);
         if (linha) { trocarNaLista(dados.campanhas, linha); ev.target.textContent = "salvo nos arquivos do trabalho ✓"; desenharTabelaCamp(); }
       });
+    });
+  }
+
+  /* =================================================================
+     ESTEIRA DE PRODUÇÃO (dentro de Campanhas, sem cadastro novo)
+     A etapa detalhada fica em campanhas.esteira; a etapa simples antiga
+     (campanhas.status) é atualizada junto, para o resto do painel
+     continuar funcionando igual.
+     ================================================================= */
+  /* dur = dias para concluir a etapa; status = etapa simples correspondente */
+  const ESTEIRA = [
+    { k: "briefing_recebido", nome: "Briefing recebido", emoji: "📥", dur: 0, status: "Em andamento", acao: "Ler o briefing", rotulo: "Li", tempo: 15 },
+    { k: "briefing_analisado", nome: "Briefing analisado", emoji: "🔍", dur: 1, status: "Em andamento", acao: "Analisar o briefing e tirar dúvidas", rotulo: "Analisei", tempo: 20 },
+    { k: "roteiro_producao", nome: "Roteiro em produção", emoji: "📝", dur: 2, status: "Roteiro", roteiro: "nao", acao: "Escrever e enviar o roteiro", rotulo: "Enviei", tempo: 45 },
+    { k: "roteiro_aprovacao", nome: "Roteiro em aprovação", emoji: "⏳", dur: 2, status: "Roteiro", roteiro: "enviado", acao: "Cobrar a aprovação do roteiro", rotulo: "Aprovado", tempo: 10 },
+    { k: "gravacao", nome: "Gravação pendente", emoji: "🎥", dur: 2, status: "Gravação", acao: "Gravar", rotulo: "Gravei", tempo: 60, porVideo: true },
+    { k: "edicao", nome: "Edição pendente", emoji: "✂️", dur: 2, status: "Edição", acao: "Editar", rotulo: "Editei", tempo: 90, porVideo: true },
+    { k: "video_aprovacao", nome: "Vídeo em aprovação", emoji: "👀", dur: 2, status: "Edição", acao: "Enviar o vídeo e cobrar a aprovação", rotulo: "Aprovado", tempo: 10 },
+    { k: "ajustes", nome: "Ajustes solicitados", emoji: "🔧", dur: 1, status: "Edição", acao: "Fazer os ajustes e reenviar", rotulo: "Reenviei", tempo: 45, opcional: true },
+    { k: "aprovado", nome: "Conteúdo aprovado", emoji: "✅", dur: 0, status: "Edição", acao: "Entregar os arquivos finais ou publicar", rotulo: "Entreguei", tempo: 20 },
+    { k: "entregue", nome: "Entregue ou publicado", emoji: "📦", dur: 0, status: "Entregue", acao: "Acompanhar e confirmar o pagamento", rotulo: "Recebi", tempo: 10 },
+    { k: "pagamento", nome: "Pagamento recebido", emoji: "💰", dur: 0, status: "Recebido", acao: "Encerrar a campanha", rotulo: "Encerrar", tempo: 5 },
+    { k: "encerrada", nome: "Campanha encerrada", emoji: "🏁", dur: 0, status: "Finalizada", acao: "", rotulo: "", tempo: 0 }
+  ];
+  const ETAPA_EST = Object.fromEntries(ESTEIRA.map((e, i) => [e.k, Object.assign({ i }, e)]));
+  const OBRIGATORIAS = ["briefing_recebido", "entregue", "encerrada"];
+  const TODAS_ETAPAS = ESTEIRA.map((e) => e.k);
+  const sem = (...fora) => TODAS_ETAPAS.filter((k) => !fora.includes(k));
+  /* modelo por tipo de serviço (dá para mudar em "Etapas por serviço") */
+  const MODELOS_ESTEIRA_PADRAO = {
+    "Conteúdo UGC": TODAS_ETAPAS,
+    "UGC Tech": TODAS_ETAPAS,
+    "UGC Canvas (perfil que eu crio para a marca)": sem("video_aprovacao", "ajustes"),
+    "Afiliação": sem("briefing_analisado", "roteiro_aprovacao", "video_aprovacao", "ajustes", "aprovado"),
+    "TikTok Shop": sem("briefing_analisado", "roteiro_aprovacao", "video_aprovacao", "ajustes", "aprovado"),
+    "Design no Canva": sem("roteiro_producao", "roteiro_aprovacao", "gravacao"),
+    "Edição de vídeo": sem("briefing_analisado", "roteiro_producao", "roteiro_aprovacao", "gravacao"),
+    "Captação de conteúdo": sem("roteiro_aprovacao", "edicao", "video_aprovacao", "ajustes"),
+    "Publicidade (no meu perfil)": TODAS_ETAPAS,
+    "Outro": TODAS_ETAPAS
+  };
+  const CHAVE_MODELOS_EST = "esteira_modelos";
+  const modelosEsteira = () => { try { return Object.assign({}, MODELOS_ESTEIRA_PADRAO, JSON.parse(dados.config[CHAVE_MODELOS_EST] || "{}") || {}); } catch (erro) { return Object.assign({}, MODELOS_ESTEIRA_PADRAO); } };
+  const ordenarEtapas = (lista) => Array.from(new Set(lista.concat(OBRIGATORIAS))).filter((k) => ETAPA_EST[k]).sort((a, b) => ETAPA_EST[a].i - ETAPA_EST[b].i);
+  const etapasDaCampanha = (c) => ordenarEtapas(c.esteira_etapas && c.esteira_etapas.length ? c.esteira_etapas : modelosEsteira()[c.trabalho] || TODAS_ETAPAS);
+
+  /* etapa atual: a guardada, se combina com a etapa simples; senão, deduzida dela
+     (assim, mudar a etapa pelo Meu Dia, pelo formulário ou pela entrada rápida continua valendo) */
+  function etapaEsteira(c) {
+    const lista = etapasDaCampanha(c);
+    const simples = c.pagamento === "pago" && ["Entregue", "Recebido"].includes(etapaDe(c)) ? "Recebido" : etapaDe(c);
+    let k = c.esteira && ETAPA_EST[c.esteira] && ETAPA_EST[c.esteira].status === simples ? c.esteira : null;
+    if (!k) {
+      const rot = c.roteiro_status || "nao";
+      k = { "Em andamento": "briefing_recebido", "Roteiro": rot === "enviado" ? "roteiro_aprovacao" : rot === "aprovado" ? "gravacao" : "roteiro_producao", "Gravação": "gravacao", "Edição": "edicao", "Entregue": "entregue", "Recebido": "pagamento", "Finalizada": "encerrada" }[simples] || "briefing_recebido";
+    }
+    if (!lista.includes(k)) k = lista.find((x) => ETAPA_EST[x].i >= ETAPA_EST[k].i) || lista[lista.length - 1];
+    return k;
+  }
+  /* próxima etapa no caminho normal (ajustes só entra quando pedem ajuste) */
+  function proximaEtapa(c, atual) {
+    const lista = etapasDaCampanha(c);
+    const k = atual || etapaEsteira(c);
+    if (k === "ajustes") return lista.includes("video_aprovacao") ? "video_aprovacao" : lista.find((x) => ETAPA_EST[x].i > ETAPA_EST[k].i);
+    return lista.find((x) => ETAPA_EST[x].i > ETAPA_EST[k].i && !ETAPA_EST[x].opcional) || null;
+  }
+  function opcoesDeAvanco(c) {
+    const k = etapaEsteira(c);
+    const prox = proximaEtapa(c);
+    const ops = prox ? [{ para: prox, rotulo: ETAPA_EST[k].rotulo || "Concluir", principal: true }] : [];
+    if (k === "video_aprovacao" && etapasDaCampanha(c).includes("ajustes")) ops.push({ para: "ajustes", rotulo: "Pediram ajustes" });
+    return ops;
+  }
+  /* prazos de cada etapa: contados de trás para frente a partir da entrega (ou para frente a partir do fechamento) */
+  function prazosEsteira(c) {
+    const lista = etapasDaCampanha(c).filter((k) => !ETAPA_EST[k].opcional);
+    const p = {};
+    const entrega = c.prazo ? String(c.prazo).slice(0, 10) : null;
+    const iEnt = lista.indexOf("entregue");
+    if (entrega && iEnt >= 0) {
+      p.entregue = entrega;
+      for (let i = iEnt - 1; i >= 0; i--) p[lista[i]] = somaDias(p[lista[i + 1]], -ETAPA_EST[lista[i + 1]].dur);
+    } else {
+      let d = diaDoTrabalho(c) || isoLocal(hoje0());
+      lista.slice(0, iEnt + 1).forEach((k) => { d = somaDias(d, ETAPA_EST[k].dur); p[k] = d; });
+    }
+    const pag = c.data_pagamento ? String(c.data_pagamento).slice(0, 10) : somaDias(p.entregue || isoLocal(hoje0()), 15);
+    if (lista.includes("pagamento")) p.pagamento = pag;
+    p.encerrada = somaDias(pag, 1);
+    if (etapasDaCampanha(c).includes("ajustes")) p.ajustes = c.esteira === "ajustes" ? somaDias(isoLocal(hoje0()), 1) : p.video_aprovacao || null;
+    const proprios = c.esteira_prazos || {};
+    Object.keys(proprios).forEach((k) => { if (proprios[k]) p[k] = proprios[k]; });
+    return p;
+  }
+  function progressoEsteira(c) {
+    const lista = etapasDaCampanha(c).filter((k) => !ETAPA_EST[k].opcional);
+    let k = etapaEsteira(c);
+    if (k === "ajustes") k = "video_aprovacao";
+    const i = Math.max(0, lista.indexOf(k));
+    return k === "encerrada" ? 100 : Math.round((i / Math.max(1, lista.length - 1)) * 100);
+  }
+  /* atrasada: passou do prazo da etapa atual. Em risco: o tempo até a entrega não dá para o que falta */
+  function riscoEsteira(c) {
+    const k = etapaEsteira(c);
+    if (["entregue", "pagamento", "encerrada"].includes(k) && !(k === "entregue" && c.pagamento !== "pago")) return { nivel: "ok" };
+    const p = prazosEsteira(c);
+    const dl = p[k];
+    const d = dl ? diasAte(dl) : null;
+    const antesDaEntrega = ETAPA_EST[k].i < ETAPA_EST.entregue.i;
+    /* 1º a entrega que já passou, 2º a entrega que não dá tempo, 3º a etapa que passou do prazo dela */
+    if (c.prazo && antesDaEntrega && diasAte(c.prazo) < 0) return { nivel: "atrasada", texto: `Entrega atrasada ${plural(-diasAte(c.prazo), "dia", "dias")} (ainda em ${ETAPA_EST[k].nome.toLowerCase()})`, dias: diasAte(c.prazo) };
+    if (c.prazo && antesDaEntrega && !(c.esteira_prazos || {})[k]) {
+      const lista = etapasDaCampanha(c).filter((x) => !ETAPA_EST[x].opcional);
+      const resta = lista.filter((x) => ETAPA_EST[x].i > ETAPA_EST[k].i && ETAPA_EST[x].i <= ETAPA_EST.entregue.i).reduce((s, x) => s + ETAPA_EST[x].dur, 0) + (k === "ajustes" ? 1 : 0);
+      const ate = diasAte(c.prazo);
+      if (ate < resta) return { nivel: "risco", texto: `Entrega em risco: faltam ${plural(Math.max(0, ate), "dia", "dias")} e ainda precisa de uns ${plural(resta, "dia", "dias")}`, dias: ate };
+    }
+    if (d != null && d < 0) return { nivel: "atrasada", texto: `${ETAPA_EST[k].nome} atrasada ${plural(-d, "dia", "dias")}`, dias: d };
+    if (d === 0) return { nivel: "hoje", texto: `${ETAPA_EST[k].nome}: prazo hoje` };
+    return { nivel: "ok" };
+  }
+
+  /* histórico */
+  async function registrarHistorico(campanhaId, de, para, nota) {
+    try {
+      const { error } = await banco.from("campanha_historico").insert({ campanha_id: campanhaId, de: de || "", para: para || "", nota: nota || "" });
+      if (error) throw error;
+    } catch (erro) { avisar("tabela-campanha_historico", traduzErro(erro, "campanha_historico")); }
+  }
+  /* muda a etapa: atualiza a esteira, a etapa simples, o roteiro e o pagamento */
+  async function moverEsteira(c, para, nota) {
+    const de = etapaEsteira(c);
+    if (!ETAPA_EST[para] || de === para) return null;
+    const e = ETAPA_EST[para];
+    const muda = { esteira: para, status: e.status };
+    if (e.roteiro) muda.roteiro_status = e.roteiro;
+    if (ETAPA_EST[para].i >= ETAPA_EST.gravacao.i && c.roteiro_status !== "sem" && etapasDaCampanha(c).some((k) => k.startsWith("roteiro_"))) muda.roteiro_status = "aprovado";
+    if (para === "pagamento" && c.pagamento !== "pago") Object.assign(muda, { pagamento: "pago", data_pagamento: isoLocal(new Date()) });
+    if (para === "encerrada") { muda.ativa = false; if (c.pagamento === "pago") muda.status = "Finalizada"; }
+    if (ETAPA_EST[para].i < ETAPA_EST.encerrada.i && c.ativa === false) muda.ativa = true;
+    if (c.pagamento === "pago" && para === "entregue") muda.status = "Entregue";
+    const linha = await gravar("campanhas", muda, c.id);
+    if (!linha) return null;
+    trocarNaLista(dados.campanhas, linha);
+    await registrarHistorico(c.id, ETAPA_EST[de].nome, e.nome, nota || "");
+    return linha;
+  }
+  const sugestaoTexto = (c) => {
+    const k = etapaEsteira(c);
+    if (k === "encerrada") return "Campanha encerrada 🎉";
+    const p = prazosEsteira(c)[k];
+    return `${ETAPA_EST[k].emoji} Agora: ${ETAPA_EST[k].acao}${p ? ` até ${dataBR(p).slice(0, 5)}` : ""}`;
+  };
+  function barraProgresso(c, mini) {
+    const pct = progressoEsteira(c);
+    return `<span class="es-progresso ${mini ? "mini" : ""}" title="${pct}% concluído"><i style="width:${pct}%"></i></span>${mini ? "" : `<b class="es-pct">${pct}%</b>`}`;
+  }
+  function seloRisco(c) {
+    const r = riscoEsteira(c);
+    if (r.nivel === "atrasada") return `<span class="es-selo atrasada">⏰ ${esc(r.texto)}</span>`;
+    if (r.nivel === "risco") return `<span class="es-selo risco">⚠️ ${esc(r.texto)}</span>`;
+    if (r.nivel === "hoje") return `<span class="es-selo hoje">📅 ${esc(r.texto)}</span>`;
+    return "";
+  }
+
+  /* ---- quadro Kanban ---- */
+  const estadoEsteira = { arrastando: null };
+  function desenharEsteira(caixa, lista) {
+    const campanhas = lista.filter((c) => c.ativa !== false || etapaEsteira(c) === "encerrada");
+    const porEtapa = {};
+    campanhas.forEach((c) => { const k = etapaEsteira(c); (porEtapa[k] = porEtapa[k] || []).push(c); });
+    const atrasadas = campanhas.filter((c) => riscoEsteira(c).nivel === "atrasada").length;
+    const emRisco = campanhas.filter((c) => riscoEsteira(c).nivel === "risco").length;
+    caixa.innerHTML = `
+      ${atrasadas || emRisco ? `<p class="es-alerta">${atrasadas ? `⏰ ${plural(atrasadas, "campanha atrasada", "campanhas atrasadas")}` : ""}${atrasadas && emRisco ? " · " : ""}${emRisco ? `⚠️ ${plural(emRisco, "entrega em risco", "entregas em risco")}` : ""}</p>` : ""}
+      <div class="es-quadro" role="list">
+        ${ESTEIRA.map((e) => {
+          const cards = (porEtapa[e.k] || []).sort((a, b) => (riscoEsteira(b).nivel === "atrasada") - (riscoEsteira(a).nivel === "atrasada") || String(a.prazo || "9").localeCompare(String(b.prazo || "9")));
+          const mostrar = e.k === "encerrada" ? cards.slice(0, 6) : cards;
+          return `<section class="es-coluna ${cards.length ? "" : "vazia"}" data-coluna="${e.k}" role="listitem" aria-label="${esc(e.nome)}">
+            <header><span>${e.emoji} ${esc(e.nome)}</span><b>${cards.length}</b></header>
+            <div class="es-cards">${mostrar.map((c) => cardEsteira(c)).join("")}${cards.length > mostrar.length ? `<p class="dica">+${cards.length - mostrar.length} encerradas</p>` : ""}</div>
+          </section>`;
+        }).join("")}
+      </div>
+      <p class="dica">💡 Arraste o card para outra etapa, ou toque nele para ver o detalhe. No celular, use "Mover para…".</p>`;
+    $$(".es-card", caixa).forEach((el) => {
+      el.addEventListener("dragstart", (ev) => { estadoEsteira.arrastando = el.dataset.camp; ev.dataTransfer.setData("text/plain", el.dataset.camp); setTimeout(() => el.classList.add("arrastando"), 0); });
+      el.addEventListener("dragend", () => { el.classList.remove("arrastando"); estadoEsteira.arrastando = null; $$(".es-coluna.alvo", caixa).forEach((x) => x.classList.remove("alvo")); });
+      el.addEventListener("click", (ev) => {
+        if (ev.target.closest("select, button")) return;
+        const c = dados.campanhas.find((x) => String(x.id) === el.dataset.camp);
+        if (c) abrirEsteira(c);
+      });
+    });
+    $$(".es-coluna", caixa).forEach((col) => {
+      col.addEventListener("dragover", (ev) => { if (!estadoEsteira.arrastando) return; ev.preventDefault(); col.classList.add("alvo"); });
+      col.addEventListener("dragleave", (ev) => { if (!col.contains(ev.relatedTarget)) col.classList.remove("alvo"); });
+      col.addEventListener("drop", (ev) => { ev.preventDefault(); col.classList.remove("alvo"); const id = ev.dataTransfer.getData("text/plain") || estadoEsteira.arrastando; moverPeloQuadro(id, col.dataset.coluna); });
+    });
+    $$("[data-mover-para]", caixa).forEach((s) => s.addEventListener("change", () => { if (s.value) moverPeloQuadro(s.dataset.moverPara, s.value); }));
+    $$("[data-avancar]", caixa).forEach((b) => b.addEventListener("click", async () => {
+      const c = dados.campanhas.find((x) => String(x.id) === b.dataset.avancar);
+      if (!c) return;
+      b.disabled = true;
+      await avancarComRecado(c, b.dataset.para);
+      desenharTabelaCamp();
+    }));
+  }
+  function cardEsteira(c) {
+    const k = etapaEsteira(c);
+    const ops = opcoesDeAvanco(c);
+    const lista = etapasDaCampanha(c);
+    return `<article class="es-card ${riscoEsteira(c).nivel}" draggable="true" data-camp="${c.id}" tabindex="0">
+      <b>${esc(c.cliente || "Sem marca")}</b>
+      <small>${esc(c.campanha)}</small>
+      <div class="es-linha">${barraProgresso(c, true)}<span class="es-pct-mini">${progressoEsteira(c)}%</span></div>
+      ${seloRisco(c)}
+      <div class="es-meta">${c.prazo ? `<span>📦 ${dataBR(c.prazo).slice(0, 5)}</span>` : ""}${c.responsavel ? `<span>👤 ${esc(c.responsavel)}</span>` : ""}${(c.anexos || []).length ? `<span>📎 ${(c.anexos || []).length}</span>` : ""}</div>
+      ${k !== "encerrada" ? `<p class="es-proxima">${esc(sugestaoTexto(c))}</p>` : ""}
+      <div class="es-acoes">
+        ${ops.map((o) => `<button type="button" class="botao ${o.principal ? "botao-principal" : "botao-leve"}" data-avancar="${c.id}" data-para="${o.para}">${o.principal ? "✓ " : "🔧 "}${esc(o.rotulo)}</button>`).join("")}
+        <select class="es-mover" data-mover-para="${c.id}" aria-label="Mover para outra etapa"><option value="">Mover para…</option>${lista.filter((x) => x !== k).map((x) => `<option value="${x}">${ETAPA_EST[x].emoji} ${ETAPA_EST[x].nome}</option>`).join("")}</select>
+      </div>
+    </article>`;
+  }
+  async function avancarComRecado(c, para, nota) {
+    const pulos = etapasDaCampanha(c).filter((x) => ETAPA_EST[x].i > ETAPA_EST[etapaEsteira(c)].i && ETAPA_EST[x].i < ETAPA_EST[para].i && !ETAPA_EST[x].opcional);
+    if (pulos.length > 1 && !confirm(`Pular ${pulos.map((x) => ETAPA_EST[x].nome).join(", ")}? (essas etapas ficam como feitas)`)) return null;
+    const linha = await moverEsteira(c, para, nota);
+    if (!linha) return null;
+    const prox = proximaEtapa(linha);
+    recado(`${ETAPA_EST[para].emoji} ${ETAPA_EST[para].nome} ✓${prox && para !== "encerrada" ? ` Próximo: ${ETAPA_EST[para].acao.toLowerCase()}${prazosEsteira(linha)[para] ? ` até ${dataBR(prazosEsteira(linha)[para]).slice(0, 5)}` : ""}.` : ""}`);
+    atualizarLembretes();
+    return linha;
+  }
+  async function moverPeloQuadro(id, para) {
+    const c = dados.campanhas.find((x) => String(x.id) === String(id));
+    if (!c) return;
+    if (!etapasDaCampanha(c).includes(para)) { recado(`"${ETAPA_EST[para].nome}" não faz parte das etapas desta campanha. Abra a campanha e ligue essa etapa em ⚙️ Etapas.`, true); desenharTabelaCamp(); return; }
+    await avancarComRecado(c, para, "movida no quadro");
+    desenharTabelaCamp();
+  }
+
+  /* ---- detalhe da campanha na esteira ---- */
+  async function abrirEsteira(c0) {
+    const c = dados.campanhas.find((x) => x.id === c0.id) || c0;
+    const k = etapaEsteira(c);
+    const lista = etapasDaCampanha(c);
+    const p = prazosEsteira(c);
+    const ops = opcoesDeAvanco(c);
+    const proprios = c.esteira_prazos || {};
+    const usandoModelo = !(c.esteira_etapas && c.esteira_etapas.length);
+    abrirModal(`🧱 ${c.cliente || "Sem marca"} · ${c.campanha}`, `<div class="es-detalhe">
+        <div class="es-cabeca">
+          <div class="es-linha">${barraProgresso(c)}</div>
+          ${seloRisco(c)}
+          <p class="es-sugestao">${esc(sugestaoTexto(c))}</p>
+          ${ops.length ? `<div class="es-acoes">${ops.map((o) => `<button type="button" class="botao ${o.principal ? "botao-principal" : "botao-leve"}" data-ir="${o.para}">${o.principal ? "✓ " : "🔧 "}${esc(o.rotulo)}</button>`).join("")}</div>` : ""}
+        </div>
+        <div class="form-grade es-dados">
+          <label>👤 Responsável<input id="es-resp" value="${esc(c.responsavel || "")}" placeholder="Eu, editor, agência…" list="es-resp-lista"><datalist id="es-resp-lista">${Array.from(new Set(["Eu"].concat(dados.campanhas.map((x) => x.responsavel).filter(Boolean)))).map((r) => `<option value="${esc(r)}">`).join("")}</datalist></label>
+          <label>📦 Entrega dos conteúdos<input type="date" id="es-entrega" value="${c.prazo ? String(c.prazo).slice(0, 10) : ""}"></label>
+        </div>
+        <h3 class="form-secao">🧱 Etapas e prazos</h3>
+        <ol class="es-etapas">${lista.map((x) => {
+          const e = ETAPA_EST[x];
+          const estado = x === k ? "atual" : e.i < ETAPA_EST[k].i && !(e.opcional && k !== "ajustes") ? "feita" : "pendente";
+          const dl = p[x];
+          const atras = estado !== "feita" && dl && diasAte(dl) < 0;
+          return `<li class="es-etapa ${estado} ${atras ? "atrasada" : ""} ${e.opcional ? "opcional" : ""}">
+            <span class="es-bolinha">${estado === "feita" ? "✓" : estado === "atual" ? "●" : ""}</span>
+            <span class="es-etapa-nome">${e.emoji} ${esc(e.nome)}${e.opcional ? ' <small class="dica">(só se pedirem)</small>' : ""}</span>
+            ${x === "encerrada" ? "" : `<input type="date" class="es-prazo" data-prazo="${x}" value="${dl || ""}" aria-label="Prazo de ${esc(e.nome)}" ${proprios[x] ? 'data-proprio="1"' : ""}>`}
+            ${estado !== "atual" ? `<button type="button" class="botao botao-leve es-ir" data-ir="${x}" title="Ir para esta etapa">Ir</button>` : `<span class="es-aqui">agora</span>`}
+          </li>`;
+        }).join("")}</ol>
+        <p class="dica">📅 Os prazos são calculados de trás para frente a partir da entrega. Se mudar um prazo aqui, ele fica fixo para esta campanha (<button type="button" class="md-link" id="es-recalcular">voltar ao cálculo automático</button>).</p>
+        <details class="es-config"><summary>⚙️ Etapas desta campanha ${usandoModelo ? `<span class="dica">(modelo de "${esc(c.trabalho || "Conteúdo UGC")}")</span>` : '<span class="dica">(personalizadas)</span>'}</summary>
+          <div class="es-checks">${ESTEIRA.map((e) => `<label><input type="checkbox" data-etapa="${e.k}" ${lista.includes(e.k) ? "checked" : ""} ${OBRIGATORIAS.includes(e.k) ? "disabled" : ""}> ${e.emoji} ${esc(e.nome)}</label>`).join("")}</div>
+          <div class="rot-acoes"><button type="button" class="botao botao-leve" id="es-salvar-etapas">Salvar etapas</button>${usandoModelo ? "" : `<button type="button" class="botao botao-leve" id="es-usar-modelo">Usar o modelo do tipo de serviço</button>`}</div>
+        </details>
+        <h3 class="form-secao">📝 Observações</h3>
+        <textarea id="es-obs" rows="3">${esc(c.obs || "")}</textarea>
+        <h3 class="form-secao">📎 Arquivos</h3>
+        ${(c.anexos || []).length ? `<ul class="cron-mudancas">${c.anexos.map((a, i) => `<li><span>${NOME_ANEXO[a.tipo] || "📎"} ${esc(a.nome)}</span><button type="button" class="botao botao-leve" data-arquivo="${i}">Abrir</button></li>`).join("")}</ul>` : `<p class="dica">Nenhum arquivo. Anexe roteiro, contrato e outros em "Editar campanha".</p>`}
+        <h3 class="form-secao">🕘 Histórico</h3>
+        <ul class="es-historico" id="es-historico"><li class="dica">Carregando…</li></ul>
+        <div class="form-acoes"><button type="button" class="botao botao-leve" id="es-editar">✏️ Editar campanha</button><span class="espaco"></span><button type="button" class="botao botao-principal" id="es-salvar">💾 Salvar responsável, entrega e observações</button></div>
+      </div>`, true);
+    const corpo = $("#modal-corpo");
+    const reabrir = () => { desenharTabelaCamp(); abrirEsteira(c); };
+    $$("[data-ir]", corpo).forEach((b) => b.addEventListener("click", async () => {
+      b.disabled = true;
+      const atual = dados.campanhas.find((x) => x.id === c.id) || c;
+      const para = b.dataset.ir;
+      if (!etapasDaCampanha(atual).includes(para)) return;
+      const linha = ETAPA_EST[para].i < ETAPA_EST[etapaEsteira(atual)].i && !confirm(`Voltar para "${ETAPA_EST[para].nome}"?`) ? null : await avancarComRecado(atual, para);
+      if (linha) reabrir(); else b.disabled = false;
+    }));
+    $$("[data-prazo]", corpo).forEach((inp) => inp.addEventListener("change", async () => {
+      const atual = dados.campanhas.find((x) => x.id === c.id) || c;
+      const novos = Object.assign({}, atual.esteira_prazos || {}, { [inp.dataset.prazo]: inp.value || null });
+      if (!inp.value) delete novos[inp.dataset.prazo];
+      const linha = await gravar("campanhas", { esteira_prazos: novos }, c.id);
+      if (linha) { trocarNaLista(dados.campanhas, linha); await registrarHistorico(c.id, "", "", `Prazo de ${ETAPA_EST[inp.dataset.prazo].nome}: ${inp.value ? dataBR(inp.value) : "automático"}`); recado("Prazo salvo ✓"); atualizarLembretes(); reabrir(); }
+    }));
+    $("#es-recalcular").addEventListener("click", async () => {
+      const linha = await gravar("campanhas", { esteira_prazos: {} }, c.id);
+      if (linha) { trocarNaLista(dados.campanhas, linha); await registrarHistorico(c.id, "", "", "Prazos voltaram ao cálculo automático"); reabrir(); }
+    });
+    $("#es-salvar-etapas").addEventListener("click", async () => {
+      const escolhidas = ordenarEtapas($$("[data-etapa]", corpo).filter((x) => x.checked).map((x) => x.dataset.etapa));
+      const linha = await gravar("campanhas", { esteira_etapas: escolhidas }, c.id);
+      if (linha) { trocarNaLista(dados.campanhas, linha); await registrarHistorico(c.id, "", "", `Etapas personalizadas: ${escolhidas.map((x) => ETAPA_EST[x].nome).join(", ")}`); recado("Etapas salvas ✓"); reabrir(); }
+    });
+    const usarModelo = $("#es-usar-modelo");
+    if (usarModelo) usarModelo.addEventListener("click", async () => {
+      const linha = await gravar("campanhas", { esteira_etapas: [] }, c.id);
+      if (linha) { trocarNaLista(dados.campanhas, linha); await registrarHistorico(c.id, "", "", "Etapas voltaram ao modelo do tipo de serviço"); reabrir(); }
+    });
+    $$("[data-arquivo]", corpo).forEach((b) => b.addEventListener("click", () => abrirArquivo(c.anexos[Number(b.dataset.arquivo)].caminho)));
+    $("#es-editar").addEventListener("click", () => formCampanha(dados.campanhas.find((x) => x.id === c.id) || c));
+    $("#es-salvar").addEventListener("click", async (ev) => {
+      const atual = dados.campanhas.find((x) => x.id === c.id) || c;
+      const muda = {}, notas = [];
+      const resp = $("#es-resp").value.trim(), entrega = $("#es-entrega").value || null, obs = $("#es-obs").value;
+      if (resp !== (atual.responsavel || "")) { muda.responsavel = resp; notas.push(`Responsável: ${resp || "ninguém"}`); }
+      if (entrega !== (atual.prazo ? String(atual.prazo).slice(0, 10) : null)) { muda.prazo = entrega; notas.push(`Entrega: ${entrega ? dataBR(entrega) : "sem data"}`); }
+      if (obs !== (atual.obs || "")) { muda.obs = obs; notas.push("Observações atualizadas"); }
+      if (!Object.keys(muda).length) { recado("Nada mudou."); return; }
+      ev.target.disabled = true;
+      const linha = await gravar("campanhas", muda, c.id);
+      if (linha) { trocarNaLista(dados.campanhas, linha); await registrarHistorico(c.id, "", "", notas.join(" · ")); recado("Salvo ✓"); atualizarLembretes(); reabrir(); } else ev.target.disabled = false;
+    });
+    try {
+      const { data, error } = await banco.from("campanha_historico").select("*").eq("campanha_id", c.id).order("created_at", { ascending: false }).limit(40);
+      if (error) throw error;
+      const linhas = (data || []).filter((h) => String(h.campanha_id) === String(c.id));
+      const el = $("#es-historico");
+      if (el) el.innerHTML = linhas.length ? linhas.map((h) => `<li><small>${quando(h.created_at)}</small> ${h.para ? `${esc(h.de || "")} → <b>${esc(h.para)}</b>` : ""}${h.nota ? ` <span>${h.para ? "· " : ""}${esc(h.nota)}</span>` : ""}</li>`).join("") : `<li class="dica">Nada ainda. As mudanças de etapa, prazos e responsável aparecem aqui.</li>`;
+    } catch (erro) { const el = $("#es-historico"); if (el) el.innerHTML = `<li class="dica">Não consegui carregar o histórico. Se a tabela ainda não existe, rode o SQL novo.</li>`; }
+  }
+
+  /* ---- modelos por tipo de serviço ---- */
+  function abrirModelosEsteira() {
+    const modelos = modelosEsteira();
+    abrirModal("⚙️ Etapas por tipo de serviço", `<p class="dica">Marque as etapas que cada tipo de trabalho costuma ter. Ex.: Afiliação não tem aprovação prévia; UGC Canvas não precisa de aprovação do vídeo. Cada campanha também pode ter as suas próprias etapas.</p>
+      <div class="es-modelos">${TIPOS_TRABALHO.map((t) => `<details class="es-modelo"><summary><b>${esc(t)}</b> <span class="dica">${(modelos[t] || TODAS_ETAPAS).length} etapas</span></summary>
+        <div class="es-checks">${ESTEIRA.map((e) => `<label><input type="checkbox" data-modelo="${esc(t)}" data-etapa="${e.k}" ${ordenarEtapas(modelos[t] || TODAS_ETAPAS).includes(e.k) ? "checked" : ""} ${OBRIGATORIAS.includes(e.k) ? "disabled" : ""}> ${e.emoji} ${esc(e.nome)}</label>`).join("")}</div>
+      </details>`).join("")}</div>
+      <div class="form-acoes"><button type="button" class="botao botao-leve" id="es-modelos-padrao">Voltar ao padrão</button><span class="espaco"></span><button type="button" class="botao botao-principal" id="es-modelos-salvar">💾 Salvar</button></div>`, true);
+    $("#es-modelos-salvar").addEventListener("click", async () => {
+      const novos = {};
+      TIPOS_TRABALHO.forEach((t) => { novos[t] = ordenarEtapas($$(`[data-modelo="${CSS.escape(t)}"]`).filter((x) => x.checked).map((x) => x.dataset.etapa)); });
+      if (await salvarConfig(CHAVE_MODELOS_EST, JSON.stringify(novos))) { recado("Etapas por serviço salvas ✓"); fecharModal(); desenharTabelaCamp(); }
+    });
+    $("#es-modelos-padrao").addEventListener("click", async () => {
+      if (await salvarConfig(CHAVE_MODELOS_EST, "{}")) { recado("Voltou ao padrão ✓"); fecharModal(); desenharTabelaCamp(); }
     });
   }
 
@@ -4239,6 +4620,13 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       else if (s.tipo === "vence" && s.dias <= 7) itens.push({ chave: "usovence-" + c.id, tipo: "cuidado", texto: `⏰ O direito de uso de <b>${esc(c.cliente || c.campanha)}</b> vence em ${plural(s.dias, "dia", "dias")}.`, aba: "campanhas" });
       if (c.pagamento !== "pago" && c.data_pagamento && diasAte(c.data_pagamento) < 0) itens.push({ chave: "pag-" + c.id, tipo: "cuidado", texto: `💰 O pagamento de <b>${esc(c.cliente || c.campanha)}</b> (${moeda(c.valor)}) era para ${dataBR(c.data_pagamento)} e ainda está como a receber.`, aba: "campanhas" });
     });
+    /* esteira: etapa atrasada ou entrega que pode não dar tempo */
+    dados.campanhas.forEach((c) => {
+      if (c.ativa === false) return;
+      const r = riscoEsteira(c);
+      if (r.nivel === "atrasada") itens.push({ chave: `esteira-${c.id}-${etapaEsteira(c)}`, tipo: "perigo", texto: `⏰ <b>${esc(c.cliente || c.campanha)}</b>: ${esc(r.texto)}. Próximo passo: ${esc(ETAPA_EST[etapaEsteira(c)].acao.toLowerCase())}.`, aba: "campanhas" });
+      else if (r.nivel === "risco") itens.push({ chave: `risco-${c.id}-${isoLocal(hoje0())}`, tipo: "cuidado", texto: `⚠️ <b>${esc(c.cliente || c.campanha)}</b>: ${esc(r.texto)}.`, aba: "campanhas" });
+    });
     const ym = isoLocal(hoje0()).slice(0, 7);
     const alerta = alertaFinanceiro(contasDoMes(ym));
     if (alerta) itens.push({ chave: "fin-" + ym + "-" + alerta.tipo, tipo: alerta.tipo, texto: alerta.texto.replace(/^(🚨|⚠️) /, "$1 <b>Financeiro:</b> "), aba: "financeiro" });
@@ -4303,17 +4691,16 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
   const fmtTempo = (min) => { const m = Math.max(0, Math.round(min)); if (m < 60) return `${m} min`; const h = Math.floor(m / 60), r = m % 60; return r ? `${h}h${dois(r)}` : `${h}h`; };
 
   /* próxima coisa a fazer numa campanha, pela etapa e pela situação do roteiro */
+  /* próxima coisa a fazer numa campanha: vem da esteira (etapa atual, prazo da etapa e próxima etapa) */
   function proximaAcao(c) {
-    const etapa = etapaDe(c);
-    if (["Entregue", "Recebido", "Finalizada"].includes(etapa)) return null;
+    const k = etapaEsteira(c);
+    if (["entregue", "pagamento", "encerrada"].includes(k)) return null; /* pagamento aparece em "Pagamentos" */
+    const e = ETAPA_EST[k];
     const qtd = Math.max(1, numero(c.qtd));
-    const vezes = (base) => Math.min(240, base + (qtd - 1) * Math.round(base / 2));
-    if (etapa === "Edição") return { id: "edicao", titulo: "✂️ Editar e entregar", tempo: vezes(90), muda: { status: "Entregue" }, rotulo: "Entreguei", recado: "Marcado como entregue ✓" };
-    if (etapa === "Gravação") return { id: "gravar", titulo: "🎥 Gravar", tempo: vezes(60), muda: { status: "Edição" }, rotulo: "Gravei", recado: "Gravado ✓ Agora é a edição." };
-    const rot = c.roteiro_status || "nao";
-    if (rot === "nao") return { id: "roteiro", titulo: "📝 Escrever e enviar o roteiro", tempo: vezes(45), muda: { roteiro_status: "enviado", status: "Roteiro" }, rotulo: "Enviei", recado: "Roteiro enviado ✓ Eu te lembro de cobrar a aprovação em 2 dias.", depois: { acao: "aprovacao", dias: 2 } };
-    if (rot === "enviado") return { id: "aprovacao", titulo: "⏳ Aprovação do roteiro", tempo: 10, muda: { roteiro_status: "aprovado", status: "Gravação" }, rotulo: "Aprovado", recado: "Roteiro aprovado ✓ Agora é a gravação." };
-    return { id: "gravar", titulo: "🎥 Gravar", tempo: vezes(60), muda: { status: "Edição" }, rotulo: "Gravei", recado: "Gravado ✓ Agora é a edição." };
+    const tempo = e.porVideo ? Math.min(240, e.tempo + (qtd - 1) * Math.round(e.tempo / 2)) : e.tempo;
+    const para = proximaEtapa(c);
+    return { id: k, titulo: `${e.emoji} ${e.acao}`, tempo, para, rotulo: e.rotulo || "Concluir", data: prazosEsteira(c)[k] || null,
+      recado: para ? `${e.nome} ✓ Agora: ${ETAPA_EST[para].acao.toLowerCase()}.` : "Feito ✓" };
   }
 
   /* tudo o que pede atenção, vindo das outras abas */
@@ -4326,11 +4713,15 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     dados.campanhas.forEach((c) => {
       if (c.ativa === false && etapaDe(c) !== "Entregue") return;
       const a = proximaAcao(c);
-      if (a) itens.push({
-        chave: `camp-${c.id}-${a.id}`, grupo: "producao", titulo: `${a.titulo}: ${nomeCamp(c)}`, sub: c.campanha + (c.prazo ? ` · entrega ${dataBR(c.prazo).slice(0, 5)}` : ""),
-        data: c.prazo ? String(c.prazo).slice(0, 10) : null, tempo: a.tempo, peso: 16 + Math.min(14, numero(c.valor) / 100), valor: numero(c.valor),
-        concluir: { rotulo: a.rotulo, recado: a.recado, fazer: atualiza("campanhas", dados.campanhas, c.id, a.muda), depois: a.depois ? { chave: `camp-${c.id}-${a.depois.acao}`, dias: a.depois.dias } : null }, abrir: () => formCampanha(c), campanha: c
-      });
+      if (a) {
+        const risco = riscoEsteira(c);
+        itens.push({
+          chave: `camp-${c.id}-${a.id}`, grupo: "producao", titulo: `${a.titulo}: ${nomeCamp(c)}`,
+          sub: [c.campanha, c.prazo ? `entrega ${dataBR(c.prazo).slice(0, 5)}` : "", `${progressoEsteira(c)}% feito`, risco.nivel === "risco" ? `⚠️ ${risco.texto}` : "", c.responsavel ? `👤 ${c.responsavel}` : ""].filter(Boolean).join(" · "),
+          data: a.data || (c.prazo ? String(c.prazo).slice(0, 10) : null), tempo: a.tempo, peso: 16 + Math.min(14, numero(c.valor) / 100) + (risco.nivel === "risco" ? 12 : 0), valor: numero(c.valor),
+          concluir: { rotulo: a.rotulo, recado: a.recado, fazer: () => (a.para ? moverEsteira(c, a.para, "concluído pelo Meu Dia") : null) }, abrir: () => abrirEsteira(c), campanha: c
+        });
+      }
       /* pagamento a receber: quando já entregou ou quando tem dia previsto */
       if (c.pagamento !== "pago" && numero(c.valor) > 0 && (c.data_pagamento || concluida(c))) itens.push({
         chave: `pag-${c.id}`, grupo: "dinheiro", titulo: `💰 Receber de ${nomeCamp(c)}`, sub: `${moeda(c.valor)} · ${c.forma_pagamento || ""}`,
@@ -5029,7 +5420,7 @@ Português do Brasil, nunca use travessão.`;
         prazo: v.prazo || null, data_pagamento: v.data_pagamento || null, forma_pagamento: v.forma_pagamento || "Pix", canal: v.canal || "", origem: "direto", uso_meses: numero(v.uso_meses),
         obs: v.obs || "", data_trabalho: hoje, status: "Em andamento", roteiro_status: "nao", pagamento: "pendente", ativa: true, favorita: false, tipo: "Conteúdo" };
       linha = await gravar("campanhas", obj);
-      if (linha) dados.campanhas.unshift(linha);
+      if (linha) { dados.campanhas.unshift(linha); registrarHistorico(linha.id, "", "Briefing recebido", "Criada pela entrada rápida"); }
       resumo = `Campanha criada: ${obj.cliente} · ${moeda(obj.valor)}`;
     } else if (tipo === "atualizar_campanha" || tipo === "receber") {
       if (!camp) throw new Error("Escolha a campanha.");
@@ -5045,6 +5436,7 @@ Português do Brasil, nunca use travessão.`;
       linha = await gravar("campanhas", muda, camp.id);
       if (linha) trocarNaLista(dados.campanhas, linha);
       resumo = tipo === "receber" ? `Recebido: ${camp.cliente || camp.campanha}` : `${camp.cliente || camp.campanha}: ${[muda.status && `etapa ${muda.status}`, muda.roteiro_status && `roteiro ${muda.roteiro_status}`, v.nota].filter(Boolean).join(", ")}`;
+      if (linha) registrarHistorico(camp.id, "", "", `Entrada rápida: ${resumo}`);
     } else if (tipo === "nova_tarefa") {
       const obj = { titulo: v.titulo, tipo: v.tipo || "tarefa", data: v.data || hoje, hora: v.hora || "", prioridade: v.prioridade || "media", tempo_min: 15, campanha_id: v.campanha_id ? Number(v.campanha_id) : null, recorrencia: "nenhuma", lembrete_min: 30, feita: false };
       linha = await gravar("tarefas", obj);
