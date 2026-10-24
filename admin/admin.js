@@ -1718,12 +1718,13 @@ ${blocos}`;
     }
     const status = resposta.status;
     const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
-    if (status === 404 || motivo.includes("not found")) return { falha: "modelo" };
-    if ((status === 400 && motivo.includes("api key")) || status === 401 || status === 403) return { falha: "chave" };
-    if (limiteDe(status, motivo)) return { falha: "limite" };
-    if (status === 400 && (motivo.includes("search") || motivo.includes("tool"))) return { falha: "sem-busca" };
-    if (status >= 500) return { falha: "ocupado" };
-    return { falha: "outro" };
+    const falha = (tipo) => { console.warn(`[IA] Gemini ${modelo}: ${status} ${motivo.slice(0, 300)}`); return { falha: tipo, detalhe: `${status} ${motivo.slice(0, 160)}` }; };
+    if (status === 404 || motivo.includes("not found")) return falha("modelo");
+    if ((status === 400 && motivo.includes("api key")) || status === 401 || status === 403) return falha("chave");
+    if (limiteDe(status, motivo)) return falha("limite");
+    if (status === 400 && (motivo.includes("search") || motivo.includes("tool") || motivo.includes("grounding"))) return falha("sem-busca");
+    if (status >= 500) return falha("ocupado");
+    return falha("outro");
   }
   async function chamarGroq(modelo, prompt, temperatura, pedirJSON) {
     let resposta, corpo = null;
@@ -1742,11 +1743,13 @@ ${blocos}`;
     }
     const status = resposta.status;
     const motivo = String((corpo && corpo.error && corpo.error.message) || "").toLowerCase();
-    if (status === 401 || status === 403 || motivo.includes("api key")) return { falha: "chave" };
-    if (status === 404 || motivo.includes("does not exist") || motivo.includes("decommissioned")) return { falha: "modelo" };
-    if (limiteDe(status, motivo) || status === 413) return { falha: "limite" };
-    if (status >= 500) return { falha: "ocupado" };
-    return { falha: "outro" };
+    const falha = (tipo) => { console.warn(`[IA] Groq ${modelo}: ${status} ${motivo.slice(0, 300)}`); return { falha: tipo, detalhe: `${status} ${motivo.slice(0, 160)}` }; };
+    if (status === 401 || status === 403 || motivo.includes("api key")) return falha("chave");
+    if (status === 404 || motivo.includes("does not exist") || motivo.includes("decommissioned")) return falha("modelo");
+    if (status === 413 || motivo.includes("too large")) return falha("grande");
+    if (limiteDe(status, motivo)) return falha("limite");
+    if (status >= 500) return falha("ocupado");
+    return falha("outro");
   }
   function lerJSON(texto) {
     const limpo = String(texto || "").replace(/```json|```/g, "");
@@ -2297,44 +2300,71 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
     const vistos = new Set();
     return lista.filter((f) => f && f.link && !vistos.has(f.link) && vistos.add(f.link)).slice(0, 25);
   }
-  /* pesquisa na internet: Gemini com Google, depois Groq com busca, e por último sem busca */
-  async function perguntarGeminiComBusca(prompt) {
-    const falhas = [];
+  const NOME_FALHA = {
+    limite: "o limite grátis da busca acabou por agora",
+    "sem-busca": "a busca no Google não está liberada para essa chave",
+    grande: "o pedido ficou grande demais para o plano grátis",
+    chave: "a chave não foi aceita",
+    rede: "não consegui me conectar",
+    ocupado: "o serviço estava sobrecarregado",
+    modelo: "o modelo não está disponível",
+    vazio: "veio uma resposta vazia",
+    outro: "deu um erro inesperado"
+  };
+  function explicarFalhas(tentativas) {
+    const porMotor = {};
+    tentativas.forEach((t) => { (porMotor[t.motor] = porMotor[t.motor] || []).push(t.falha); });
+    if (!chaveGroq()) porMotor.Groq = ["sem-chave"];
+    return Object.keys(porMotor).map((m) => {
+      const lista = porMotor[m];
+      if (lista[0] === "sem-chave") return "Groq: a chave não está salva";
+      const principal = ["chave", "limite", "grande", "sem-busca", "rede", "ocupado", "vazio", "outro", "modelo"].find((f) => lista.includes(f)) || lista[0];
+      return `${m}: ${NOME_FALHA[principal] || principal}`;
+    }).join("; ");
+  }
+
+  /* 1ª etapa: pesquisa curta na internet (texto livre). Pedido pequeno = cabe no plano grátis */
+  async function pesquisarNaInternet(pergunta) {
+    const tentativas = [];
+    const pedido = `${pergunta}\n\nResponda em português do Brasil, em tópicos curtos, só com o que encontrou na pesquisa (nada inventado).`;
     if (chaveGemini()) {
       for (const modelo of MODELOS_GEMINI) {
-        const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.8 } });
+        const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: pedido }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.4 } });
         if (r.texto) {
-          const json = lerJSON(r.texto);
           const fontes = ((r.candidato.groundingMetadata && r.candidato.groundingMetadata.groundingChunks) || [])
             .map((c) => c && c.web).filter((w) => w && w.uri).map((w) => ({ titulo: w.title || w.uri, link: w.uri }));
-          return { json, fontes: fontesUnicas(fontes), comBusca: true, motor: "Gemini" };
+          return { texto: r.texto, fontes: fontesUnicas(fontes), motor: "Gemini" };
         }
-        if (r.falha === "chave") { falhas.push("chave-gemini"); break; }
-        falhas.push(r.falha);
+        tentativas.push({ motor: "Gemini", falha: r.falha });
+        if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
     if (chaveGroq()) {
       for (const modelo of MODELOS_GROQ_BUSCA) {
-        const r = await chamarGroq(modelo, prompt, 0.8, false);
+        const r = await chamarGroq(modelo, pedido, 0.4, false);
         if (r.texto) {
-          const json = lerJSON(r.texto);
           const fontes = [];
           ((r.mensagem && r.mensagem.executed_tools) || []).forEach((ferramenta) => {
             const resultados = (ferramenta && ferramenta.search_results && ferramenta.search_results.results) || [];
             resultados.forEach((s) => { if (s && s.url) fontes.push({ titulo: s.title || s.url, link: s.url }); });
           });
-          return { json, fontes: fontesUnicas(fontes), comBusca: true, motor: "Groq" };
+          return { texto: r.texto, fontes: fontesUnicas(fontes), motor: "Groq" };
         }
-        if (r.falha === "chave") { falhas.push("chave-groq"); break; }
-        falhas.push(r.falha);
+        tentativas.push({ motor: "Groq", falha: r.falha });
+        if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
-    /* sem busca na internet disponível agora: pede só com o que a inteligência artificial já sabe */
-    if (falhas.includes("sem-busca") || falhas.includes("outro") || (chaveGroq() && !falhas.includes("chave-groq"))) {
-      try { return { json: await perguntarGemini(prompt, 0.8), fontes: [], comBusca: false, motor: "" }; }
-      catch (erro) { /* usa a mensagem abaixo */ }
-    }
-    throw new Error(erroDaIA(falhas));
+    return { texto: "", fontes: [], motor: "", motivo: explicarFalhas(tentativas) };
+  }
+
+  /* 2ª etapa: monta a resposta completa (JSON) usando o que a pesquisa achou */
+  async function perguntarGeminiComBusca(prompt, pergunta) {
+    const pesquisa = await pesquisarNaInternet(pergunta);
+    const completo = pesquisa.texto
+      ? `${prompt}\n\nO QUE A PESQUISA NA INTERNET ENCONTROU AGORA (use isto como base principal, não invente além disso):\n${pesquisa.texto.slice(0, 9000)}`
+      : prompt;
+    const json = await perguntarGemini(completo, 0.8);
+    return { json, fontes: pesquisa.fontes, comBusca: !!pesquisa.texto, motor: pesquisa.motor, motivo: pesquisa.motivo || "" };
   }
 
   function promptTendencias(temas, plataformas) {
@@ -2390,7 +2420,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
     andar();
     const relogio = setInterval(andar, 3000);
     try {
-      const { json, fontes, comBusca, motor } = await perguntarGeminiComBusca(promptTendencias(temas, plataformas));
+      const { json, fontes, comBusca, motor, motivo } = await perguntarGeminiComBusca(promptTendencias(temas, plataformas), `Pesquise o que está em alta AGORA (últimos 30 dias) no ${plataformas.join(" e no ")} no Brasil nestes temas: ${temas.join("; ")}. Liste até 12 trends, áudios, formatos de vídeo ou assuntos, com: nome, plataforma, por que está bombando e o sinal que mostra isso.`);
       const itens = (Array.isArray(json.tendencias) ? json.tendencias : []).filter((x) => x && x.titulo).map((x, i) => ({ ...x, id: "t" + Date.now() + i, status: "nova" }));
       if (!itens.length) throw new Error("Não encontrei tendências dessa vez. Tente buscar de novo.");
       const linha = await gravar("tendencias", { nichos: temas, plataformas, resumo: semTravessao(json.resumo || ""), itens, fontes, sem_busca: !comBusca });
@@ -2399,7 +2429,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
       if (!linha) { avisoTend("erro", "😕 Achei as tendências, mas não consegui guardar porque a tabela de tendências ainda não existe no Supabase. Clique em Copiar o SQL, cole no SQL Editor, clique em Run e busque de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
       dados.tendencias.unshift(linha);
       estadoTend.selecionada = linha.id;
-      avisoTend("ok", `✅ ${plural(itens.length, "tendência nova encontrada", "tendências novas encontradas")}${motor === "Groq" ? " (pelo Groq, porque o Gemini estava no limite)" : ""}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet, então as ideias vieram do que a inteligência artificial já sabe"}.`);
+      avisoTend("ok", `✅ ${plural(itens.length, "tendência nova encontrada", "tendências novas encontradas")}${motor === "Groq" ? " (pesquisa feita pelo Groq, porque a busca do Gemini não respondeu)" : ""}${comBusca ? "" : `. Desta vez não consegui pesquisar na internet (${esc(motivo)}), então as ideias vieram do que a inteligência artificial já sabe`}.`);
       if (abaAtual() === "tendencias") renderTendencias($("#area"));
     } catch (erro) {
       clearInterval(relogio);
@@ -2690,7 +2720,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
     const relogio = setInterval(andar, 3000);
     const parar = () => { clearInterval(relogio); estadoAchar.buscando = false; };
     try {
-      const { json, fontes, comBusca, motor } = await perguntarGeminiComBusca(promptMarcas(nichos, quantas, evitar));
+      const { json, fontes, comBusca, motor, motivo } = await perguntarGeminiComBusca(promptMarcas(nichos, quantas, evitar), `Pesquise marcas que vendem no Brasil nestes nichos: ${nichos.join("; ")}. Priorize as que trabalham com creators UGC (programa de creators ou embaixadoras, plataformas de UGC, anúncios com vídeos de creators, página de parceria). Liste até 25 marcas com: nome, nicho, @ do Instagram e site se encontrar, e a prova de que trabalham com creators.${evitar.length ? " Não inclua: " + evitar.slice(0, 40).join(", ") + "." : ""}`);
       const itens = (Array.isArray(json.marcas) ? json.marcas : []).filter((x) => x && x.nome).map((x, i) => ({ ...x, id: "m" + Date.now() + i, status: "nova" }));
       if (!itens.length) throw new Error("Não encontrei marcas dessa vez. Tente buscar de novo.");
       const linha = await gravar("marcas_sugeridas", { nichos, resumo: semTravessao(json.resumo || ""), itens, fontes, sem_busca: !comBusca });
@@ -2698,7 +2728,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
       if (!linha) { avisoAchar("erro", "😕 Achei as marcas, mas não consegui guardar porque a tabela ainda não existe no Supabase. Clique em Copiar o SQL, cole no SQL Editor, clique em Run e busque de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
       dados.marcasSugeridas.unshift(linha);
       const certas = itens.filter(ehUGC).length;
-      avisoAchar("ok", `✅ ${plural(itens.length, "marca nova", "marcas novas")}${certas ? `, ${plural(certas, "com certeza trabalha", "com certeza trabalham")} com UGC` : ""}${motor === "Groq" ? " (pelo Groq, porque o Gemini estava no limite)" : ""}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet: confira tudo antes de abordar"}.`);
+      avisoAchar("ok", `✅ ${plural(itens.length, "marca nova", "marcas novas")}${certas ? `, ${plural(certas, "com certeza trabalha", "com certeza trabalham")} com UGC` : ""}${motor === "Groq" ? " (pesquisa feita pelo Groq, porque a busca do Gemini não respondeu)" : ""}${comBusca ? "" : `. Desta vez não consegui pesquisar na internet (${esc(motivo)}): confira tudo antes de abordar`}.`);
       if (abaAtual() === "achar") renderAchar($("#area"));
     } catch (erro) {
       parar();
@@ -3039,7 +3069,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
     const relogio = setInterval(andar, 3000);
     const parar = () => { clearInterval(relogio); estadoCron.gerando = false; };
     try {
-      const { json, fontes, comBusca, motor } = await perguntarGeminiComBusca(promptIdeiasCron(iso));
+      const { json, fontes, comBusca, motor, motivo } = await perguntarGeminiComBusca(promptIdeiasCron(iso), `Pesquise o que está viralizando NESTA semana em Reels e carrosséis no Instagram (e no TikTok) no Brasil nestes temas: ${temasTend().join("; ")}. Liste até 12 formatos, trends, ganchos ou assuntos, com: nome, formato (Reels ou carrossel), por que está funcionando e o sinal que mostra isso.`);
       const ideias = (Array.isArray(json.ideias) ? json.ideias : []).filter((x) => x && x.titulo).map((x, i) => ({ ...x, id: "i" + Date.now() + i, usada: false }));
       if (!ideias.length) throw new Error("Não consegui montar ideias dessa vez. Tente de novo.");
       const atual = lerSemanaCron(iso);
@@ -3047,7 +3077,7 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
       const ok = await salvarConfig(chaveSemanaCron(iso), JSON.stringify(valor));
       parar();
       if (!ok) { avisoCron("erro", "😕 Montei as ideias, mas não consegui guardar. Tente de novo em instantes."); return; }
-      avisoCron("ok", `✅ ${plural(ideias.length, "ideia nova", "ideias novas")} para a semana${motor === "Groq" ? " (pelo Groq, porque o Gemini estava no limite)" : ""}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet, então usei as suas tendências e virais salvos"}. Arraste para o dia que quiser.`);
+      avisoCron("ok", `✅ ${plural(ideias.length, "ideia nova", "ideias novas")} para a semana${motor === "Groq" ? " (pesquisa feita pelo Groq, porque a busca do Gemini não respondeu)" : ""}${comBusca ? "" : `. Desta vez não consegui pesquisar na internet (${esc(motivo)}), então usei as suas tendências e virais salvos`}. Arraste para o dia que quiser.`);
       redesenharCron();
     } catch (erro) {
       parar();
