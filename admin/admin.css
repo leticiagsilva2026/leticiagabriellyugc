@@ -609,3 +609,30 @@ code { font-size: .78rem; background: var(--gelo); padding: 1px 5px; border-radi
 .md-agenda li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--raio-p); background: var(--verde-claro); }
 .md-hora { font-weight: 800; color: var(--verde-texto); font-size: .82rem; min-width: 42px; }
 body[data-aba="meudia"] #lembretes { display: none; }
+
+/* ---------- Meu Dia: repetições, agenda e lembretes ---------- */
+.md-tempo { flex-basis: 100%; margin: 2px 0 0; padding: 10px 12px; border-radius: var(--raio-p); font-size: .86rem; font-weight: 600; line-height: 1.45; }
+.md-tempo-livre { background: var(--verde-claro); color: var(--verde-texto); }
+.md-tempo-medio { background: var(--amarelo-claro); color: #6d4a00; }
+.md-tempo-cheio { background: var(--vermelho-claro); color: var(--vermelho); }
+.md-link { all: unset; cursor: pointer; text-decoration: underline; font-weight: 700; }
+.md-agenda li { gap: 10px; }
+.md-agenda-texto { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.md-agenda-texto small { color: var(--verde-texto); font-size: .74rem; }
+.md-agenda li.md-passou { opacity: .55; }
+.md-ok-mini { padding: 5px 11px; font-weight: 800; }
+.md-ativar { flex-basis: 100%; justify-content: center; }
+.md-dias-semana { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.md-dias-semana legend { font-size: .82rem; font-weight: 600; color: var(--tinta); margin-bottom: 6px; padding: 0; }
+.md-dias-semana label { cursor: pointer; }
+.md-dias-semana input { position: absolute; opacity: 0; pointer-events: none; }
+.md-dias-semana span { display: inline-block; min-width: 46px; text-align: center; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--borda); font-weight: 700; font-size: .82rem; background: var(--branco); color: var(--texto); }
+.md-dias-semana input:checked + span { background: var(--verde-escuro); border-color: var(--verde-escuro); color: #fff; }
+.md-dias-semana input:focus-visible + span { outline: 2px solid var(--verde-escuro); outline-offset: 2px; }
+.md-resumo-repeticao { margin: 0; padding: 10px 12px; border-radius: var(--raio-p); background: var(--fundo); font-size: .82rem; color: var(--tinta); }
+.md-repetem { border-top: 0; }
+.md-alerta { position: fixed; z-index: 60; left: 50%; top: 14px; transform: translateX(-50%); width: min(520px, calc(100% - 24px)); display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: var(--raio); background: var(--tinta); color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.md-alerta div { display: grid; gap: 2px; }
+.md-alerta span { font-size: .84rem; opacity: .9; }
+.md-alerta[hidden] { display: none; }
+.md-topo .md-agenda .botao { width: auto; flex: 0 0 auto; }

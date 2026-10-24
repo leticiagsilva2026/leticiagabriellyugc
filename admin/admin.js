@@ -124,9 +124,10 @@
     cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"],
     gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"],
     ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"],
-    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id"]
+    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id", "recorrencia", "dias_semana", "intervalo_dias", "data_fim", "lembrete_min"],
+    tarefas_ocorrencias: ["tarefa_id", "data", "status", "nova_data"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], tarefasOcorrencias: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -158,7 +159,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn, tf] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn, tf, to] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -174,9 +175,10 @@
       buscar("cronograma", (q) => q.select("*").order("data", { ascending: true }).order("ordem", { ascending: true }).limit(2000)),
       buscar("gastos", (q) => q.select("*").order("data", { ascending: false }).limit(5000)),
       buscar("ganhos", (q) => q.select("*").order("created_at", { ascending: false }).limit(5000)),
-      buscar("tarefas", (q) => q.select("*").order("data", { ascending: true }).limit(3000))
+      buscar("tarefas", (q) => q.select("*").order("data", { ascending: true }).limit(3000)),
+      buscar("tarefas_ocorrencias", (q) => q.select("*").order("data", { ascending: false }).limit(5000))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn; dados.tarefas = tf;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn; dados.tarefas = tf; dados.tarefasOcorrencias = to;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -4382,13 +4384,34 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       if (t.feita) return;
       const compromisso = t.tipo === "compromisso";
       const camp = t.campanha_id ? dados.campanhas.find((c) => String(c.id) === String(t.campanha_id)) : null;
-      itens.push({
-        chave: `tarefa-${t.id}`, grupo: "minhas", propria: t, titulo: `${compromisso ? "🗓️" : "✅"} ${t.titulo}`, sub: [camp ? `📋 ${nomeCamp(camp)}` : "", t.obs ? String(t.obs).slice(0, 80) : ""].filter(Boolean).join(" · "),
-        data: t.data ? String(t.data).slice(0, 10) : null, hora: t.hora || "", tempo: numero(t.tempo_min),
-        peso: (t.prioridade === "alta" ? 22 : t.prioridade === "baixa" ? 2 : 11) + (compromisso && t.data && diasDe(t.data) === 0 ? 20 : 0), valor: 0,
-        concluir: { rotulo: compromisso ? "Feito" : "Concluir", recado: "Concluída ✓", fazer: atualiza("tarefas", dados.tarefas, t.id, { feita: true, feita_em: new Date().toISOString() }) },
+      const base = (data, chave, extra) => Object.assign({
+        chave, grupo: "minhas", propria: t, titulo: `${compromisso ? "🗓️" : "✅"} ${t.titulo}`,
+        sub: [recorrente(t) ? `🔁 ${descricaoRepeticao(t)}` : "", camp ? `📋 ${nomeCamp(camp)}` : "", t.obs ? String(t.obs).slice(0, 80) : ""].filter(Boolean).join(" · "),
+        data, hora: t.hora ? horaBonita(t.hora) : "", tempo: numero(t.tempo_min),
+        peso: (t.prioridade === "alta" ? 22 : t.prioridade === "baixa" ? 2 : 11) + (compromisso && data && diasDe(data) === 0 ? 20 : 0), valor: 0,
         abrir: camp ? () => formCampanha(camp) : () => formTarefa(t), editar: () => formTarefa(t), campanha: camp
-      });
+      }, extra);
+      if (!recorrente(t)) {
+        itens.push(base(t.data ? String(t.data).slice(0, 10) : null, `tarefa-${t.id}`, {
+          concluir: { rotulo: compromisso ? "Feito" : "Concluir", recado: "Concluída ✓", fazer: atualiza("tarefas", dados.tarefas, t.id, { feita: true, feita_em: new Date().toISOString() }) }
+        }));
+        return;
+      }
+      /* repete: uma linha para cada vez nos próximos 7 dias. Se a repetição é espaçada
+         (a cada 7 dias ou mais, ou todo mês), a última vez que ficou para trás também aparece */
+      const espacada = t.recorrencia === "mensal" || (t.recorrencia === "intervalo" && numero(t.intervalo_dias) >= 7);
+      const de = somaDias(hoje, espacada ? -14 : 0), ate = somaDias(hoje, 7);
+      const marcas = dados.tarefasOcorrencias.filter((o) => o.tarefa_id === t.id);
+      const marcaDe = (d) => marcas.find((o) => String(o.data).slice(0, 10) === d);
+      let vezes = ocorrenciasDe(t, de, ate).filter((d) => !marcaDe(d)).map((d) => [d, d]);
+      marcas.filter((o) => o.status === "adiada" && o.nova_data && String(o.nova_data).slice(0, 10) >= de && String(o.nova_data).slice(0, 10) <= ate)
+        .forEach((o) => vezes.push([String(o.data).slice(0, 10), String(o.nova_data).slice(0, 10)]));
+      const passadas = vezes.filter(([, q]) => q < hoje);
+      vezes = vezes.filter(([, q]) => q >= hoje).concat(passadas.length ? [passadas.sort((a, b) => b[1].localeCompare(a[1]))[0]] : []);
+      vezes.forEach(([original, quando]) => itens.push(base(quando, `tarefa-${t.id}-${original}`, {
+        recorrente: true, ocorrencia: original,
+        concluir: { rotulo: compromisso ? "Feito" : "Concluir", recado: "Feito ✓ Até a próxima vez.", fazer: () => marcarOcorrencia(t, original, { status: "feita" }) }
+      })));
     });
 
     /* adiados: o dia passa a ser o do adiamento */
@@ -4410,7 +4433,7 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     return urgencia + (i.peso || 0) + rapido;
   }
   /* aparece na lista de hoje: atrasado, de hoje, próximos 2 dias ou sem data */
-  const visivelHoje = (i) => i.dias == null ? i.grupo !== "uso" : i.dias <= 2 && !(i.adiadoAte && diasDe(i.adiadoAte) > 0);
+  const visivelHoje = (i) => i.dias == null ? i.grupo !== "uso" : i.recorrente ? i.dias <= 0 : i.dias <= 2 && !(i.adiadoAte && diasDe(i.adiadoAte) > 0);
 
   function etiquetaPrazo(i) {
     if (i.dias == null) return `<span class="md-chip">sem data</span>`;
@@ -4437,6 +4460,129 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     </li>`;
   }
 
+  /* ---- atividades que se repetem ---- */
+  const REPETIR = [["nenhuma", "Não repete"], ["diaria", "Todo dia"], ["semanal", "Toda semana, nos dias que eu escolher"], ["intervalo", "A cada X dias (ex.: a cada 15 dias)"], ["mensal", "Todo mês, no mesmo dia"]];
+  const NOMES_DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const LEMBRAR = [["0", "Na hora"], ["10", "10 min antes"], ["30", "30 min antes"], ["60", "1 hora antes"], ["120", "2 horas antes"]];
+  const recorrente = (t) => !!t && t.recorrencia && t.recorrencia !== "nenhuma";
+  /* "14:30", "14h", "14h30", "14" -> minutos desde a meia-noite */
+  function lerHora(texto) {
+    const m = /^(\d{1,2})(?:\s*[:h]\s*(\d{2})?)?\s*h?$/i.exec(String(texto || "").trim());
+    if (!m) return null;
+    const h = Number(m[1]), min = Number(m[2] || 0);
+    return h < 24 && min < 60 ? h * 60 + min : null;
+  }
+  const horaInput = (texto) => { const v = lerHora(texto); return v == null ? "" : `${dois(Math.floor(v / 60))}:${dois(v % 60)}`; };
+  const horaBonita = (texto) => { const v = lerHora(texto); if (v == null) return String(texto || ""); const h = Math.floor(v / 60), m = v % 60; return m ? `${h}h${dois(m)}` : `${h}h`; };
+
+  /* em quais dias (entre de e ate, ISO) a atividade acontece */
+  function ocorrenciasDe(t, de, ate) {
+    const inicio = String(t.data || "").slice(0, 10);
+    if (!inicio) return [];
+    const fim = t.data_fim && String(t.data_fim).slice(0, 10) < ate ? String(t.data_fim).slice(0, 10) : ate;
+    const datas = [];
+    if (!recorrente(t)) return inicio >= de && inicio <= fim ? [inicio] : [];
+    const dias = (t.dias_semana || []).map(Number);
+    const passo = Math.max(1, numero(t.intervalo_dias) || 15);
+    const dInicio = deISO(inicio);
+    for (let d = deISO(de > inicio ? de : inicio); isoLocal(d) <= fim; d = maisDias(d, 1)) {
+      const iso = isoLocal(d);
+      if (t.recorrencia === "diaria") datas.push(iso);
+      else if (t.recorrencia === "semanal" && dias.includes(d.getDay())) datas.push(iso);
+      else if (t.recorrencia === "intervalo" && Math.round((d - dInicio) / 86400000) % passo === 0) datas.push(iso);
+      else if (t.recorrencia === "mensal") {
+        const ultimo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        if (d.getDate() === Math.min(dInicio.getDate(), ultimo)) datas.push(iso);
+      }
+    }
+    return datas;
+  }
+  function descricaoRepeticao(t) {
+    if (!recorrente(t)) return "";
+    if (t.recorrencia === "diaria") return "Todo dia";
+    if (t.recorrencia === "semanal") { const d = (t.dias_semana || []).map(Number).sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); return d.length === 7 ? "Todo dia" : `Toda ${d.map((x) => NOMES_DIAS[x].toLowerCase()).join(", ")}`; }
+    if (t.recorrencia === "intervalo") return `A cada ${numero(t.intervalo_dias) || 15} dias`;
+    if (t.recorrencia === "mensal") return `Todo dia ${deISO(t.data) ? deISO(t.data).getDate() : ""} do mês`;
+    return "";
+  }
+  function proximaVez(t) {
+    const hoje = isoLocal(hoje0());
+    const feitas = new Set(dados.tarefasOcorrencias.filter((o) => o.tarefa_id === t.id).map((o) => String(o.data).slice(0, 10)));
+    return ocorrenciasDe(t, hoje, somaDias(hoje, 400)).find((d) => !feitas.has(d)) || null;
+  }
+  /* guarda que a vez de um dia foi feita, adiada ou pulada (uma linha por dia) */
+  async function marcarOcorrencia(t, data, valores) {
+    const existente = dados.tarefasOcorrencias.find((o) => o.tarefa_id === t.id && String(o.data).slice(0, 10) === data);
+    const linha = await gravar("tarefas_ocorrencias", existente ? valores : Object.assign({ tarefa_id: t.id, data }, valores), existente && existente.id);
+    if (linha) trocarNaLista(dados.tarefasOcorrencias, linha);
+    return linha;
+  }
+
+  /* link do Google Agenda: o celular avisa mesmo com o painel fechado */
+  function linkGoogleAgenda(t) {
+    const inicio = String(t.data || isoLocal(new Date())).slice(0, 10).replace(/-/g, "");
+    const min = lerHora(t.hora);
+    let datas;
+    if (min == null) {
+      datas = `${inicio}/${somaDias(String(t.data || isoLocal(new Date())).slice(0, 10), 1).replace(/-/g, "")}`;
+    } else {
+      const fim = min + Math.max(15, numero(t.tempo_min) || 30);
+      const hhmm = (v) => `${dois(Math.floor(v / 60) % 24)}${dois(v % 60)}00`;
+      datas = `${inicio}T${hhmm(min)}/${inicio}T${hhmm(fim)}`;
+    }
+    const ate = t.data_fim ? `;UNTIL=${String(t.data_fim).slice(0, 10).replace(/-/g, "")}` : "";
+    const regra = { diaria: "FREQ=DAILY", semanal: `FREQ=WEEKLY;BYDAY=${(t.dias_semana || []).map((d) => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][Number(d)]).join(",")}`, intervalo: `FREQ=DAILY;INTERVAL=${numero(t.intervalo_dias) || 15}`, mensal: "FREQ=MONTHLY" }[t.recorrencia];
+    const p = new URLSearchParams({ action: "TEMPLATE", text: t.titulo || "Atividade", dates: datas, ctz: "America/Sao_Paulo", details: [descricaoRepeticao(t), t.obs || "", "Criado pelo meu painel"].filter(Boolean).join("\n") });
+    if (regra) p.set("recur", `RRULE:${regra}${ate}`);
+    return `https://calendar.google.com/calendar/render?${p.toString()}`;
+  }
+
+  /* ---- lembretes enquanto o painel estiver aberto ---- */
+  const lembretesAgendados = new Map();
+  function avisarNaTela(titulo, texto) {
+    let caixa = $("#md-alerta");
+    if (!caixa) { caixa = document.createElement("div"); caixa.id = "md-alerta"; caixa.className = "md-alerta"; caixa.setAttribute("role", "alert"); document.body.appendChild(caixa); }
+    caixa.innerHTML = `<div><b>${esc(titulo)}</b><span>${esc(texto)}</span></div><button type="button" class="botao botao-principal">Ok</button>`;
+    caixa.hidden = false;
+    caixa.querySelector("button").onclick = () => { caixa.hidden = true; };
+  }
+  function notificar(titulo, texto, tag) {
+    avisarNaTela(titulo, texto);
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try { new Notification(titulo, { body: texto, tag: tag || titulo }); } catch (erro) { /* no celular o aviso fica só na tela */ }
+  }
+  function resumoDoTempo(minutos, quantos) {
+    const livre = MD_CAPACIDADE - minutos;
+    if (!quantos) return { nivel: "livre", texto: "Hoje seu dia está livre 🌿 Aproveite para adiantar algo da semana ou descansar." };
+    if (minutos > MD_CAPACIDADE) return { nivel: "cheio", texto: `Hoje seu tempo está apertado: ${fmtTempo(minutos)} ocupadas em ${plural(quantos, "atividade", "atividades")}. Se der, adie o que puder esperar.` };
+    if (minutos > MD_CHEIO) return { nivel: "medio", texto: `Hoje seu dia está cheio, mas dá: ${fmtTempo(minutos)} ocupadas em ${plural(quantos, "atividade", "atividades")}, sobra cerca de ${fmtTempo(livre)}.` };
+    return { nivel: "livre", texto: `Hoje seu tempo está tranquilo: ${plural(quantos, "atividade", "atividades")} (${fmtTempo(minutos)}), sobra cerca de ${fmtTempo(livre)} livre. Dá para adiantar outra coisa.` };
+  }
+  /* agenda um aviso para cada coisa de hoje que tem horário, e um resumo do dia uma vez por dia */
+  function agendarLembretes(itens) {
+    lembretesAgendados.forEach((id) => clearTimeout(id));
+    lembretesAgendados.clear();
+    const agora = new Date();
+    const minAgora = agora.getHours() * 60 + agora.getMinutes();
+    itens.filter((i) => i.dias === 0 && lerHora(i.hora) != null).forEach((i) => {
+      const antes = i.propria ? numero(i.propria.lembrete_min) : 30;
+      const alvo = lerHora(i.hora) - antes;
+      if (alvo < minAgora) return;
+      const ms = (alvo - minAgora) * 60000 - agora.getSeconds() * 1000;
+      lembretesAgendados.set(i.chave, setTimeout(() => {
+        notificar(`⏰ ${horaBonita(i.hora)} · ${semTravessao(i.titulo).replace(/^\S+\s/, "")}`, antes ? `Daqui a ${fmtTempo(antes)} você tem isso para fazer.` : "Está na hora!", i.chave);
+      }, Math.max(0, ms)));
+    });
+    const hoje = isoLocal(hoje0());
+    let jaAvisou = false;
+    try { jaAvisou = localStorage.getItem("md_resumo_avisado") === hoje; } catch (erro) { jaAvisou = false; }
+    if (!jaAvisou && "Notification" in window && Notification.permission === "granted") {
+      const deHoje = itens.filter((i) => i.dias != null && i.dias <= 0);
+      const r = resumoDoTempo(deHoje.reduce((s, i) => s + i.tempo, 0), deHoje.length);
+      try { new Notification("☀️ Seu dia hoje", { body: r.texto, tag: "md-resumo" }); localStorage.setItem("md_resumo_avisado", hoje); } catch (erro) { /* sem notificação no celular */ }
+    }
+  }
+
   /* carga da semana: soma do tempo estimado por dia, a partir de hoje */
   function cargaDaSemana(itens) {
     const dias = [];
@@ -4451,41 +4597,92 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
   function formTarefa(t, padrao) {
     const campanhas = dados.campanhas.filter((c) => c.ativa !== false || (t && String(t.campanha_id) === String(c.id)));
     formulario({
-      titulo: t ? "Editar" : "Nova tarefa ou compromisso",
-      valores: t ? Object.assign({}, t, { campanha_id: t.campanha_id == null ? "" : String(t.campanha_id), tempo_min: String(t.tempo_min) })
-        : Object.assign({ tipo: "tarefa", prioridade: "media", tempo_min: "30", data: isoLocal(new Date()), campanha_id: "" }, padrao || {}),
+      titulo: t ? (recorrente(t) ? "Editar atividade que se repete" : "Editar") : "Nova tarefa ou compromisso",
+      larga: true,
+      valores: t ? Object.assign({}, t, { campanha_id: t.campanha_id == null ? "" : String(t.campanha_id), tempo_min: String(t.tempo_min), hora: horaInput(t.hora), recorrencia: t.recorrencia || "nenhuma", lembrete_min: String(t.lembrete_min == null ? 30 : t.lembrete_min), intervalo_dias: t.intervalo_dias || 15 })
+        : Object.assign({ tipo: "tarefa", prioridade: "media", tempo_min: "30", data: isoLocal(new Date()), campanha_id: "", recorrencia: "nenhuma", intervalo_dias: 15, lembrete_min: "30" }, padrao || {}),
       campos: [
-        { nome: "titulo", rotulo: "O que é", obrigatorio: true, inteira: true },
-        { nome: "tipo", rotulo: "Tipo", tipo: "select", opcoes: [["tarefa", "✅ Tarefa"], ["compromisso", "🗓️ Compromisso pessoal"]] },
+        { tipo: "secao", rotulo: "📝 O que é" },
+        { nome: "titulo", rotulo: "O que é", obrigatorio: true, inteira: true, dica: "ex: Stories para a internet da cidade, Levar o Davi no médico" },
+        { nome: "tipo", rotulo: "Tipo", tipo: "select", opcoes: [["tarefa", "✅ Tarefa (trabalho)"], ["compromisso", "🗓️ Compromisso pessoal"]] },
         { nome: "prioridade", rotulo: "Importância", tipo: "select", opcoes: [["alta", "🔴 Alta"], ["media", "🟡 Média"], ["baixa", "🟢 Baixa"]] },
-        { nome: "data", rotulo: "Dia", tipo: "date" },
-        { nome: "hora", rotulo: "Horário (opcional)", dica: "ex: 14h" },
+        { tipo: "secao", rotulo: "🕒 Quando" },
+        { nome: "data", rotulo: "Dia (ou o primeiro dia, se repetir)", tipo: "date" },
+        { nome: "hora", rotulo: "Horário (opcional)", tipo: "time" },
         { nome: "tempo_min", rotulo: "Tempo que leva", tipo: "select", opcoes: [["10", "10 min"], ["15", "15 min"], ["30", "30 min"], ["45", "45 min"], ["60", "1 hora"], ["90", "1h30"], ["120", "2 horas"], ["180", "3 horas"], ["240", "4 horas"]] },
+        { nome: "lembrete_min", rotulo: "Me lembrar", tipo: "select", opcoes: LEMBRAR, dica: "Funciona quando tem horário." },
+        { tipo: "secao", rotulo: "🔁 Repetição" },
+        { nome: "recorrencia", rotulo: "Repetir", tipo: "select", opcoes: REPETIR, inteira: true },
+        { nome: "intervalo_dias", rotulo: "A cada quantos dias", tipo: "number" },
+        { nome: "data_fim", rotulo: "Repetir até (opcional)", tipo: "date", dica: "Deixe vazio para repetir sempre." },
+        { tipo: "secao", rotulo: "📎 Mais" },
         { nome: "campanha_id", rotulo: "Campanha relacionada (opcional)", tipo: "select", opcoes: [["", "Nenhuma"]].concat(campanhas.map((c) => [String(c.id), `${c.cliente || "Sem marca"} · ${c.campanha}`])) },
         { nome: "obs", rotulo: "Anotações", tipo: "textarea" }
       ],
       aoSalvar: async (obj) => {
+        const form = $("#form-modal");
         obj.campanha_id = obj.campanha_id ? Number(obj.campanha_id) : null;
         obj.tempo_min = numero(obj.tempo_min);
+        obj.lembrete_min = numero(obj.lembrete_min);
+        obj.intervalo_dias = Math.max(1, Math.round(numero(obj.intervalo_dias) || 15));
+        obj.dias_semana = $$("[data-dia-semana]", form).filter((c) => c.checked).map((c) => Number(c.dataset.diaSemana));
+        if (obj.recorrencia !== "nenhuma" && !obj.data) { recado("Escolha o primeiro dia da repetição.", true); return false; }
+        if (obj.recorrencia === "semanal" && !obj.dias_semana.length) { recado("Marque pelo menos um dia da semana.", true); return false; }
+        if (obj.recorrencia !== "semanal") obj.dias_semana = [];
+        if (obj.recorrencia === "nenhuma") obj.data_fim = null;
         const linha = await gravar("tarefas", obj, t && t.id);
         if (!linha) return false;
         trocarNaLista(dados.tarefas, linha);
-        recado(t ? "Salvo ✓" : "Adicionado ao seu dia ✓");
+        recado(t ? "Salvo ✓" : recorrente(linha) ? `Adicionado ✓ ${descricaoRepeticao(linha)}${proximaVez(linha) ? `, a próxima é ${dataBR(proximaVez(linha)).slice(0, 5)}` : ""}.` : "Adicionado ao seu dia ✓");
         mostrarAba();
         return true;
       },
       aoApagar: t ? async () => {
         if (!(await apagar("tarefas", t.id))) return false;
         dados.tarefas = dados.tarefas.filter((x) => x.id !== t.id);
+        dados.tarefasOcorrencias = dados.tarefasOcorrencias.filter((o) => o.tarefa_id !== t.id);
         recado("Apagado");
         mostrarAba();
         return true;
       } : null
     });
+    /* dias da semana (para "toda semana") e campos que só aparecem quando fazem sentido */
+    const form = $("#form-modal");
+    const marcados = (t && t.dias_semana && t.dias_semana.length ? t.dias_semana : [deISO((t && t.data) || (padrao && padrao.data) || isoLocal(new Date())).getDay()]).map(Number);
+    const dias = document.createElement("fieldset");
+    dias.className = "inteira md-dias-semana";
+    dias.innerHTML = `<legend>Em quais dias da semana</legend>${[1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" data-dia-semana="${d}" ${marcados.includes(d) ? "checked" : ""}><span>${NOMES_DIAS[d]}</span></label>`).join("")}`;
+    form.elements.intervalo_dias.closest("label").before(dias);
+    const resumo = document.createElement("p");
+    resumo.className = "inteira md-resumo-repeticao";
+    form.elements.data_fim.closest("label").after(resumo);
+    const ajustar = () => {
+      const r = form.elements.recorrencia.value;
+      dias.hidden = r !== "semanal";
+      form.elements.intervalo_dias.closest("label").hidden = r !== "intervalo";
+      form.elements.data_fim.closest("label").hidden = r === "nenhuma";
+      form.elements.lembrete_min.closest("label").hidden = !form.elements.hora.value;
+      const rascunho = { recorrencia: r, data: form.elements.data.value, intervalo_dias: form.elements.intervalo_dias.value, data_fim: form.elements.data_fim.value, dias_semana: $$("[data-dia-semana]", form).filter((c) => c.checked).map((c) => Number(c.dataset.diaSemana)) };
+      const prox = r === "nenhuma" || !rascunho.data ? [] : ocorrenciasDe(rascunho, isoLocal(hoje0()), somaDias(isoLocal(hoje0()), 120)).slice(0, 4);
+      resumo.hidden = r === "nenhuma";
+      resumo.innerHTML = prox.length ? `🔁 ${esc(descricaoRepeticao(rascunho))}${form.elements.hora.value ? " às " + esc(horaBonita(form.elements.hora.value)) : ""}. Próximas vezes: <b>${prox.map((d) => `${NOMES_DIAS[deISO(d).getDay()].toLowerCase()} ${dataBR(d).slice(0, 5)}`).join(", ")}</b>` : "Escolha o primeiro dia para eu mostrar as próximas vezes.";
+    };
+    form.addEventListener("input", ajustar);
+    form.addEventListener("change", ajustar);
+    ajustar();
+    /* lembrete no celular: o Google Agenda avisa mesmo com o painel fechado */
+    if (t && t.data) {
+      const acoes = form.querySelector(".form-acoes");
+      const g = document.createElement("a");
+      g.className = "botao botao-leve"; g.target = "_blank"; g.rel = "noopener"; g.href = linkGoogleAgenda(t);
+      g.textContent = "📲 Lembrar no celular (Google Agenda)";
+      acoes.insertBefore(g, acoes.querySelector(".espaco"));
+    }
   }
 
   async function adiarItem(i, dias) {
     const ate = somaDias(isoLocal(hoje0()), dias);
+    if (i.recorrente) return !!(await marcarOcorrencia(i.propria, i.ocorrencia, { status: "adiada", nova_data: ate }));
     if (i.propria) {
       const linha = await gravar("tarefas", { data: ate }, i.propria.id);
       if (linha) trocarNaLista(dados.tarefas, linha);
@@ -4501,9 +4698,15 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
   function renderMeuDia(area) {
     const itens = itensMeuDia();
     const hojeLista = itens.filter(visivelHoje).sort((a, b) => b.score - a.score);
-    /* compromisso com dia marcado não disputa prioridade: vai para a agenda do topo */
-    const ehCompromissoDoDia = (i) => i.propria && i.propria.tipo === "compromisso" && i.dias != null && i.dias <= 0;
-    const agenda = hojeLista.filter(ehCompromissoDoDia).sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+    /* compromisso de hoje e o que eu cadastrei com horário não disputam prioridade: vão para a agenda do topo, em ordem de hora */
+    const ehCompromissoDoDia = (i) => !!i.propria && i.dias != null && i.dias <= 0 && (i.propria.tipo === "compromisso" || lerHora(i.hora) != null);
+    const agenda = hojeLista.filter(ehCompromissoDoDia).sort((a, b) => (lerHora(a.hora) == null ? 9999 : lerHora(a.hora)) - (lerHora(b.hora) == null ? 9999 : lerHora(b.hora)));
+    const deHojeTodos = hojeLista.filter((i) => i.dias != null && i.dias <= 0);
+    const tempoDoDia = resumoDoTempo(deHojeTodos.reduce((s, i) => s + i.tempo, 0), deHojeTodos.length);
+    const adiantar = tempoDoDia.nivel === "livre" ? itens.filter((i) => !i.recorrente && i.dias != null && i.dias >= 1 && i.dias <= 7).sort((a, b) => b.score - a.score)[0] : null;
+    const minAgora = new Date().getHours() * 60 + new Date().getMinutes();
+    const repetem = dados.tarefas.filter((t) => recorrente(t) && !t.feita);
+    const podeAtivar = "Notification" in window && Notification.permission === "default";
     const top = hojeLista.filter((i) => !ehCompromissoDoDia(i)).slice(0, 3);
     const resto = hojeLista.filter((i) => !top.includes(i) && !ehCompromissoDoDia(i));
     const atrasados = hojeLista.filter((i) => i.dias != null && i.dias < 0).length;
@@ -4529,7 +4732,14 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
           <span class="md-chip">⏱️ ${fmtTempo(tempoHoje)} ocupadas hoje</span>
           ${estadoMD.feitosHoje ? `<span class="md-chip feito">🎉 ${plural(estadoMD.feitosHoje, "concluída", "concluídas")} agora</span>` : ""}
         </div>
-        ${agenda.length ? `<ul class="md-agenda">${agenda.map((i) => `<li data-chave="${esc(i.chave)}"><span class="md-hora">${esc(i.hora || "hoje")}</span><button type="button" class="md-titulo" data-agenda>${esc(semTravessao(i.titulo))}</button></li>`).join("")}</ul>` : ""}
+        <p class="md-tempo md-tempo-${tempoDoDia.nivel}">${esc(tempoDoDia.texto)}${adiantar ? ` <button type="button" class="md-link" data-adiantar="${esc(adiantar.chave)}">Que tal adiantar: ${esc(semTravessao(adiantar.titulo).replace(/^\S+\s/, ""))}?</button>` : ""}</p>
+        ${agenda.length ? `<ul class="md-agenda">${agenda.map((i) => {
+          const passou = lerHora(i.hora) != null && lerHora(i.hora) + i.tempo < minAgora;
+          return `<li data-chave="${esc(i.chave)}" class="${passou ? "md-passou" : ""}"><span class="md-hora">${esc(i.hora || "hoje")}</span>
+            <span class="md-agenda-texto"><button type="button" class="md-titulo" data-agenda>${esc(semTravessao(i.titulo))}</button>${i.recorrente ? `<small>🔁 ${esc(descricaoRepeticao(i.propria))}</small>` : ""}</span>
+            <button type="button" class="botao botao-leve md-ok-mini" data-concluir title="Marcar como feito">✓</button></li>`;
+        }).join("")}</ul>` : ""}
+        ${podeAtivar ? `<button type="button" class="botao botao-leve md-ativar" id="md-ativar">🔔 Ativar lembretes neste computador</button>` : ""}
       </section>
 
       <section class="cartao">
@@ -4544,6 +4754,20 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
           <summary><span>${g.emoji} ${g.nome}</span><b>${g.lista.length}</b></summary>
           <ul class="md-lista">${g.lista.map((i) => linhaItem(i, false)).join("")}</ul>
         </details>`).join("")}
+      </section>` : ""}
+
+      ${repetem.length ? `<section class="cartao">
+        <details class="md-grupo md-repetem" data-grupo="repetem" ${estadoMD.abertos.has("repetem") ? "open" : ""}>
+          <summary><span>🔁 Atividades que se repetem</span><b>${repetem.length}</b></summary>
+          <ul class="md-lista">${repetem.map((t) => { const p = proximaVez(t); return `<li class="md-item"><div class="md-texto">
+            <button type="button" class="md-titulo" data-editar-tarefa="${esc(t.id)}">${t.tipo === "compromisso" ? "🗓️" : "✅"} ${esc(t.titulo)}</button>
+            <small>🔁 ${esc(descricaoRepeticao(t))}${t.hora ? " às " + esc(horaBonita(t.hora)) : ""} · ⏱️ ${fmtTempo(numero(t.tempo_min))}${t.data_fim ? ` · até ${dataBR(t.data_fim)}` : ""}</small>
+            <div class="md-chips"><span class="md-chip ${p && diasDe(p) === 0 ? "hoje" : ""}">${p ? `próxima: ${diasDe(p) === 0 ? "hoje" : diasDe(p) === 1 ? "amanhã" : `${NOMES_DIAS[deISO(p).getDay()].toLowerCase()} ${dataBR(p).slice(0, 5)}`}` : "terminou"}</span></div>
+          </div><div class="md-acoes">
+            <a class="botao botao-leve" href="${esc(linkGoogleAgenda(t))}" target="_blank" rel="noopener" title="Cria o evento repetido no seu Google Agenda, que avisa no celular">📲 Google Agenda</a>
+            <button type="button" class="botao botao-leve" data-editar-tarefa="${esc(t.id)}">Editar</button>
+          </div></li>`; }).join("")}</ul>
+        </details>
       </section>` : ""}
 
       <section class="cartao">
@@ -4569,8 +4793,18 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     area.onclick = async (e) => {
       const ag = e.target.closest("[data-agenda]");
       if (ag) { const i = acharItem(ag); if (i) i.editar(); return; }
+      const ed = e.target.closest("[data-editar-tarefa]");
+      if (ed) { const t = dados.tarefas.find((x) => String(x.id) === ed.dataset.editarTarefa); if (t) formTarefa(t); return; }
+      const ad = e.target.closest("[data-adiantar]");
+      if (ad) { const i = itens.find((x) => x.chave === ad.dataset.adiantar); if (i) (i.propria ? i.editar : i.abrir)(); return; }
+      if (e.target.closest("#md-ativar")) {
+        try { await Notification.requestPermission(); } catch (erro) { /* navegador sem suporte */ }
+        if (Notification.permission === "granted") { notificar("🔔 Lembretes ligados", "Enquanto o painel estiver aberto, eu aviso na hora de cada atividade."); try { localStorage.removeItem("md_resumo_avisado"); } catch (erro) { /* ok */ } }
+        renderMeuDia(area);
+        return;
+      }
       const alvo = e.target.closest("[data-concluir], [data-abrir], [data-editar]");
-      if (!alvo || !area.contains(alvo) || !alvo.closest(".md-lista")) return;
+      if (!alvo || !area.contains(alvo) || !alvo.closest(".md-lista, .md-agenda")) return;
       const i = acharItem(alvo);
       if (!i) return;
       if (alvo.hasAttribute("data-editar")) { i.editar(); return; }
@@ -4611,6 +4845,7 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       $$("[data-ver]", $("#modal-corpo")).forEach((v) => v.addEventListener("click", () => { const i = acharItem(v); if (i) (i.propria ? i.editar : i.abrir)(); }));
       $("#md-novo-dia").addEventListener("click", () => formTarefa(null, { data: d.iso }));
     }));
+    agendarLembretes(itens);
   }
 
   /* quando um formulário aberto pelo Meu Dia fecha, a tela se atualiza sozinha */
@@ -4631,4 +4866,5 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
   try { await garantirFixos(isoLocal(hoje0()).slice(0, 7)); } catch (erro) { console.error(erro); }
   mostrarAba();
   try { atualizarLembretes(); } catch (erro) { console.error(erro); }
+  try { agendarLembretes(itensMeuDia()); } catch (erro) { console.error(erro); }
 })();

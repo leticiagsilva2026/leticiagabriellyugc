@@ -541,4 +541,33 @@ grant select, insert, update, delete on public.tarefas to authenticated;
 -- campanha fechada direto comigo: marca quando o contrato já foi assinado
 alter table public.campanhas add column if not exists contrato_ok boolean not null default false;
 
+-- ---------- Meu Dia: atividades que se repetem + lembretes ----------
+alter table public.tarefas add column if not exists recorrencia   text not null default 'nenhuma';
+alter table public.tarefas add column if not exists dias_semana   integer[] not null default '{}';
+alter table public.tarefas add column if not exists intervalo_dias integer not null default 15;
+alter table public.tarefas add column if not exists data_fim      date;
+alter table public.tarefas add column if not exists lembrete_min  integer not null default 30;
+
+-- cada vez que uma atividade que se repete é feita, adiada ou pulada fica guardada aqui
+create table if not exists public.tarefas_ocorrencias (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  tarefa_id   uuid not null references public.tarefas(id) on delete cascade,
+  data        date not null,
+  status      text not null default 'feita' check (status in ('feita', 'adiada', 'pulada')),
+  nova_data   date,
+  unique (tarefa_id, data)
+);
+alter table public.tarefas_ocorrencias enable row level security;
+drop policy if exists "dona le ocorrencias" on public.tarefas_ocorrencias;
+create policy "dona le ocorrencias" on public.tarefas_ocorrencias for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria ocorrencias" on public.tarefas_ocorrencias;
+create policy "dona cria ocorrencias" on public.tarefas_ocorrencias for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita ocorrencias" on public.tarefas_ocorrencias;
+create policy "dona edita ocorrencias" on public.tarefas_ocorrencias for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga ocorrencias" on public.tarefas_ocorrencias;
+create policy "dona apaga ocorrencias" on public.tarefas_ocorrencias for delete to authenticated using (public.e_a_dona());
+revoke all on public.tarefas_ocorrencias from anon;
+grant select, insert, update, delete on public.tarefas_ocorrencias to authenticated;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
