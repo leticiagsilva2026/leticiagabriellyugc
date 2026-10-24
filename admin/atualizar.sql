@@ -480,4 +480,7 @@ alter table public.campanhas alter column status set default 'Em andamento';
 alter table public.campanhas add constraint campanhas_status_check check (status in ('Em andamento', 'Roteiro', 'Gravação', 'Edição', 'Entregue', 'Recebido', 'Finalizada'));
 alter table public.campanhas add column if not exists roteiro_status text not null default 'nao';
 
+-- ---------- Campanhas: como fechei (direto ou plataforma) ----------
+alter table public.campanhas add column if not exists origem text not null default 'direto';
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

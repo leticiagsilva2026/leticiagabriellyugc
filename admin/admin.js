@@ -112,7 +112,7 @@
     videos: ["titulo", "link", "nicho", "formato", "marca", "destaque", "ordem", "visivel"],
     marcas: ["nome", "instagram", "email", "telefone", "situacao", "obs", "ultimo_contato"],
     calendario: ["titulo", "marca", "tipo", "data", "status"],
-    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status"],
+    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
@@ -861,7 +861,9 @@
   const ROTEIRO_SITUACAO = [["nao", "Ainda não enviei"], ["enviado", "Enviado para a marca"], ["aprovado", "Aprovado pela marca"], ["sem", "Não precisa de roteiro"]];
   const TIPOS_TRABALHO = ["Conteúdo UGC", "UGC Tech", "Afiliação", "TikTok Shop", "Design no Canva", "Edição de vídeo", "Captação de conteúdo", "Publicidade (no meu perfil)", "Outro"];
   const FORMAS_RECEBER = ["Pix", "Transferência", "Boleto", "Cartão", "Dinheiro", "Comissão", "Permuta (produto)"];
-  const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
+  const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["4", "4 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
+  const PLATAFORMAS_UGC = ["Seu Influencer", "Squid", "BrandLovers", "Inflr", "Influency.me", "Airfluencers", "TikTok Shop", "Shopee", "Amazon", "Hotmart"];
+  const ehPlataforma = (c) => !!(c && c.origem && c.origem !== "direto");
   const MARCA_CAMPOS = [["razao", "Razão social"], ["cnpj", "CNPJ"], ["endereco", "Endereço"], ["responsavel", "Responsável"], ["email", "E-mail"], ["telefone", "Telefone"]];
   const NOME_ANEXO = { roteiro: "📜 Roteiro", contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
   const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1, mes: isoLocal(hoje0()).slice(0, 7) };
@@ -1073,7 +1075,7 @@
           <td style="width:36px"><button type="button" class="botao-icone ${c.favorita ? "ligado" : ""}" data-estrela title="${c.favorita ? "Tirar destaque" : "Destacar"}"><svg class="ic"><use href="#i-estrela"/></svg></button></td>
           <td style="white-space:nowrap">${dataBR(diaDoTrabalho(c)).slice(0, 5)}</td>
           <td><strong>${esc(c.campanha)}</strong>${c.roteiro_status && c.roteiro_status !== "sem" ? `<br><small class="dica">📜 ${c.roteiro_status === "aprovado" ? "roteiro aprovado" : c.roteiro_status === "enviado" ? "roteiro enviado" : "roteiro não enviado"}</small>` : ""}${anexos ? ` <span class="dica" title="${plural(anexos, "arquivo", "arquivos")}">📎${anexos}</span>` : ""}${avisoPrazo(c)}</td>
-          <td>${esc(c.cliente)}</td>
+          <td>${esc(c.cliente)}${ehPlataforma(c) ? `<br><small class="dica">📲 via ${esc(c.origem)}</small>` : ""}</td>
           <td><span class="pilula p-conteudo">${esc(c.trabalho || "Conteúdo UGC")}</span></td>
           <td><span class="pilula p-s${passo}">${esc(ETAPA_ROTULO[etapaDe(c)] || etapaDe(c))}</span></td>
           <td style="white-space:nowrap">${moeda(c.valor)}</td>
@@ -1108,8 +1110,8 @@
   function formCampanha(c) {
     const md = (c && c.marca_dados) || {};
     const valores = c
-      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c), status: etapaDe(c), roteiro_status: c.roteiro_status || "nao" }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
-      : { trabalho: "Conteúdo UGC", status: "Em andamento", roteiro_status: "nao", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
+      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c), status: etapaDe(c), roteiro_status: c.roteiro_status || "nao", origem_tipo: ehPlataforma(c) ? "plataforma" : "direto", plataforma: ehPlataforma(c) ? c.origem : "" }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
+      : { trabalho: "Conteúdo UGC", origem_tipo: "direto", status: "Em andamento", roteiro_status: "nao", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
     formulario({
       titulo: c ? "Editar trabalho" : "Adicionar trabalho",
       larga: true,
@@ -1119,6 +1121,8 @@
         { nome: "campanha", rotulo: "Nome do trabalho ou campanha", obrigatorio: true, inteira: true },
         { nome: "cliente", rotulo: "Marca", lista: dados.marcas.map((m) => m.nome) },
         { nome: "trabalho", rotulo: "Tipo de trabalho", tipo: "select", opcoes: TIPOS_TRABALHO.map((t) => [t, t]) },
+        { nome: "origem_tipo", rotulo: "Como fechei", tipo: "select", opcoes: [["direto", "🤝 Eu mesma fechei (Instagram, WhatsApp, e-mail)"], ["plataforma", "📲 Por uma plataforma"]] },
+        { nome: "plataforma", rotulo: "Qual plataforma", lista: PLATAFORMAS_UGC.concat(Array.from(new Set(dados.campanhas.filter(ehPlataforma).map((x) => x.origem)))), dica: "O contrato já é feito por lá, então não precisa dos dados da marca." },
         { nome: "qtd", rotulo: "Quantidade de entregas (vídeos, posts...)", tipo: "number" },
         { tipo: "secao", rotulo: "📅 Datas e andamento" },
         { nome: "data_trabalho", rotulo: "Dia que fechei a campanha", tipo: "date", obrigatorio: true, dica: "Define em qual mês ela entra no resumo das campanhas." },
@@ -1134,6 +1138,7 @@
         { nome: "uso_meses", rotulo: "Por quanto tempo a marca pode usar", tipo: "select", opcoes: MESES_USO },
         { nome: "uso_inicio", rotulo: "O uso começa em", tipo: "date", dica: "Se ficar vazio, conto a partir do prazo de entrega." },
         { tipo: "secao", rotulo: "🏢 Dados da marca (para o contrato)" },
+        { tipo: "secao", rotulo: "📲 Fechada por plataforma: o contrato e os dados da marca ficam por conta dela. Se quiser, anexe o contrato da plataforma depois de salvar." },
         ...MARCA_CAMPOS.map(([k, rot]) => ({ nome: "md_" + k, rotulo: rot, inteira: k === "endereco" })),
         { nome: "obs", rotulo: "Anotações", tipo: "textarea" },
         { nome: "ativa", rotulo: "Trabalho ativo", tipo: "checkbox" },
@@ -1144,9 +1149,13 @@
         MARCA_CAMPOS.forEach(([k]) => { marca[k] = obj["md_" + k] || ""; delete obj["md_" + k]; });
         obj.marca_dados = marca;
         obj.uso_meses = numero(obj.uso_meses);
+        obj.origem = obj.origem_tipo === "plataforma" ? (obj.plataforma || "Plataforma") : "direto";
+        delete obj.origem_tipo; delete obj.plataforma;
         /* recebeu: o pagamento fica como recebido e entra no Financeiro (no dia de hoje, se não tiver outro dia) */
         if (obj.status === "Recebido") obj.pagamento = "pago";
-        if (obj.pagamento === "pago" && (!obj.data_pagamento || diasAte(obj.data_pagamento) > 0)) obj.data_pagamento = isoLocal(new Date());
+        const jaEraPago = c && c.pagamento === "pago";
+        if (obj.pagamento === "pago" && !obj.data_pagamento) obj.data_pagamento = jaEraPago ? (c.data_pagamento || obj.data_trabalho) : isoLocal(new Date());
+        if (obj.pagamento === "pago" && !jaEraPago && diasAte(obj.data_pagamento) > 0) obj.data_pagamento = isoLocal(new Date());
         if (obj.status === "Finalizada") obj.ativa = false;
         const linha = await gravar("campanhas", obj, c && c.id);
         if (!linha) return false;
@@ -1180,6 +1189,21 @@
         <button type="button" class="botao botao-principal" id="camp-gerar-contrato">📝 Gerar contrato a partir do meu modelo</button>
       </div>` : `<p class="dica">📎 Depois de salvar, aparecem aqui os botões para anexar o contrato e os dados da marca e para gerar o contrato.</p>`;
     form.insertBefore(bloco, form.querySelector(".form-acoes"));
+    /* fechada por plataforma: some o que é de contrato e dados da marca */
+    const secoes = $$(".form-secao", form);
+    const secaoMarca = secoes.find((h) => h.textContent.includes("Dados da marca"));
+    const secaoPlataforma = secoes.find((h) => h.textContent.includes("Fechada por plataforma"));
+    if (secaoPlataforma) secaoPlataforma.classList.add("form-nota");
+    const ajustarOrigem = () => {
+      const plataforma = form.elements.origem_tipo.value === "plataforma";
+      form.elements.plataforma.closest("label").hidden = !plataforma;
+      if (secaoMarca) secaoMarca.hidden = plataforma;
+      if (secaoPlataforma) secaoPlataforma.hidden = !plataforma;
+      MARCA_CAMPOS.forEach(([k]) => { form.elements["md_" + k].closest("label").hidden = plataforma; });
+      $$('[data-anexo="marca"], #camp-gerar-contrato', bloco).forEach((el) => { (el.closest("label") || el).hidden = plataforma; });
+    };
+    form.elements.origem_tipo.addEventListener("change", ajustarOrigem);
+    ajustarOrigem();
     if (!c) return;
     const desenharAnexos = () => {
       const atual = dados.campanhas.find((x) => x.id === c.id) || c;
