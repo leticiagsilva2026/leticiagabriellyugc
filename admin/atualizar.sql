@@ -629,4 +629,66 @@ alter table public.tarefas add column if not exists area text not null default '
 -- ---------- Semana corrida: prazo de entrega das tarefas ----------
 alter table public.tarefas add column if not exists prazo date;
 
+-- ---------- Gerador de contratos: modelos, contratos e histórico de versões ----------
+create table if not exists public.contratos_modelos (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  nome        text not null default '',
+  formato     text not null default 'docx' check (formato in ('docx', 'pdf', 'texto')),
+  arquivo     text not null default '',
+  paragrafos  jsonb not null default '[]'::jsonb,
+  campos      jsonb not null default '[]'::jsonb,
+  lacunas     jsonb not null default '[]'::jsonb,
+  clausulas   jsonb not null default '[]'::jsonb,
+  padrao      boolean not null default false
+);
+create table if not exists public.contratos (
+  id               uuid primary key default gen_random_uuid(),
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  campanha_id      bigint references public.campanhas(id) on delete set null,
+  marca            text not null default '',
+  titulo           text not null default '',
+  modelo_id        uuid references public.contratos_modelos(id) on delete set null,
+  status           text not null default 'rascunho' check (status in ('rascunho', 'enviado', 'assinado', 'cancelado')),
+  versao           integer not null default 0,
+  dados            jsonb not null default '{}'::jsonb,
+  em_branco        jsonb not null default '[]'::jsonb,
+  clausulas_extras jsonb not null default '[]'::jsonb,
+  arquivo_docx     text not null default '',
+  arquivo_pdf      text not null default '',
+  arquivo_assinado text not null default '',
+  assinado_em      date,
+  obs              text not null default ''
+);
+create table if not exists public.contratos_historico (
+  id            uuid primary key default gen_random_uuid(),
+  created_at    timestamptz not null default now(),
+  contrato_id   uuid not null references public.contratos(id) on delete cascade,
+  versao        integer not null default 0,
+  acao          text not null default '',
+  nota          text not null default '',
+  dados         jsonb,
+  arquivo_docx  text not null default '',
+  arquivo_pdf   text not null default ''
+);
+create index if not exists contratos_campanha_idx on public.contratos (campanha_id);
+create index if not exists contratos_historico_idx on public.contratos_historico (contrato_id, created_at desc);
+
+do $$ declare t text; begin
+  foreach t in array array['contratos_modelos', 'contratos', 'contratos_historico'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "dona le %s" on public.%I', t, t);
+    execute format('create policy "dona le %s" on public.%I for select to authenticated using (public.e_a_dona())', t, t);
+    execute format('drop policy if exists "dona cria %s" on public.%I', t, t);
+    execute format('create policy "dona cria %s" on public.%I for insert to authenticated with check (public.e_a_dona())', t, t);
+    execute format('drop policy if exists "dona edita %s" on public.%I', t, t);
+    execute format('create policy "dona edita %s" on public.%I for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona())', t, t);
+    execute format('drop policy if exists "dona apaga %s" on public.%I', t, t);
+    execute format('create policy "dona apaga %s" on public.%I for delete to authenticated using (public.e_a_dona())', t, t);
+    execute format('revoke all on public.%I from anon', t);
+    execute format('grant select, insert, update, delete on public.%I to authenticated', t);
+  end loop;
+end $$;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

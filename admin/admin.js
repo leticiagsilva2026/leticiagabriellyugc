@@ -125,9 +125,11 @@
     gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"],
     ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"],
     tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id", "recorrencia", "dias_semana", "intervalo_dias", "data_fim", "lembrete_min", "area", "prazo"],
-    tarefas_ocorrencias: ["tarefa_id", "data", "status", "nova_data"]
+    tarefas_ocorrencias: ["tarefa_id", "data", "status", "nova_data"],
+    contratos_modelos: ["nome", "formato", "arquivo", "paragrafos", "campos", "lacunas", "clausulas", "padrao"],
+    contratos: ["campanha_id", "marca", "titulo", "modelo_id", "status", "versao", "dados", "em_branco", "clausulas_extras", "arquivo_docx", "arquivo_pdf", "arquivo_assinado", "assinado_em"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], tarefasOcorrencias: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], tarefasOcorrencias: [], contratos: [], contratosModelos: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -159,7 +161,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn, tf, to] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn, tf, to, ct, cm] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -176,9 +178,11 @@
       buscar("gastos", (q) => q.select("*").order("data", { ascending: false }).limit(5000)),
       buscar("ganhos", (q) => q.select("*").order("created_at", { ascending: false }).limit(5000)),
       buscar("tarefas", (q) => q.select("*").order("data", { ascending: true }).limit(3000)),
-      buscar("tarefas_ocorrencias", (q) => q.select("*").order("data", { ascending: false }).limit(5000))
+      buscar("tarefas_ocorrencias", (q) => q.select("*").order("data", { ascending: false }).limit(5000)),
+      buscar("contratos", (q) => q.select("*").order("updated_at", { ascending: false }).limit(1000)),
+      buscar("contratos_modelos", (q) => q.select("*").order("created_at", { ascending: false }).limit(100))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn; dados.tarefas = tf; dados.tarefasOcorrencias = to;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn; dados.tarefas = tf; dados.tarefasOcorrencias = to; dados.contratos = ct; dados.contratosModelos = cm;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -307,6 +311,7 @@
     cronograma: ["🗒️ Cronograma", renderCronograma],
     campanhas: ["Campanhas", renderCampanhas],
     financeiro: ["💰 Financeiro", renderFinanceiro],
+    contratos: ["📄 Contratos", renderContratos],
     roteiros: ["📜 Roteiros", renderRoteiros],
     virais: ["🔥 Virais", renderVirais],
     tendencias: ["📈 Tendências", renderTendencias],
@@ -1244,7 +1249,8 @@
         <label class="botao botao-leve">📜 Anexar roteiro<input type="file" data-anexo="roteiro" hidden></label>
         <label class="botao botao-leve">🏢 Anexar dados da marca<input type="file" data-anexo="marca" hidden></label>
         <label class="botao botao-leve">📎 Outro arquivo<input type="file" data-anexo="outro" hidden></label>
-        <button type="button" class="botao botao-principal" id="camp-gerar-contrato">📝 Gerar contrato a partir do meu modelo</button>
+        <button type="button" class="botao botao-leve" id="camp-gerar-contrato">📝 Contrato rápido (texto)</button>
+        <button type="button" class="botao botao-principal" id="camp-gerador">📄 Gerar contrato (DOCX e PDF)</button>
       </div>` : `<p class="dica">📎 Depois de salvar, aparecem aqui os botões para anexar o contrato e os dados da marca e para gerar o contrato.</p>`;
     form.insertBefore(bloco, form.querySelector(".form-acoes"));
     /* fechada por plataforma: some o que é de contrato e dados da marca */
@@ -1260,7 +1266,7 @@
       if (secaoMarca) secaoMarca.hidden = plataforma;
       if (secaoPlataforma) secaoPlataforma.hidden = !plataforma;
       MARCA_CAMPOS.forEach(([k]) => { form.elements["md_" + k].closest("label").hidden = plataforma; });
-      $$('[data-anexo="marca"], #camp-gerar-contrato', bloco).forEach((el) => { (el.closest("label") || el).hidden = plataforma; });
+      $$('[data-anexo="marca"], #camp-gerar-contrato, #camp-gerador', bloco).forEach((el) => { (el.closest("label") || el).hidden = plataforma; });
     };
     form.elements.canal.addEventListener("change", ajustarOrigem);
     form.elements.plataforma.addEventListener("change", ajustarOrigem);
@@ -1294,6 +1300,7 @@
       if (linha) { trocarNaLista(dados.campanhas, linha); recado("Arquivo guardado ✓"); desenharAnexos(); desenharTabelaCamp(); }
     }));
     $("#camp-gerar-contrato").addEventListener("click", () => gerarContrato(dados.campanhas.find((x) => x.id === c.id) || c));
+    $("#camp-gerador").addEventListener("click", () => { estadoCT.novoCampanha = c.id; fecharModal(); if (abaAtual() === "contratos") renderContratos($("#area")); else location.hash = "contratos"; });
   }
 
   /* ---- contrato: modelo base + adaptação para cada trabalho ---- */
@@ -6232,6 +6239,846 @@ Português do Brasil, nunca use travessão.`;
       if (n) { recado(`${plural(n, "mudança aplicada", "mudanças aplicadas")} ✓ O Meu Dia já segue o novo plano.`); estadoSemana.desmarcadas.clear(); atualizarLembretes(); renderSemana(area); }
       else aplicar.disabled = false;
     });
+  }
+
+  /* =================================================================
+     ABA 14: CONTRATOS (gerador a partir do contrato-base dela)
+     - Lê o modelo em DOCX (PizZip, preenche dentro do próprio arquivo e
+       mantém a formatação) ou PDF (pdf.js, só o texto).
+     - Só preenche campos e lacunas que ela confirmou; nunca reescreve
+       cláusulas. Cláusulas opcionais entram separadas e marcadas.
+     - Não é validação jurídica: o painel avisa isso em todas as telas.
+     ================================================================= */
+  const LIB_PIZZIP = "https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js";
+  const LIB_JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+  const LIB_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  const LIB_PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const CHAVE_MEUS_DADOS_CT = "contratos_meus_dados", CHAVE_CLAUSULAS_MINHAS = "contratos_clausulas_minhas";
+
+  /* campos que o contrato pode ter: [chave, rótulo, grupo, tipo] */
+  const CAMPOS_CT = [
+    ["MARCA", "Nome da marca", "marca"], ["RAZAO_SOCIAL", "Razão social", "marca"], ["CNPJ", "CNPJ", "marca"], ["ENDERECO_MARCA", "Endereço da marca", "marca"],
+    ["REPRESENTANTE", "Representante legal", "marca"], ["CPF_REPRESENTANTE", "CPF do representante", "marca"], ["EMAIL_MARCA", "E-mail da marca", "marca"], ["TELEFONE_MARCA", "Telefone da marca", "marca"],
+    ["NOME_CREATOR", "Seu nome completo", "contratada"], ["DOCUMENTO_CREATOR", "Seu CPF ou CNPJ", "contratada"], ["ENDERECO_CREATOR", "Seu endereço", "contratada"], ["EMAIL_CREATOR", "Seu e-mail", "contratada"], ["INSTAGRAM_CREATOR", "Seu Instagram", "contratada"],
+    ["CAMPANHA", "Nome da campanha", "trabalho"], ["TIPO_TRABALHO", "Tipo de trabalho", "trabalho"], ["ENTREGAVEIS", "Entregáveis (descrição)", "trabalho", "textarea"],
+    ["QTD_VIDEOS", "Quantidade de vídeos", "trabalho", "number"], ["QTD_FOTOS", "Quantidade de fotos", "trabalho", "number"], ["DURACAO_VIDEO", "Duração de cada vídeo", "trabalho"],
+    ["PRAZO_ENTREGA", "Prazo de entrega", "trabalho", "date"], ["REVISOES", "Rodadas de ajuste incluídas", "trabalho", "number"],
+    ["VALOR", "Valor (R$)", "comercial", "number"], ["VALOR_EXTENSO", "Valor por extenso", "comercial", "auto"], ["FORMA_PAGAMENTO", "Forma de pagamento", "comercial"],
+    ["CONDICAO_PAGAMENTO", "Condição de pagamento", "comercial"], ["DATA_PAGAMENTO", "Data do pagamento", "comercial", "date"],
+    ["PRAZO_USO", "Período de uso de imagem", "comercial"], ["FIM_USO", "Fim do uso de imagem", "comercial", "date"],
+    ["MIDIA_PAGA", "Mídia paga (impulsionamento)", "comercial"], ["PRAZO_MIDIA_PAGA", "Prazo da mídia paga", "comercial"],
+    ["EXCLUSIVIDADE", "Exclusividade", "comercial"], ["PRAZO_EXCLUSIVIDADE", "Prazo da exclusividade", "comercial"], ["MULTA", "Multa ou penalidade combinada", "comercial"],
+    ["CIDADE_FORO", "Foro (cidade)", "outros"], ["CIDADE_ASSINATURA", "Cidade da assinatura", "outros"], ["DATA_HOJE", "Data do contrato", "outros", "auto"]
+  ];
+  const CAMPO_CT = Object.fromEntries(CAMPOS_CT.map(([k, rot, grupo, tipo]) => [k, { k, rot, grupo, tipo: tipo || "text" }]));
+  const GRUPOS_CT = [["marca", "🏢 Marca (contratante)"], ["contratada", "👤 Você (contratada)"], ["trabalho", "🎬 Trabalho e entregas"], ["comercial", "💰 Condições comerciais"], ["outros", "📍 Outros"]];
+  /* nomes que podem aparecer no modelo e querem dizer o mesmo campo */
+  const APELIDOS_CT = { RESPONSAVEL: "REPRESENTANTE", REPRESENTANTE_LEGAL: "REPRESENTANTE", NOME_MARCA: "MARCA", CONTRATANTE: "RAZAO_SOCIAL", EMPRESA: "RAZAO_SOCIAL", QUANTIDADE: "QTD_VIDEOS", VIDEOS: "QTD_VIDEOS", FOTOS: "QTD_FOTOS", PRAZO: "PRAZO_ENTREGA", DATA_ENTREGA: "PRAZO_ENTREGA", ENTREGA: "PRAZO_ENTREGA", DATA: "DATA_HOJE", HOJE: "DATA_HOJE", CONTRATADA: "NOME_CREATOR", CREATOR: "NOME_CREATOR", CPF: "DOCUMENTO_CREATOR", CPF_CREATOR: "DOCUMENTO_CREATOR", CNPJ_MARCA: "CNPJ", ENDERECO: "ENDERECO_MARCA", EMAIL: "EMAIL_MARCA", TELEFONE: "TELEFONE_MARCA", FORO: "CIDADE_FORO", CIDADE: "CIDADE_ASSINATURA", USO_IMAGEM: "PRAZO_USO", PRAZO_USO_IMAGEM: "PRAZO_USO", PAGAMENTO: "CONDICAO_PAGAMENTO" };
+  const normalTag = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+  const campoDaTag = (t) => { const n = normalTag(t); return CAMPO_CT[n] ? n : APELIDOS_CT[n] || n; };
+  const RE_TAG = /\[([^\[\]\n]{2,40})\]|\{\{\s*([^{}\n]{2,40}?)\s*\}\}/g;
+  const RE_LACUNA = /_{4,}/g;
+  const RE_TUDO_CT = /\[([^\[\]\n]{2,40})\]|\{\{\s*([^{}\n]{2,40}?)\s*\}\}|_{4,}/g;
+
+  /* assuntos de cláusula (para avisar se uma cláusula opcional repete algo do modelo) */
+  const ASSUNTOS_CT = [["pagamento", /pagamento|remunera|honor[aá]rio/i], ["uso_imagem", /uso de imagem|direito de uso|licen[cç]a de uso|cess[aã]o/i], ["midia_paga", /m[ií]dia paga|impulsion|an[uú]ncio|tr[aá]fego pago|org[aâ]nic/i],
+    ["exclusividade", /exclusividade|concorrente/i], ["revisoes", /revis[aã]o|ajuste|altera[cç][oõ]es/i], ["cancelamento", /rescis|cancelamento|resili/i], ["multa", /multa|penalidade/i],
+    ["confidencialidade", /confidencial|sigilo/i], ["entrega", /entrega|prazo/i], ["direitos_autorais", /direito[s]? autora|propriedade intelectual/i], ["foro", /\bforo\b|comarca/i]];
+  const NOME_ASSUNTO = { pagamento: "pagamento", uso_imagem: "uso de imagem", midia_paga: "mídia paga", exclusividade: "exclusividade", revisoes: "revisões", cancelamento: "cancelamento", multa: "multa", confidencialidade: "confidencialidade", entrega: "entrega", direitos_autorais: "direitos autorais", foro: "foro" };
+  const ehTituloClausula = (p) => /^\s*(CL[ÁA]USULA|Cl[áa]usula)\b/.test(p) || (/^\s*\d{1,2}(\.\d{1,2})?[\.\)]?\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]{3,}/.test(p) && p.length < 120) || (/^[A-ZÁÉÍÓÚÂÊÔÃÕÇ\s\-\u2013\u2014:]{8,80}$/.test(p.trim()) && /[A-Z]{4}/.test(p));
+
+  /* biblioteca de cláusulas opcionais (textos-modelo para ela revisar; uma por grupo) */
+  const CLAUSULAS_PADRAO = [
+    { id: "uso_organico", grupo: "uso_imagem", nome: "Uso só orgânico", texto: "O conteúdo poderá ser publicado apenas de forma orgânica nos perfis da CONTRATANTE. Qualquer uso em anúncios ou mídia paga depende de novo acordo por escrito.", incompativel: ["midia_sim"] },
+    { id: "uso_prazo", grupo: "uso_imagem", nome: "Uso de imagem por prazo", texto: "A CONTRATADA autoriza o uso do conteúdo e da sua imagem pelo período de [PRAZO_USO], até [FIM_USO]. Após esse prazo, o conteúdo não deverá ser republicado nem usado em novas peças sem nova autorização." },
+    { id: "midia_nao", grupo: "midia_paga", nome: "Sem mídia paga", texto: "Não está incluída a utilização do conteúdo em mídia paga (impulsionamentos e anúncios). Esse uso, se desejado, será negociado à parte." },
+    { id: "midia_sim", grupo: "midia_paga", nome: "Mídia paga autorizada", texto: "Fica autorizada a utilização do conteúdo em mídia paga (impulsionamentos e anúncios) pelo prazo de [PRAZO_MIDIA_PAGA].", incompativel: ["uso_organico"] },
+    { id: "excl_nao", grupo: "exclusividade", nome: "Sem exclusividade", texto: "Este contrato não estabelece exclusividade, ficando a CONTRATADA livre para prestar serviços a outras marcas." },
+    { id: "excl_sim", grupo: "exclusividade", nome: "Exclusividade por prazo", texto: "A CONTRATADA não produzirá conteúdo para marcas concorrentes diretas no segmento da CONTRATANTE pelo prazo de [PRAZO_EXCLUSIVIDADE], conforme [EXCLUSIVIDADE]." },
+    { id: "revisoes", grupo: "revisoes", nome: "Rodadas de ajuste", texto: "Estão incluídas [REVISOES] rodadas de ajuste por conteúdo, solicitadas em até 2 dias após o envio. Ajustes adicionais ou mudanças de roteiro já aprovado serão orçados à parte." },
+    { id: "pag_condicao", grupo: "pagamento", nome: "Condição de pagamento", texto: "O pagamento de [VALOR] ([VALOR_EXTENSO]) será feito por [FORMA_PAGAMENTO], nas seguintes condições: [CONDICAO_PAGAMENTO]." },
+    { id: "pag_atraso", grupo: "multa", nome: "Atraso no pagamento", texto: "Em caso de atraso no pagamento, será aplicado o seguinte, conforme combinado entre as partes: [MULTA]." },
+    { id: "cancelamento", grupo: "cancelamento", nome: "Cancelamento depois de iniciado", texto: "Se a campanha for cancelada pela CONTRATANTE depois de iniciada a produção, os valores referentes ao trabalho já realizado serão devidos à CONTRATADA." },
+    { id: "confidencial", grupo: "confidencialidade", nome: "Confidencialidade", texto: "As partes manterão em sigilo as informações da campanha e deste contrato que não sejam públicas." },
+    { id: "entrega_arquivos", grupo: "entrega", nome: "Entrega dos arquivos", texto: "Os conteúdos ([ENTREGAVEIS]) serão entregues até [PRAZO_ENTREGA], em arquivo digital, pelo meio combinado entre as partes." },
+    { id: "autoral", grupo: "direitos_autorais", nome: "Direitos autorais", texto: "A CONTRATADA mantém a autoria dos conteúdos produzidos. A CONTRATANTE recebe apenas a licença de uso nos termos e prazos deste contrato." }
+  ];
+  const NOME_GRUPO_CLAUSULA = { uso_imagem: "Uso de imagem", midia_paga: "Mídia paga", exclusividade: "Exclusividade", revisoes: "Revisões", pagamento: "Pagamento", multa: "Atraso e multa", cancelamento: "Cancelamento", confidencialidade: "Confidencialidade", entrega: "Entrega", direitos_autorais: "Direitos autorais", outro: "Outras" };
+  const clausulasMinhas = () => { const v = lerJSONConfig(CHAVE_CLAUSULAS_MINHAS, []); return Array.isArray(v) ? v : []; };
+  const todasClausulas = () => CLAUSULAS_PADRAO.concat(clausulasMinhas().map((c) => Object.assign({ minha: true }, c)));
+  const meusDadosCT = () => lerJSONConfig(CHAVE_MEUS_DADOS_CT, {});
+
+  /* ---- valor por extenso (reais e centavos) ---- */
+  function porExtenso(valor) {
+    const n = Math.round(numero(valor) * 100);
+    if (!n) return "";
+    const un = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+    const dz = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+    const ct = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+    const ate999 = (x) => {
+      if (x === 100) return "cem";
+      const c = Math.floor(x / 100), r = x % 100, partes = [];
+      if (c) partes.push(ct[c]);
+      if (r) partes.push(r < 20 ? un[r] : dz[Math.floor(r / 10)] + (r % 10 ? " e " + un[r % 10] : ""));
+      return partes.join(" e ");
+    };
+    const inteiro = Math.floor(n / 100), cent = n % 100;
+    const grupos = [], nomes = [["", ""], ["mil", "mil"], ["milhão", "milhões"], ["bilhão", "bilhões"]];
+    let x = inteiro, i = 0;
+    while (x > 0) { const g = x % 1000; if (g) grupos.unshift(i === 1 && g === 1 ? "mil" : `${ate999(g)}${nomes[i][0] ? " " + (g === 1 ? nomes[i][0] : nomes[i][1]) : ""}`); x = Math.floor(x / 1000); i++; }
+    /* "mil e quinhentos", "mil duzentos e cinquenta", "dois mil e vinte" */
+    const ultimo = inteiro % 1000;
+    let txt = grupos.length > 1 ? grupos.slice(0, -1).join(" ") + (!ultimo || ultimo < 100 || ultimo % 100 === 0 ? " e " : " ") + grupos[grupos.length - 1] : grupos[0] || "";
+    if (inteiro) txt += inteiro === 1 ? " real" : (inteiro % 1000000 === 0 ? " de reais" : " reais");
+    if (cent) txt += `${inteiro ? " e " : ""}${ate999(cent)} ${cent === 1 ? "centavo" : "centavos"}`;
+    return txt;
+  }
+
+  /* ---- leitura do modelo ---- */
+  const textoParagrafoXml = (p) => {
+    let t = "";
+    p.querySelectorAll("*").forEach((el) => { if (el.namespaceURI !== W_NS) return; if (el.localName === "t") t += el.textContent; else if (el.localName === "tab") t += "\t"; else if (el.localName === "br") t += "\n"; });
+    return t;
+  };
+  async function lerDocx(buffer) {
+    await carregarScript(LIB_PIZZIP);
+    const zip = new window.PizZip(buffer);
+    const arq = zip.file("word/document.xml");
+    if (!arq) throw new Error("Esse arquivo não parece ser um DOCX do Word.");
+    const xml = new DOMParser().parseFromString(arq.asText(), "application/xml");
+    return Array.from(xml.getElementsByTagNameNS(W_NS, "p")).map(textoParagrafoXml);
+  }
+  async function lerPdf(buffer) {
+    await carregarScript(LIB_PDFJS);
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIB_PDFJS_WORKER;
+    const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+    const linhas = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const pagina = await pdf.getPage(i);
+      const conteudo = await pagina.getTextContent();
+      const porY = {};
+      conteudo.items.forEach((it) => { const y = Math.round(it.transform[5]); (porY[y] = porY[y] || []).push(it); });
+      Object.keys(porY).map(Number).sort((a, b) => b - a).forEach((y) => linhas.push(porY[y].sort((a, b) => a.transform[4] - b.transform[4]).map((it) => it.str).join(" ").replace(/\s{2,}/g, " ").trim()));
+      linhas.push("");
+    }
+    /* junta linhas que continuam a mesma frase */
+    const paragrafos = [];
+    linhas.forEach((l) => {
+      if (!l) { if (paragrafos.length && paragrafos[paragrafos.length - 1] !== "") paragrafos.push(""); return; }
+      const ultimo = paragrafos[paragrafos.length - 1];
+      if (ultimo && !/[.:;!?]$/.test(ultimo) && !ehTituloClausula(l) && !ehTituloClausula(ultimo) && /^[a-záéíóúâêôãõç(\d]/.test(l)) paragrafos[paragrafos.length - 1] = ultimo + " " + l;
+      else paragrafos.push(l);
+    });
+    return paragrafos.filter((p, i, a) => !(p === "" && a[i - 1] === ""));
+  }
+  const textoParaParagrafos = (texto) => String(texto || "").replace(/\r/g, "").split(/\n/);
+
+  /* encontra campos ([MARCA], {{marca}}), lacunas (____) e cláusulas */
+  function analisarModelo(paragrafos) {
+    const campos = [], lacunas = [], clausulas = [];
+    let n = 0;
+    paragrafos.forEach((p, i) => {
+      if (ehTituloClausula(p)) clausulas.push({ i, titulo: p.trim().slice(0, 120), assuntos: Array.from(new Set(assuntosDe(p).concat(assuntosDe(paragrafos[i + 1] || "").filter((a) => a !== "entrega" || !assuntosDe(p).length)))) });
+      RE_TUDO_CT.lastIndex = 0;
+      let m;
+      while ((m = RE_TUDO_CT.exec(p))) {
+        if (m[1] || m[2]) { const k = campoDaTag(m[1] || m[2]); if (!campos.includes(k)) campos.push(k); }
+        else {
+          const antes = p.slice(Math.max(0, m.index - 60), m.index), depois = p.slice(m.index + m[0].length, m.index + m[0].length + 25);
+          lacunas.push({ n: n++, p: i, antes: antes.trim(), depois: depois.trim(), sugestao: sugerirLacuna(antes, depois), campo: "", confirmado: false });
+        }
+      }
+    });
+    return { campos, lacunas, clausulas };
+  }
+  function assuntosDe(texto) { return ASSUNTOS_CT.filter(([, re]) => re.test(texto)).map(([k]) => k); }
+  function sugerirLacuna(antes, depois) {
+    const a = antes.toLowerCase().slice(-45), d = depois.toLowerCase();
+    if (/cnpj/.test(a)) return "CNPJ";
+    if (/cpf/.test(a)) return /representa|s[oó]ci|administra/.test(antes.toLowerCase()) ? "CPF_REPRESENTANTE" : "DOCUMENTO_CREATOR";
+    if (/raz[aã]o social|empresa/.test(a)) return "RAZAO_SOCIAL";
+    if (/representad[ao] (por|pel)|representante/.test(a)) return "REPRESENTANTE";
+    if (/e-?mail/.test(a)) return "EMAIL_MARCA";
+    if (/telefone|whats/.test(a)) return "TELEFONE_MARCA";
+    if (/r\$\s*$/.test(a)) return "VALOR";
+    if (/(via|por meio de|forma de pagamento:?)\s*$/.test(a)) return "FORMA_PAGAMENTO";
+    if (/\(\s*$/.test(a) && /\)/.test(d)) return "VALOR_EXTENSO";
+    if (/foro|comarca/.test(a)) return "CIDADE_FORO";
+    if (/endere[cç]o|sediad|residente|domiciliad/.test(a)) return /contratad/.test(antes.toLowerCase()) ? "ENDERECO_CREATOR" : "ENDERECO_MARCA";
+    if (/prazo de|per[ií]odo de/.test(a) && /mes|dia/.test(d)) return "PRAZO_USO";
+    if (/at[eé] o dia|entreg/.test(a)) return "PRAZO_ENTREGA";
+    if (/quantidade|total de/.test(a) && /v[ií]deo/.test(d)) return "QTD_VIDEOS";
+    if (/foto/.test(d)) return "QTD_FOTOS";
+    return "";
+  }
+
+  /* ---- valores finais de cada campo (com formatação) ---- */
+  function valorFormatado(k, dados) {
+    const v = dados[k];
+    if (k === "VALOR_EXTENSO") return dados.VALOR ? porExtenso(dados.VALOR) : "";
+    if (k === "DATA_HOJE") return v || new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+    if (v == null || v === "") return "";
+    if (k === "VALOR") return moeda(v);
+    if (CAMPO_CT[k] && CAMPO_CT[k].tipo === "date") return dataBR(v);
+    return String(v);
+  }
+  /* o que preencher em cada marca encontrada (campo, lacuna confirmada) */
+  function preenchimento(contrato, modelo) {
+    const dados = contrato.dados || {};
+    const branco = new Set(contrato.em_branco || []);
+    const lacunas = modelo.lacunas || [];
+    let n = 0;
+    return (texto, antes) => {
+      if (texto.startsWith("_")) {
+        const lac = lacunas[n++];
+        if (!lac || !lac.campo || !lac.confirmado) return null;
+        const v = semCifrao(lac.campo, valorFormatado(lac.campo, dados), antes);
+        return v ? { valor: v, campo: lac.campo } : branco.has(lac.campo) ? null : { faltando: lac.campo };
+      }
+      const m = /^\[([^\]]+)\]$|^\{\{\s*(.+?)\s*\}\}$/.exec(texto);
+      const k = campoDaTag(m ? m[1] || m[2] : texto);
+      const v = semCifrao(k, valorFormatado(k, dados), antes);
+      if (v) return { valor: v, campo: k };
+      return branco.has(k) ? { valor: "________", campo: k, branco: true } : { faltando: k };
+    };
+  }
+  /* campos que este contrato vai usar (modelo + lacunas confirmadas + cláusulas escolhidas) */
+  function camposUsados(contrato, modelo) {
+    const usados = new Set(modelo ? modelo.campos || [] : []);
+    (modelo ? modelo.lacunas || [] : []).forEach((l) => { if (l.campo && l.confirmado) usados.add(l.campo); });
+    clausulasEscolhidas(contrato).forEach((c) => { RE_TAG.lastIndex = 0; let m; while ((m = RE_TAG.exec(c.texto))) usados.add(campoDaTag(m[1] || m[2])); });
+    return Array.from(usados);
+  }
+  const clausulasEscolhidas = (contrato) => (contrato.clausulas_extras || []).map((id) => todasClausulas().find((c) => c.id === id)).filter(Boolean);
+  function faltandoNoContrato(contrato, modelo) {
+    const branco = new Set(contrato.em_branco || []);
+    return camposUsados(contrato, modelo).filter((k) => !valorFormatado(k, contrato.dados || {}) && !branco.has(k));
+  }
+  /* o modelo já tem "R$ [VALOR]": não repete o R$ */
+  const semCifrao = (k, v, antes) => v && k === "VALOR" && /R\$\s*$/.test(antes || "") ? v.replace(/^R\$\s*/, "") : v;
+  const preencherTexto = (texto, dados, branco) => String(texto).replace(RE_TAG, (tudo, a, b, ini, todo) => { const k = campoDaTag(a || b); return semCifrao(k, valorFormatado(k, dados), todo.slice(0, ini)) || (branco.has(k) ? "________" : tudo); });
+  /* mesmo preenchimento, separado em partes para a prévia marcar o que falta */
+  function partesDoTexto(texto, dados, branco) {
+    const partes = []; let ultimo = 0, m;
+    RE_TAG.lastIndex = 0;
+    while ((m = RE_TAG.exec(texto))) {
+      if (m.index > ultimo) partes.push({ t: texto.slice(ultimo, m.index) });
+      const k = campoDaTag(m[1] || m[2]), v = semCifrao(k, valorFormatado(k, dados), texto.slice(0, m.index));
+      partes.push(v ? { t: v, preenchido: true } : branco.has(k) ? { t: "________", branco: true } : { t: m[0], faltando: k });
+      ultimo = m.index + m[0].length;
+    }
+    if (ultimo < texto.length) partes.push({ t: texto.slice(ultimo) });
+    return partes;
+  }
+
+  /* ---- montar o documento final como lista de parágrafos (para prévia e PDF) ---- */
+  function paragrafosFinais(contrato, modelo) {
+    const preencher = preenchimento(contrato, modelo);
+    const saida = (modelo.paragrafos || []).map((p) => {
+      const partes = [];
+      let ultimo = 0;
+      RE_TUDO_CT.lastIndex = 0;
+      let m;
+      while ((m = RE_TUDO_CT.exec(p))) {
+        if (m.index > ultimo) partes.push({ t: p.slice(ultimo, m.index) });
+        const r = preencher(m[0], p.slice(0, m.index));
+        partes.push(r && r.valor ? { t: r.valor, preenchido: !r.branco, branco: !!r.branco } : r && r.faltando ? { t: m[0], faltando: r.faltando } : { t: m[0] });
+        ultimo = m.index + m[0].length;
+      }
+      if (ultimo < p.length) partes.push({ t: p.slice(ultimo) });
+      return { partes, titulo: ehTituloClausula(p) };
+    });
+    const extras = clausulasEscolhidas(contrato);
+    if (extras.length) {
+      const blocos = [{ partes: [{ t: "CLÁUSULAS ADICIONAIS" }], titulo: true, acrescimo: true }].concat(extras.map((c) => ({ partes: [{ t: `${c.nome}. `, negrito: true }].concat(partesDoTexto(c.texto, contrato.dados || {}, new Set(contrato.em_branco || []))), acrescimo: true })));
+      const fecho = saida.findIndex((p) => /por estarem|e,? por estarem|justos e contratados|justas e contratadas|firmam o presente/i.test(p.partes.map((x) => x.t).join("")));
+      saida.splice(fecho >= 0 ? fecho : saida.length, 0, ...blocos);
+    }
+    return saida;
+  }
+
+  /* ---- DOCX a partir do próprio DOCX dela (formatação preservada) ---- */
+  function substituirNoParagrafo(p, resolver) {
+    const nos = Array.from(p.getElementsByTagNameNS(W_NS, "t"));
+    if (!nos.length) return;
+    const textos = nos.map((n) => n.textContent);
+    const inicioDe = []; let pos = 0;
+    textos.forEach((t) => { inicioDe.push(pos); pos += t.length; });
+    const completo = textos.join("");
+    const achados = [];
+    RE_TUDO_CT.lastIndex = 0;
+    let m;
+    while ((m = RE_TUDO_CT.exec(completo))) achados.push({ ini: m.index, fim: m.index + m[0].length, texto: m[0] });
+    /* resolve na ordem (as lacunas são numeradas), substitui do fim para o começo */
+    achados.forEach((a) => { a.r = resolver(a.texto, completo.slice(0, a.ini)); });
+    achados.slice().reverse().forEach((a) => {
+      const valor = a.r && a.r.valor != null ? a.r.valor : null;
+      if (valor == null) return;
+      const noDe = (posicao) => { let i = inicioDe.length - 1; while (i > 0 && inicioDe[i] > posicao) i--; return i; };
+      const i = noDe(a.ini), j = noDe(a.fim - 1);
+      const ti = nos[i].textContent, tj = nos[j].textContent;
+      if (i === j) nos[i].textContent = ti.slice(0, a.ini - inicioDe[i]) + valor + ti.slice(a.fim - inicioDe[i]);
+      else {
+        nos[i].textContent = ti.slice(0, a.ini - inicioDe[i]) + valor;
+        for (let k = i + 1; k < j; k++) nos[k].textContent = "";
+        nos[j].textContent = tj.slice(a.fim - inicioDe[j]);
+      }
+      [nos[i], nos[j]].forEach((n) => n.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve"));
+    });
+  }
+  function paragrafoXml(doc, partes, opcoes) {
+    const p = doc.createElementNS(W_NS, "w:p");
+    if (opcoes && opcoes.espaco) { const pPr = doc.createElementNS(W_NS, "w:pPr"); const sp = doc.createElementNS(W_NS, "w:spacing"); sp.setAttributeNS(W_NS, "w:after", "120"); pPr.appendChild(sp); p.appendChild(pPr); }
+    partes.forEach((pt) => {
+      const r = doc.createElementNS(W_NS, "w:r");
+      if (pt.negrito || (opcoes && opcoes.marcar)) {
+        const rPr = doc.createElementNS(W_NS, "w:rPr");
+        if (pt.negrito) rPr.appendChild(doc.createElementNS(W_NS, "w:b"));
+        if (opcoes && opcoes.marcar) { const h = doc.createElementNS(W_NS, "w:highlight"); h.setAttributeNS(W_NS, "w:val", "yellow"); rPr.appendChild(h); }
+        r.appendChild(rPr);
+      }
+      const t = doc.createElementNS(W_NS, "w:t");
+      t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+      t.textContent = pt.t;
+      r.appendChild(t);
+      p.appendChild(r);
+    });
+    return p;
+  }
+  async function gerarDocxDoModelo(buffer, contrato, modelo, marcarAcrescimos) {
+    await carregarScript(LIB_PIZZIP);
+    const zip = new window.PizZip(buffer);
+    const resolver = preenchimento(contrato, modelo);
+    const xml = new DOMParser().parseFromString(zip.file("word/document.xml").asText(), "application/xml");
+    Array.from(xml.getElementsByTagNameNS(W_NS, "p")).forEach((p) => substituirNoParagrafo(p, resolver));
+    /* cláusulas adicionais: antes do fecho ("E, por estarem justos...") ou no fim */
+    const extras = clausulasEscolhidas(contrato);
+    if (extras.length) {
+      const corpo = xml.getElementsByTagNameNS(W_NS, "body")[0];
+      const filhos = Array.from(corpo.childNodes).filter((n) => n.nodeType === 1);
+      const fecho = filhos.find((n) => n.localName === "p" && /por estarem|justos e contratados|justas e contratadas|firmam o presente/i.test(textoParagrafoXml(n)));
+      const ancora = fecho || filhos.find((n) => n.localName === "sectPr") || null;
+      const dadosT = contrato.dados || {}, branco = new Set(contrato.em_branco || []);
+      const novos = [paragrafoXml(xml, [{ t: "CLÁUSULAS ADICIONAIS", negrito: true }], { espaco: true, marcar: marcarAcrescimos })]
+        .concat(extras.map((c) => paragrafoXml(xml, [{ t: `${c.nome}. `, negrito: true }, { t: preencherTexto(c.texto, dadosT, branco) }], { espaco: true, marcar: marcarAcrescimos })));
+      novos.forEach((n) => corpo.insertBefore(n, ancora));
+    }
+    zip.file("word/document.xml", new XMLSerializer().serializeToString(xml));
+    /* campos no cabeçalho e no rodapé também */
+    Object.keys(zip.files).filter((n) => /^word\/(header|footer)\d*\.xml$/.test(n)).forEach((nome) => {
+      const x = new DOMParser().parseFromString(zip.file(nome).asText(), "application/xml");
+      const so = preenchimento(contrato, { lacunas: [], campos: [] });
+      Array.from(x.getElementsByTagNameNS(W_NS, "p")).forEach((p) => substituirNoParagrafo(p, (t) => (t.startsWith("_") ? null : so(t))));
+      zip.file(nome, new XMLSerializer().serializeToString(x));
+    });
+    return zip.generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  }
+  /* ---- DOCX novo (quando o modelo é PDF ou texto) ---- */
+  async function gerarDocxDeParagrafos(pars, titulo, marcarAcrescimos) {
+    await carregarScript(LIB_PIZZIP);
+    const zip = new window.PizZip();
+    const escX = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const corpo = pars.map((p) => `<w:p><w:pPr><w:spacing w:after="120"/>${p.titulo ? '<w:jc w:val="both"/>' : '<w:jc w:val="both"/>'}</w:pPr>${p.partes.map((pt) => `<w:r>${p.titulo || pt.negrito || (marcarAcrescimos && p.acrescimo) ? `<w:rPr>${p.titulo || pt.negrito ? "<w:b/>" : ""}${marcarAcrescimos && p.acrescimo ? '<w:highlight w:val="yellow"/>' : ""}</w:rPr>` : ""}<w:t xml:space="preserve">${escX(pt.t)}</w:t></w:r>`).join("")}</w:p>`).join("");
+    zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+    zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+    zip.file("word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`);
+    zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W_NS}"><w:body>${corpo}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`);
+    return zip.generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  }
+  /* ---- PDF (texto e títulos em negrito; a formatação completa fica no DOCX) ---- */
+  async function gerarPdf(pars, titulo, marcarAcrescimos) {
+    await carregarScript(LIB_JSPDF);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    const margem = 20, largura = 210 - margem * 2, alturaUtil = 297 - margem;
+    let y = margem;
+    pdf.setProperties({ title: titulo });
+    pars.forEach((p) => {
+      const texto = p.partes.map((x) => x.t).join("").replace(/\t/g, "    ");
+      if (!texto.trim()) { y += 3; return; }
+      pdf.setFont("helvetica", p.titulo ? "bold" : "normal");
+      pdf.setFontSize(p.titulo ? 11 : 10.5);
+      const linhas = pdf.splitTextToSize(texto, largura);
+      const altura = linhas.length * 5.2;
+      if (y + altura > alturaUtil) { pdf.addPage(); y = margem; }
+      if (marcarAcrescimos && p.acrescimo) { pdf.setFillColor(255, 243, 166); pdf.rect(margem - 2, y - 4, largura + 4, altura + 1.5, "F"); }
+      pdf.text(linhas, margem, y, { maxWidth: largura, align: p.titulo ? "left" : "justify" });
+      y += altura + 2.5;
+    });
+    const total = pdf.getNumberOfPages();
+    for (let i = 1; i <= total; i++) { pdf.setPage(i); pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.text(`${i} / ${total}`, 210 - margem, 290, { align: "right" }); }
+    return pdf.output("blob");
+  }
+  async function baixarArquivoStorage(caminho) {
+    const { data, error } = await banco.storage.from("arquivos").download(caminho);
+    if (error) throw error;
+    return data;
+  }
+  const baixarBlob = (blob, nome) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
+  const nomeArquivoCT = (contrato, v, ext) => `Contrato - ${String(contrato.marca || "marca").replace(/[\\/:*?"<>|]/g, "")}${contrato.titulo ? " - " + String(contrato.titulo).replace(/[\\/:*?"<>|]/g, "").slice(0, 40) : ""} - v${v}.${ext}`;
+
+  /* gera DOCX + PDF de uma versão; marcarAcrescimos = versão de revisão (amarelo no que foi acrescentado) */
+  async function gerarArquivosContrato(contrato, modelo, marcarAcrescimos) {
+    const pars = paragrafosFinais(contrato, modelo);
+    let docx;
+    if (modelo.formato === "docx" && modelo.arquivo) docx = await gerarDocxDoModelo(await (await baixarArquivoStorage(modelo.arquivo)).arrayBuffer(), contrato, modelo, marcarAcrescimos);
+    else docx = await gerarDocxDeParagrafos(pars, contrato.titulo, marcarAcrescimos);
+    const pdf = await gerarPdf(pars, `Contrato ${contrato.marca || ""}`, marcarAcrescimos);
+    return { docx, pdf, pars };
+  }
+
+  /* ---- dados importados da campanha, da marca e dos dados dela ---- */
+  function dadosDaCampanha(c) {
+    if (!c) return {};
+    const md = c.marca_dados || {};
+    const marca = dados.marcas.find((m) => normalNome(m.nome) === normalNome(c.cliente)) || {};
+    const fim = vencimentoUso(c);
+    const uso = numero(c.uso_meses);
+    const d = {
+      MARCA: c.cliente || "", RAZAO_SOCIAL: md.razao || "", CNPJ: md.cnpj || "", ENDERECO_MARCA: md.endereco || "", REPRESENTANTE: md.responsavel || "",
+      EMAIL_MARCA: md.email || marca.email || "", TELEFONE_MARCA: md.telefone || marca.telefone || "", CAMPANHA: c.campanha || "", TIPO_TRABALHO: c.trabalho || "",
+      QTD_VIDEOS: numero(c.qtd) ? String(numero(c.qtd)) : "", PRAZO_ENTREGA: c.prazo ? String(c.prazo).slice(0, 10) : "", VALOR: numero(c.valor) ? String(numero(c.valor)) : "",
+      FORMA_PAGAMENTO: c.forma_pagamento || "", DATA_PAGAMENTO: c.data_pagamento ? String(c.data_pagamento).slice(0, 10) : "",
+      PRAZO_USO: !uso ? "" : uso >= 999 ? "prazo indeterminado" : plural(uso, "mês", "meses"), FIM_USO: fim ? isoLocal(fim) : ""
+    };
+    Object.keys(d).forEach((k) => { if (!d[k]) delete d[k]; });
+    return d;
+  }
+  function dadosIniciais(c) {
+    const meus = meusDadosCT();
+    const d = {}, origem = {};
+    Object.entries(meus).forEach(([k, v]) => { if (v) { d[k] = v; origem[k] = "meus"; } });
+    Object.entries(dadosDaCampanha(c)).forEach(([k, v]) => { d[k] = v; origem[k] = "campanha"; });
+    d._origem = origem;
+    return d;
+  }
+
+  /* ---- histórico ---- */
+  async function registrarCT(contratoId, acao, nota, extra) {
+    try {
+      const { error } = await banco.from("contratos_historico").insert(Object.assign({ contrato_id: contratoId, acao, nota }, extra || {}));
+      if (error) throw error;
+    } catch (erro) { avisar("tabela-contratos_historico", traduzErro(erro, "contratos_historico")); }
+  }
+  const STATUS_CT = [["rascunho", "📝 Rascunho"], ["enviado", "📤 Enviado para a marca"], ["assinado", "✅ Assinado"], ["cancelado", "🚫 Cancelado"]];
+  const nomeStatusCT = (s) => (STATUS_CT.find((x) => x[0] === s) || ["", s])[1];
+  const AVISO_JURIDICO = "⚖️ Este gerador só preenche o seu contrato-base com os dados que você confirmar. Ele não revisa nem valida o contrato juridicamente: leia tudo antes de enviar e, se tiver dúvida, peça para alguém de confiança da área revisar.";
+  const estadoCT = { aberto: null, mostrarTodos: false, marcar: true, novoCampanha: null };
+  const modeloDe = (contrato) => dados.contratosModelos.find((m) => m.id === contrato.modelo_id) || null;
+
+  /* ---- tela principal ---- */
+  function renderContratos(area) {
+    if (estadoCT.novoCampanha) { const id = estadoCT.novoCampanha; estadoCT.novoCampanha = null; novoContrato(id); }
+    const aberto = estadoCT.aberto && dados.contratos.find((c) => c.id === estadoCT.aberto);
+    if (aberto) { renderEditorContrato(area, aberto); return; }
+    estadoCT.aberto = null;
+    const antigo = String(dados.config[CHAVE_CONTRATO] || "").trim();
+    area.innerHTML = `
+      <section class="cartao ct-aviso"><p>${esc(AVISO_JURIDICO)}</p></section>
+      <section class="cartao">
+        <div class="cartao-topo"><h2>📄 Meus contratos <span class="dica">(${dados.contratos.length})</span></h2>
+          <button type="button" class="botao botao-principal" id="ct-novo" ${dados.contratosModelos.length ? "" : "disabled"}><svg class="ic"><use href="#i-mais"/></svg>Novo contrato</button></div>
+        ${dados.contratosModelos.length ? "" : `<p class="dica">Para começar, envie o seu contrato-base em "📚 Meus modelos" aqui embaixo.</p>`}
+        ${dados.contratos.length ? `<ul class="ct-lista">${dados.contratos.map((c) => { const camp = dados.campanhas.find((x) => String(x.id) === String(c.campanha_id)); return `<li class="ct-item">
+          <div><b>${esc(c.marca || "Sem marca")}</b>${c.titulo ? ` · ${esc(c.titulo)}` : ""}<small>${camp ? `📋 ${esc(camp.campanha)} · ` : ""}${c.versao ? `versão ${c.versao}` : "sem versão gerada"} · atualizado ${quando(c.updated_at || c.created_at)}</small></div>
+          <span class="pilula ct-st-${c.status}">${esc(nomeStatusCT(c.status))}</span>
+          <div class="rot-acoes">${c.arquivo_docx ? `<button type="button" class="botao botao-leve" data-ct-arq="${esc(c.arquivo_docx)}">⬇️ DOCX</button>` : ""}${c.arquivo_pdf ? `<button type="button" class="botao botao-leve" data-ct-arq="${esc(c.arquivo_pdf)}">⬇️ PDF</button>` : ""}${c.arquivo_assinado ? `<button type="button" class="botao botao-leve" data-ct-arq="${esc(c.arquivo_assinado)}">✍️ Assinado</button>` : ""}<button type="button" class="botao botao-principal" data-ct-abrir="${c.id}">Abrir</button></div>
+        </li>`; }).join("")}</ul>` : `<p class="frase-vazia">Nenhum contrato ainda.</p>`}
+      </section>
+      <section class="cartao">
+        <div class="cartao-topo"><h2>📚 Meus modelos (contrato-base)</h2>
+          <label class="botao botao-leve">📎 Enviar DOCX ou PDF<input type="file" id="ct-modelo-arquivo" accept=".docx,.pdf" hidden></label></div>
+        <p class="dica">O DOCX mantém a formatação do seu arquivo. Do PDF eu só consigo ler o texto. Use [MARCA], [CNPJ], [VALOR]… no lugar dos dados, ou deixe as lacunas ______ que eu ajudo a ligar cada uma ao campo certo.</p>
+        <div id="ct-modelo-status"></div>
+        ${dados.contratosModelos.length ? `<ul class="ct-lista">${dados.contratosModelos.map((m) => `<li class="ct-item">
+          <div><b>${esc(m.nome)}</b> ${m.padrao ? '<span class="pilula p-pago">padrão</span>' : ""}<small>${m.formato.toUpperCase()} · ${plural((m.campos || []).length, "campo", "campos")} · ${plural((m.lacunas || []).length, "lacuna", "lacunas")} (${plural((m.lacunas || []).filter((l) => l.confirmado).length, "ligada", "ligadas")}) · ${plural((m.clausulas || []).length, "cláusula", "cláusulas")}</small></div>
+          <div class="rot-acoes"><button type="button" class="botao botao-leve" data-ct-mod-ver="${m.id}">Revisar campos</button>${m.padrao ? "" : `<button type="button" class="botao botao-leve" data-ct-mod-padrao="${m.id}">Usar como padrão</button>`}<button type="button" class="botao botao-leve" data-ct-mod-apagar="${m.id}">Apagar</button></div>
+        </li>`).join("")}</ul>` : ""}
+        ${antigo && !dados.contratosModelos.some((m) => m.formato === "texto") ? `<p class="dica">Você tem um contrato-base antigo em texto (de Campanhas). <button type="button" class="md-link" id="ct-migrar">Usar ele aqui como modelo</button></p>` : ""}
+      </section>
+      <section class="cartao">
+        <div class="cartao-topo"><h2>🧩 Cláusulas opcionais</h2><button type="button" class="botao botao-leve" id="ct-clausula-nova">+ Minha cláusula</button></div>
+        <p class="dica">Textos-modelo para você revisar. Só entram no contrato se você marcar, sempre numa parte separada ("Cláusulas adicionais"), e nunca duas do mesmo assunto.</p>
+        <div class="ct-clausulas">${Object.keys(NOME_GRUPO_CLAUSULA).map((g) => { const lista = todasClausulas().filter((c) => (c.grupo || "outro") === g); return lista.length ? `<details class="md-grupo"><summary><span>${esc(NOME_GRUPO_CLAUSULA[g])}</span><b>${lista.length}</b></summary><ul class="sc-lista">${lista.map((c) => `<li><span><b>${esc(c.nome)}</b>${c.minha ? ' <span class="pilula">minha</span>' : ""}</span><small>${esc(c.texto)}</small>${c.minha ? `<button type="button" class="md-link" data-ct-cl-apagar="${esc(c.id)}">apagar</button>` : ""}</li>`).join("")}</ul></details>` : ""; }).join("")}</div>
+      </section>
+      <section class="cartao">
+        <div class="cartao-topo"><h2>👤 Meus dados (contratada)</h2></div>
+        <p class="dica">Preencha uma vez: eles entram em todos os contratos. Ficam guardados só no seu painel.</p>
+        <div class="form-grade" id="ct-meus">${CAMPOS_CT.filter(([, , g]) => g === "contratada").map(([k, rot]) => `<label>${esc(rot)}<input data-meu="${k}" value="${esc(meusDadosCT()[k] || "")}"></label>`).join("")}
+          <label>Cidade do foro (padrão)<input data-meu="CIDADE_FORO" value="${esc(meusDadosCT().CIDADE_FORO || "")}"></label><label>Cidade da assinatura (padrão)<input data-meu="CIDADE_ASSINATURA" value="${esc(meusDadosCT().CIDADE_ASSINATURA || "")}"></label></div>
+        <div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="ct-meus-salvar">💾 Salvar meus dados</button></div>
+      </section>`;
+
+    $("#ct-novo").addEventListener("click", () => novoContrato());
+    $$("[data-ct-abrir]", area).forEach((b) => b.addEventListener("click", () => { estadoCT.aberto = b.dataset.ctAbrir; renderContratos(area); }));
+    $$("[data-ct-arq]", area).forEach((b) => b.addEventListener("click", () => abrirArquivo(b.dataset.ctArq)));
+    $("#ct-modelo-arquivo").addEventListener("change", (e) => enviarModelo(e.target.files && e.target.files[0], area));
+    $$("[data-ct-mod-ver]", area).forEach((b) => b.addEventListener("click", () => revisarModelo(dados.contratosModelos.find((m) => m.id === b.dataset.ctModVer))));
+    $$("[data-ct-mod-padrao]", area).forEach((b) => b.addEventListener("click", async () => {
+      for (const m of dados.contratosModelos) { if (m.padrao || m.id === b.dataset.ctModPadrao) { const l = await gravar("contratos_modelos", { padrao: m.id === b.dataset.ctModPadrao }, m.id); if (l) trocarNaLista(dados.contratosModelos, l); } }
+      renderContratos(area);
+    }));
+    $$("[data-ct-mod-apagar]", area).forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm("Apagar este modelo? Os contratos já gerados continuam guardados.")) return;
+      if (await apagar("contratos_modelos", b.dataset.ctModApagar)) { dados.contratosModelos = dados.contratosModelos.filter((m) => m.id !== b.dataset.ctModApagar); renderContratos(area); }
+    }));
+    const migrar = $("#ct-migrar");
+    if (migrar) migrar.addEventListener("click", async () => {
+      const paragrafos = textoParaParagrafos(antigo);
+      const linha = await gravar("contratos_modelos", Object.assign({ nome: "Contrato-base (texto)", formato: "texto", arquivo: "", paragrafos, padrao: !dados.contratosModelos.length }, analisarModelo(paragrafos)));
+      if (linha) { dados.contratosModelos.unshift(linha); recado("Modelo criado a partir do texto antigo ✓"); renderContratos(area); }
+    });
+    $("#ct-clausula-nova").addEventListener("click", () => novaClausula(area));
+    $$("[data-ct-cl-apagar]", area).forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm("Apagar esta cláusula da sua biblioteca?")) return;
+      if (await salvarConfig(CHAVE_CLAUSULAS_MINHAS, JSON.stringify(clausulasMinhas().filter((c) => c.id !== b.dataset.ctClApagar)))) renderContratos(area);
+    }));
+    $("#ct-meus-salvar").addEventListener("click", async () => {
+      const v = {}; $$("[data-meu]", area).forEach((i) => { if (i.value.trim()) v[i.dataset.meu] = i.value.trim(); });
+      if (await salvarConfig(CHAVE_MEUS_DADOS_CT, JSON.stringify(v))) recado("Seus dados foram salvos ✓");
+    });
+  }
+
+  async function enviarModelo(arquivo, area) {
+    if (!arquivo) return;
+    const status = $("#ct-modelo-status");
+    const ext = (/\.(docx|pdf)$/i.exec(arquivo.name) || [])[1];
+    if (!ext) { recado("Envie um arquivo .docx ou .pdf.", true); return; }
+    status.innerHTML = `<div class="rot-aviso andamento"><span>Lendo o seu contrato…</span></div>`;
+    try {
+      const buffer = await arquivo.arrayBuffer();
+      const paragrafos = ext.toLowerCase() === "docx" ? await lerDocx(buffer) : await lerPdf(buffer);
+      if (!paragrafos.join("").trim()) throw new Error("Não encontrei texto nesse arquivo. Se for um PDF escaneado (foto), envie o DOCX.");
+      const caminho = await enviarArquivo(arquivo, "contratos/modelos");
+      if (!caminho) { status.innerHTML = ""; return; }
+      const analise = analisarModelo(paragrafos);
+      const linha = await gravar("contratos_modelos", Object.assign({ nome: arquivo.name.replace(/\.(docx|pdf)$/i, ""), formato: ext.toLowerCase(), arquivo: caminho, paragrafos, padrao: !dados.contratosModelos.length }, analise));
+      if (!linha) { status.innerHTML = ""; return; }
+      dados.contratosModelos.unshift(linha);
+      recado(`Li o contrato: ${plural(analise.campos.length, "campo", "campos")}, ${plural(analise.lacunas.length, "lacuna", "lacunas")} e ${plural(analise.clausulas.length, "cláusula", "cláusulas")} ✓`);
+      renderContratos(area);
+      if (analise.lacunas.length) revisarModelo(linha);
+    } catch (erro) { status.innerHTML = `<div class="rot-aviso erro"><span>😕 ${esc(erro.message || "Não consegui ler esse arquivo.")}</span></div>`; }
+  }
+
+  /* revisar o que foi encontrado e ligar cada lacuna ____ a um campo (só com a confirmação dela) */
+  function revisarModelo(m) {
+    if (!m) return;
+    const opcoes = `<option value="">Não preencher (fica ____)</option>${GRUPOS_CT.map(([g, nome]) => `<optgroup label="${esc(nome)}">${CAMPOS_CT.filter(([, , gg]) => gg === g).map(([k, rot]) => `<option value="${k}">${esc(rot)}</option>`).join("")}</optgroup>`).join("")}`;
+    const desconhecidos = (m.campos || []).filter((k) => !CAMPO_CT[k]);
+    abrirModal(`🔎 ${m.nome}`, `<div class="ct-revisao">
+        <p class="dica">Aqui está o que eu encontrei no seu contrato. Nada é mudado no seu arquivo: eu só preencho os campos e as lacunas que você ligar aqui.</p>
+        <h3 class="form-secao">🏷️ Campos com nome (${(m.campos || []).length})</h3>
+        <p>${(m.campos || []).map((k) => `<span class="pilula ${CAMPO_CT[k] ? "p-pago" : "p-pendente"}">${esc(CAMPO_CT[k] ? CAMPO_CT[k].rot : k)}</span>`).join(" ") || '<span class="dica">Nenhum. Você pode escrever [MARCA], [VALOR]… no seu DOCX.</span>'}</p>
+        ${desconhecidos.length ? `<p class="dica">🟡 ${desconhecidos.map(esc).join(", ")}: não reconheci esses nomes. Eles aparecem como campos extras para você preencher em cada contrato.</p>` : ""}
+        <h3 class="form-secao">✏️ Lacunas ____ (${(m.lacunas || []).length})</h3>
+        ${(m.lacunas || []).length ? `<ul class="ct-lacunas">${m.lacunas.map((l, i) => `<li><p class="ct-contexto">…${esc(l.antes)} <mark>____</mark> ${esc(l.depois)}…</p>
+          <div class="ct-lacuna-campos"><select data-lacuna="${i}">${opcoes.replace(`value="${l.campo || l.sugestao}"`, `value="${l.campo || l.sugestao}" selected`)}</select>
+          ${!l.confirmado && l.sugestao ? '<span class="dica">💡 sugestão, confira</span>' : l.confirmado ? '<span class="dica">✅ ligada</span>' : ""}</div></li>`).join("")}</ul>` : '<p class="dica">Nenhuma lacuna.</p>'}
+        <h3 class="form-secao">📑 Cláusulas encontradas (${(m.clausulas || []).length})</h3>
+        <ul class="sc-lista">${(m.clausulas || []).map((c) => `<li><span>${esc(c.titulo)}</span>${(c.assuntos || []).length ? `<small>assunto: ${c.assuntos.map((a) => NOME_ASSUNTO[a]).join(", ")}</small>` : ""}</li>`).join("") || '<li class="dica">Não encontrei títulos de cláusula.</li>'}</ul>
+        <label class="marcar"><input type="checkbox" id="ct-mod-padrao" ${m.padrao ? "checked" : ""}> Usar este modelo como padrão</label>
+        <div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="ct-mod-salvar">💾 Confirmar ligações</button></div>
+      </div>`, true);
+    $("#ct-mod-salvar").addEventListener("click", async () => {
+      const lacunas = (m.lacunas || []).map((l, i) => { const v = $(`[data-lacuna="${i}"]`).value; return Object.assign({}, l, { campo: v, confirmado: !!v }); });
+      const linha = await gravar("contratos_modelos", { lacunas, padrao: $("#ct-mod-padrao").checked }, m.id);
+      if (linha) { trocarNaLista(dados.contratosModelos, linha); recado("Ligações salvas ✓"); fecharModal(); mostrarAba(); }
+    });
+  }
+
+  function novaClausula(area) {
+    abrirModal("🧩 Minha cláusula", `<div class="form-grade">
+        <label class="inteira">Nome<input id="ct-cl-nome" placeholder="ex: Entrega em formato vertical"></label>
+        <label>Assunto<select id="ct-cl-grupo">${Object.entries(NOME_GRUPO_CLAUSULA).map(([g, n]) => `<option value="${g}">${esc(n)}</option>`).join("")}</select></label>
+        <label class="inteira">Texto (pode usar [MARCA], [VALOR], [PRAZO_USO]…)<textarea id="ct-cl-texto" rows="5"></textarea></label>
+        <p class="inteira dica">Só uma cláusula de cada assunto entra por contrato (menos em "Outras").</p>
+        <div class="form-acoes inteira"><span class="espaco"></span><button type="button" class="botao botao-principal" id="ct-cl-salvar">💾 Salvar</button></div></div>`);
+    $("#ct-cl-salvar").addEventListener("click", async () => {
+      const nome = $("#ct-cl-nome").value.trim(), texto = $("#ct-cl-texto").value.trim();
+      if (!nome || !texto) { recado("Preencha o nome e o texto.", true); return; }
+      const lista = clausulasMinhas().concat([{ id: "m" + Date.now(), nome, grupo: $("#ct-cl-grupo").value, texto }]);
+      if (await salvarConfig(CHAVE_CLAUSULAS_MINHAS, JSON.stringify(lista))) { recado("Cláusula salva ✓"); fecharModal(); renderContratos(area); }
+    });
+  }
+
+  /* ---- novo contrato: escolhe campanha e modelo ---- */
+  function novoContrato(campanhaId) {
+    const padrao = dados.contratosModelos.find((m) => m.padrao) || dados.contratosModelos[0];
+    if (!padrao) { recado("Envie primeiro o seu contrato-base em 📚 Meus modelos.", true); location.hash = "contratos"; return; }
+    abrirModal("📄 Novo contrato", `<div class="form-grade">
+        <label class="inteira">Campanha<select id="ct-n-camp"><option value="">Sem campanha</option>${dados.campanhas.filter((c) => !ehPlataforma(c)).map((c) => `<option value="${c.id}" ${String(campanhaId) === String(c.id) ? "selected" : ""}>${esc(c.cliente || "Sem marca")} · ${esc(c.campanha)}</option>`).join("")}</select></label>
+        <label class="inteira">Modelo<select id="ct-n-modelo">${dados.contratosModelos.map((m) => `<option value="${m.id}" ${m.id === padrao.id ? "selected" : ""}>${esc(m.nome)}</option>`).join("")}</select></label>
+        <p class="inteira dica">Eu trago os dados que já estão na campanha e na marca. O que faltar, eu te mostro antes de gerar.</p>
+        <div class="form-acoes inteira"><span class="espaco"></span><button type="button" class="botao botao-principal" id="ct-n-criar">Criar rascunho</button></div></div>`);
+    $("#ct-n-criar").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      const camp = dados.campanhas.find((c) => String(c.id) === $("#ct-n-camp").value) || null;
+      const linha = await gravar("contratos", { campanha_id: camp ? camp.id : null, marca: camp ? camp.cliente || "" : "", titulo: camp ? camp.campanha || "" : "", modelo_id: $("#ct-n-modelo").value, status: "rascunho", dados: dadosIniciais(camp), clausulas_extras: [], em_branco: [] });
+      if (!linha) { e.target.disabled = false; return; }
+      dados.contratos.unshift(linha);
+      await registrarCT(linha.id, "criado", camp ? `Rascunho criado com os dados da campanha ${camp.campanha}` : "Rascunho criado");
+      estadoCT.aberto = linha.id;
+      fecharModal();
+      if (abaAtual() !== "contratos") location.hash = "contratos"; else renderContratos($("#area"));
+    });
+  }
+
+  /* ---- editor do contrato ---- */
+  function renderEditorContrato(area, contrato) {
+    const modelo = modeloDe(contrato);
+    const d = contrato.dados || {};
+    const origem = d._origem || {};
+    const usados = new Set(camposUsados(contrato, modelo));
+    const faltando = modelo ? faltandoNoContrato(contrato, modelo) : [];
+    const camp = dados.campanhas.find((c) => String(c.id) === String(contrato.campanha_id));
+    const escolhidas = new Set(contrato.clausulas_extras || []);
+    const assuntosModelo = new Set((modelo ? modelo.clausulas || [] : []).flatMap((c) => c.assuntos || []));
+    const extrasDoModelo = Array.from(usados).filter((k) => !CAMPO_CT[k]);
+    const campoInput = (k, rot, tipo) => {
+      const v = d[k] == null ? "" : d[k];
+      const auto = tipo === "auto";
+      const selo = auto ? "automático" : { campanha: "da campanha", meus: "seus dados", manual: "você editou" }[origem[k]] || "";
+      const inp = tipo === "textarea" ? `<textarea data-ct-campo="${k}" rows="3">${esc(v)}</textarea>` : `<input data-ct-campo="${k}" type="${tipo === "number" ? "number" : tipo === "date" ? "date" : "text"}" value="${esc(auto ? valorFormatado(k, d) : v)}" ${auto ? "readonly" : ""} ${tipo === "number" ? 'step="any" min="0"' : ""}>`;
+      return `<label class="${tipo === "textarea" ? "inteira" : ""} ${faltando.includes(k) ? "er-falta" : ""}">${esc(rot)}${usados.has(k) ? "" : ' <small class="dica">(não usado)</small>'}${selo ? ` <small class="ct-origem">${selo}</small>` : ""}${inp}</label>`;
+    };
+    const grupoFieldset = ([g, nome]) => {
+      const lista = CAMPOS_CT.filter(([k, , gg]) => gg === g && (estadoCT.mostrarTodos || usados.has(k)));
+      return lista.length ? `<fieldset class="ct-grupo"><legend>${esc(nome)}</legend><div class="form-grade">${lista.map(([k, rot, , tipo]) => campoInput(k, rot, tipo)).join("")}</div></fieldset>` : "";
+    };
+    area.innerHTML = `
+      <section class="cartao ct-topo">
+        <button type="button" class="botao botao-leve" id="ct-voltar">← Contratos</button>
+        <div class="ct-topo-texto"><h2>${esc(contrato.marca || "Sem marca")}${contrato.titulo ? ` · ${esc(contrato.titulo)}` : ""}</h2>
+          <small>${modelo ? `Modelo: ${esc(modelo.nome)} (${modelo.formato.toUpperCase()})` : "⚠️ O modelo deste contrato foi apagado"} · ${contrato.versao ? `versão ${contrato.versao}` : "sem versão gerada"}${contrato.assinado_em ? ` · assinado em ${String(contrato.assinado_em).split("-").reverse().join("/")}` : ""}${contrato.arquivo_assinado ? ` · <button type="button" class="md-link" data-ct-arq="${esc(contrato.arquivo_assinado)}">ver o assinado</button>` : ""}</small></div>
+        <label class="ct-status">Situação<select id="ct-status">${STATUS_CT.map(([v, t]) => `<option value="${v}" ${contrato.status === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      </section>
+      <p class="ct-aviso-mini">${esc(AVISO_JURIDICO)}</p>
+
+      <section class="cartao">
+        <h2 class="md-secao">1. Campanha e modelo</h2>
+        <div class="form-grade">
+          <label>Campanha<select id="ct-camp"><option value="">Sem campanha</option>${dados.campanhas.map((c) => `<option value="${c.id}" ${String(c.id) === String(contrato.campanha_id) ? "selected" : ""}>${esc(c.cliente || "Sem marca")} · ${esc(c.campanha)}</option>`).join("")}</select></label>
+          <label>Modelo<select id="ct-modelo">${dados.contratosModelos.map((m) => `<option value="${m.id}" ${m.id === contrato.modelo_id ? "selected" : ""}>${esc(m.nome)}</option>`).join("")}</select></label>
+        </div>
+        <div class="rot-acoes"><button type="button" class="botao botao-leve" id="ct-importar" ${camp ? "" : "disabled"}>🔄 Trazer de novo os dados da campanha</button></div>
+      </section>
+
+      ${faltando.length ? `<section class="cartao ct-faltando"><h2 class="md-secao">⚠️ Falta preencher (${faltando.length})</h2>
+        <p class="dica">Eu não invento dados. Preencha, ou marque "deixar em branco" para completar à mão depois (fica ________).</p>
+        <ul>${faltando.map((k) => `<li><button type="button" class="md-link" data-ir-campo="${k}">${esc(CAMPO_CT[k] ? CAMPO_CT[k].rot : k)}</button><label class="marcar"><input type="checkbox" data-branco="${k}"> deixar em branco</label></li>`).join("")}</ul></section>` : `<section class="cartao ct-ok"><p>✅ Todos os campos usados no contrato estão preenchidos${(contrato.em_branco || []).length ? ` (${plural(contrato.em_branco.length, "campo ficará", "campos ficarão")} em branco: ${contrato.em_branco.map((k) => CAMPO_CT[k] ? CAMPO_CT[k].rot : k).join(", ")} <button type="button" class="md-link" id="ct-desbrancar">desfazer</button>)` : ""}.</p></section>`}
+
+      <section class="cartao">
+        <div class="cartao-topo"><h2 class="md-secao">2. Dados do contrato</h2><label class="marcar"><input type="checkbox" id="ct-todos" ${estadoCT.mostrarTodos ? "checked" : ""}> mostrar todos os campos</label></div>
+        ${GRUPOS_CT.map(grupoFieldset).join("")}
+        ${extrasDoModelo.length ? `<fieldset class="ct-grupo"><legend>📎 Campos do seu modelo</legend><div class="form-grade">${extrasDoModelo.map((k) => campoInput(k, k, "text")).join("")}</div></fieldset>` : ""}
+      </section>
+
+      <section class="cartao">
+        <h2 class="md-secao">3. Cláusulas opcionais</h2>
+        <p class="dica">Entram numa parte separada, "Cláusulas adicionais", e ficam marcadas na prévia. As cláusulas do seu contrato-base não são mexidas.</p>
+        ${Object.keys(NOME_GRUPO_CLAUSULA).map((g) => {
+          const lista = todasClausulas().filter((c) => (c.grupo || "outro") === g);
+          if (!lista.length) return "";
+          const doGrupo = lista.find((c) => escolhidas.has(c.id));
+          return `<div class="ct-cl-grupo"><b>${esc(NOME_GRUPO_CLAUSULA[g])}</b>${assuntosModelo.has(g) ? ` <span class="ct-ja">o seu modelo já fala disso</span>` : ""}
+            ${lista.map((c) => {
+              const bloqueio = !escolhidas.has(c.id) && (g !== "outro" && doGrupo ? `já escolhida: ${doGrupo.nome}` : (c.incompativel || []).find((x) => escolhidas.has(x)) ? `não combina com "${todasClausulas().find((y) => y.id === (c.incompativel || []).find((x) => escolhidas.has(x))).nome}"` : todasClausulas().some((y) => escolhidas.has(y.id) && (y.incompativel || []).includes(c.id)) ? "não combina com outra escolhida" : "");
+              return `<label class="ct-cl ${bloqueio ? "bloqueada" : ""}"><input type="checkbox" data-clausula="${esc(c.id)}" data-grupo="${g}" ${escolhidas.has(c.id) ? "checked" : ""} ${bloqueio ? "disabled" : ""}><span><b>${esc(c.nome)}</b>${bloqueio ? ` <small class="dica">(${esc(bloqueio)})</small>` : ""}<small>${esc(c.texto)}</small></span></label>`;
+            }).join("")}</div>`;
+        }).join("")}
+      </section>
+
+      <section class="cartao">
+        <div class="cartao-topo"><h2 class="md-secao">4. Prévia completa</h2><label class="marcar"><input type="checkbox" id="ct-marcar" ${estadoCT.marcar ? "checked" : ""}> marcar acréscimos em amarelo nos arquivos (versão de revisão)</label></div>
+        <p class="ct-legenda"><mark class="ct-pre">preenchido</mark> <mark class="ct-falta">faltando</mark> <mark class="ct-bra">em branco</mark> <mark class="ct-acr">acrescentado (cláusula opcional)</mark></p>
+        <div class="ct-previa" id="ct-previa">${modelo ? htmlPrevia(contrato, modelo) : '<p class="dica">Escolha um modelo.</p>'}</div>
+      </section>
+
+      <section class="cartao">
+        <h2 class="md-secao">5. Gerar e guardar</h2>
+        <div class="rot-acoes">
+          <button type="button" class="botao botao-leve" id="ct-salvar">💾 Salvar rascunho</button>
+          <button type="button" class="botao botao-leve" id="ct-baixar" ${modelo ? "" : "disabled"}>⬇️ Só baixar (DOCX e PDF)</button>
+          <button type="button" class="botao botao-principal" id="ct-gerar" ${modelo ? "" : "disabled"}>📄 Gerar versão ${contrato.versao + 1} e guardar</button>
+          <label class="botao botao-leve">📎 Anexar contrato assinado<input type="file" id="ct-assinado" accept=".pdf,.docx,.jpg,.jpeg,.png" hidden></label>
+        </div>
+        <p class="dica">${modelo && modelo.formato === "docx" ? "O DOCX sai do seu próprio arquivo, com a formatação dele. O PDF sai com o texto, os parágrafos e os títulos." : "Como o modelo é PDF ou texto, o DOCX e o PDF são montados só com o texto (a formatação original não vem junto)."}</p>
+        <div id="ct-resultado"></div>
+        <h3 class="form-secao">🕘 Versões e histórico</h3>
+        <ul class="es-historico" id="ct-historico"><li class="dica">Carregando…</li></ul>
+      </section>`;
+    ligarEditorContrato(area, contrato, modelo);
+  }
+
+  function htmlPrevia(contrato, modelo) {
+    return paragrafosFinais(contrato, modelo).map((p) => {
+      if (!p.partes.map((x) => x.t).join("").trim()) return "<p>&nbsp;</p>";
+      const corpo = p.partes.map((x) => x.faltando ? `<mark class="ct-falta" title="Falta: ${esc(CAMPO_CT[x.faltando] ? CAMPO_CT[x.faltando].rot : x.faltando)}">${esc(CAMPO_CT[x.faltando] ? `[${CAMPO_CT[x.faltando].rot}]` : x.t)}</mark>` : x.preenchido ? `<mark class="ct-pre">${esc(x.t)}</mark>` : x.branco ? `<mark class="ct-bra">${esc(x.t)}</mark>` : x.negrito ? `<b>${esc(x.t)}</b>` : esc(x.t)).join("");
+      return `<p class="${p.titulo ? "ct-titulo" : ""} ${p.acrescimo ? "ct-acr-bloco" : ""}">${corpo.replace(/\n/g, "<br>")}</p>`;
+    }).join("");
+  }
+
+  function ligarEditorContrato(area, contrato, modelo) {
+    const atualizarPrevia = () => { if (modelo) $("#ct-previa").innerHTML = htmlPrevia(contrato, modelo); };
+    let tempo = null;
+    $("#ct-voltar").addEventListener("click", async () => { await salvarContrato(contrato, true); estadoCT.aberto = null; renderContratos(area); });
+    $$("[data-ct-arq]", area).forEach((b) => b.addEventListener("click", () => abrirArquivo(b.dataset.ctArq)));
+    $$("[data-ct-campo]", area).forEach((inp) => inp.addEventListener("input", () => {
+      if (inp.readOnly) return;
+      contrato.dados = Object.assign({}, contrato.dados);
+      contrato.dados[inp.dataset.ctCampo] = inp.value;
+      contrato.dados._origem = Object.assign({}, contrato.dados._origem, { [inp.dataset.ctCampo]: "manual" });
+      contrato._mudou = true;
+      clearTimeout(tempo);
+      tempo = setTimeout(() => { atualizarPrevia(); const ex = $('[data-ct-campo="VALOR_EXTENSO"]', area); if (ex) ex.value = valorFormatado("VALOR_EXTENSO", contrato.dados); }, 250);
+    }));
+    $$("[data-ct-campo]", area).forEach((inp) => inp.addEventListener("change", () => { if (faltandoNoContrato(contrato, modelo || {}).length !== $$("[data-ir-campo]", area).length) renderEditorContrato(area, contrato); }));
+    $$("[data-ir-campo]", area).forEach((b) => b.addEventListener("click", () => {
+      let el = $(`[data-ct-campo="${b.dataset.irCampo}"]`, area);
+      if (!el) { estadoCT.mostrarTodos = true; renderEditorContrato(area, contrato); el = $(`[data-ct-campo="${b.dataset.irCampo}"]`, area); }
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+    }));
+    $$("[data-branco]", area).forEach((c) => c.addEventListener("change", () => {
+      contrato.em_branco = Array.from(new Set((contrato.em_branco || []).concat(c.checked ? [c.dataset.branco] : []))).filter((k) => c.checked || k !== c.dataset.branco);
+      contrato._mudou = true;
+      renderEditorContrato(area, contrato);
+    }));
+    const desb = $("#ct-desbrancar");
+    if (desb) desb.addEventListener("click", () => { contrato.em_branco = []; contrato._mudou = true; renderEditorContrato(area, contrato); });
+    $("#ct-todos").addEventListener("change", (e) => { estadoCT.mostrarTodos = e.target.checked; renderEditorContrato(area, contrato); });
+    $("#ct-marcar").addEventListener("change", (e) => { estadoCT.marcar = e.target.checked; });
+    $("#ct-modelo").addEventListener("change", (e) => { contrato.modelo_id = e.target.value; contrato._mudou = true; renderEditorContrato(area, contrato); });
+    $("#ct-camp").addEventListener("change", (e) => {
+      const camp = dados.campanhas.find((c) => String(c.id) === e.target.value);
+      contrato.campanha_id = camp ? camp.id : null;
+      if (camp) { contrato.marca = camp.cliente || contrato.marca; contrato.titulo = camp.campanha || contrato.titulo; }
+      contrato._mudou = true;
+      renderEditorContrato(area, contrato);
+      if (camp) importarDaCampanha(area, contrato, camp);
+    });
+    $("#ct-importar").addEventListener("click", () => { const camp = dados.campanhas.find((c) => String(c.id) === String(contrato.campanha_id)); if (camp) importarDaCampanha(area, contrato, camp); });
+    $$("[data-clausula]", area).forEach((c) => c.addEventListener("change", () => {
+      const assuntosModelo = new Set((modelo ? modelo.clausulas || [] : []).flatMap((x) => x.assuntos || []));
+      if (c.checked && assuntosModelo.has(c.dataset.grupo) && !confirm(`O seu contrato-base já fala de ${NOME_GRUPO_CLAUSULA[c.dataset.grupo].toLowerCase()}. Acrescentar esta pode deixar duas regras sobre o mesmo assunto, ou regras que se contradizem. Confira com calma o que já está no seu modelo. Quer acrescentar mesmo assim?`)) { c.checked = false; return; }
+      const atual = new Set(contrato.clausulas_extras || []);
+      if (c.checked) atual.add(c.dataset.clausula); else atual.delete(c.dataset.clausula);
+      contrato.clausulas_extras = Array.from(atual);
+      contrato._mudou = true;
+      renderEditorContrato(area, contrato);
+    }));
+    $("#ct-status").addEventListener("change", async (e) => {
+      const novo = e.target.value;
+      const muda = { status: novo, updated_at: new Date().toISOString() };
+      if (novo === "assinado") muda.assinado_em = contrato.assinado_em || isoLocal(new Date());
+      const linha = await gravar("contratos", muda, contrato.id);
+      if (linha) { trocarNaLista(dados.contratos, linha); Object.assign(contrato, linha); await registrarCT(contrato.id, "status", `Situação: ${nomeStatusCT(novo)}`, { versao: contrato.versao }); if (novo === "assinado") await marcarContratoNaCampanha(contrato); recado("Situação atualizada ✓"); carregarHistoricoCT(contrato); }
+    });
+    $("#ct-salvar").addEventListener("click", async () => { if (await salvarContrato(contrato)) recado("Rascunho salvo ✓"); });
+    $("#ct-baixar").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      try { const r = await gerarArquivosContrato(contrato, modelo, estadoCT.marcar); baixarBlob(r.docx, nomeArquivoCT(contrato, `${contrato.versao + 1}-rascunho`, "docx")); baixarBlob(r.pdf, nomeArquivoCT(contrato, `${contrato.versao + 1}-rascunho`, "pdf")); }
+      catch (erro) { console.error(erro); recado("Não consegui gerar os arquivos: " + (erro.message || ""), true); }
+      e.target.disabled = false;
+    });
+    $("#ct-gerar").addEventListener("click", async (e) => {
+      const falta = faltandoNoContrato(contrato, modelo);
+      if (falta.length) { recado(`Antes de gerar, preencha ou deixe em branco: ${falta.map((k) => CAMPO_CT[k] ? CAMPO_CT[k].rot : k).join(", ")}.`, true); return; }
+      e.target.disabled = true;
+      const caixa = $("#ct-resultado");
+      caixa.innerHTML = `<div class="rot-aviso andamento"><span>Gerando o DOCX e o PDF…</span></div>`;
+      try {
+        await salvarContrato(contrato, true);
+        const v = contrato.versao + 1;
+        const r = await gerarArquivosContrato(contrato, modelo, estadoCT.marcar);
+        const pasta = `contratos/${contrato.id}`;
+        const docx = await enviarArquivo(new File([r.docx], nomeArquivoCT(contrato, v, "docx"), { type: r.docx.type }), pasta);
+        const pdf = docx ? await enviarArquivo(new File([r.pdf], nomeArquivoCT(contrato, v, "pdf"), { type: "application/pdf" }), pasta) : null;
+        if (!docx || !pdf) throw new Error("não consegui guardar os arquivos");
+        const linha = await gravar("contratos", { versao: v, arquivo_docx: docx, arquivo_pdf: pdf, updated_at: new Date().toISOString() }, contrato.id);
+        if (!linha) throw new Error("não consegui atualizar o contrato");
+        trocarNaLista(dados.contratos, linha); Object.assign(contrato, linha);
+        const snap = Object.assign({}, contrato.dados); delete snap._origem;
+        await registrarCT(contrato.id, "versao", `Versão ${v} gerada${estadoCT.marcar ? " (com acréscimos marcados em amarelo)" : ""}${(contrato.clausulas_extras || []).length ? `. Cláusulas adicionais: ${clausulasEscolhidas(contrato).map((c) => c.nome).join(", ")}` : ""}${(contrato.em_branco || []).length ? `. Em branco: ${contrato.em_branco.map((k) => CAMPO_CT[k] ? CAMPO_CT[k].rot : k).join(", ")}` : ""}`, { versao: v, dados: { campos: snap, clausulas: contrato.clausulas_extras, em_branco: contrato.em_branco }, arquivo_docx: docx, arquivo_pdf: pdf });
+        await anexarNaCampanha(contrato, [{ nome: nomeArquivoCT(contrato, v, "docx"), caminho: docx }, { nome: nomeArquivoCT(contrato, v, "pdf"), caminho: pdf }], "gerado");
+        caixa.innerHTML = `<div class="rot-aviso ok"><span>✅ Versão ${v} guardada${contrato.campanha_id ? " e ligada à campanha" : ""}.</span><button type="button" class="botao botao-leve" id="ct-baixa-docx">⬇️ DOCX</button><button type="button" class="botao botao-leve" id="ct-baixa-pdf">⬇️ PDF</button></div>`;
+        $("#ct-baixa-docx").addEventListener("click", () => baixarBlob(r.docx, nomeArquivoCT(contrato, v, "docx")));
+        $("#ct-baixa-pdf").addEventListener("click", () => baixarBlob(r.pdf, nomeArquivoCT(contrato, v, "pdf")));
+        $("#ct-gerar").textContent = `📄 Gerar versão ${v + 1} e guardar`;
+        carregarHistoricoCT(contrato);
+      } catch (erro) { console.error(erro); caixa.innerHTML = `<div class="rot-aviso erro"><span>😕 ${esc("Não deu certo: " + (erro.message || ""))}</span></div>`; }
+      e.target.disabled = false;
+    });
+    $("#ct-assinado").addEventListener("change", async (e) => {
+      const arquivo = e.target.files && e.target.files[0];
+      if (!arquivo) return;
+      const caminho = await enviarArquivo(arquivo, `contratos/${contrato.id}`);
+      e.target.value = "";
+      if (!caminho) return;
+      const linha = await gravar("contratos", { arquivo_assinado: caminho, status: "assinado", assinado_em: isoLocal(new Date()), updated_at: new Date().toISOString() }, contrato.id);
+      if (linha) {
+        trocarNaLista(dados.contratos, linha); Object.assign(contrato, linha);
+        await registrarCT(contrato.id, "assinado", `Contrato assinado anexado: ${arquivo.name}`, { versao: contrato.versao });
+        await anexarNaCampanha(contrato, [{ nome: arquivo.name, caminho }], "contrato");
+        await marcarContratoNaCampanha(contrato);
+        recado("Contrato assinado guardado ✓ A campanha já mostra o contrato como assinado.");
+        renderEditorContrato(area, contrato);
+      }
+    });
+    carregarHistoricoCT(contrato);
+  }
+
+  async function salvarContrato(contrato, silencioso) {
+    if (!contrato._mudou && silencioso) return true;
+    const linha = await gravar("contratos", { campanha_id: contrato.campanha_id, marca: contrato.marca || "", titulo: contrato.titulo || "", modelo_id: contrato.modelo_id, dados: contrato.dados, em_branco: contrato.em_branco || [], clausulas_extras: contrato.clausulas_extras || [], updated_at: new Date().toISOString() }, contrato.id);
+    if (!linha) return false;
+    if (contrato._mudou) await registrarCT(contrato.id, "edicao", "Dados ou cláusulas alterados", { versao: contrato.versao });
+    contrato._mudou = false;
+    trocarNaLista(dados.contratos, Object.assign(contrato, linha));
+    return true;
+  }
+  /* traz os dados da campanha: preenche o que está vazio e pergunta antes de trocar o que ela já tinha */
+  function importarDaCampanha(area, contrato, camp) {
+    const novos = dadosDaCampanha(camp);
+    const atual = contrato.dados || {};
+    const vazios = Object.keys(novos).filter((k) => !atual[k]);
+    const diferentes = Object.keys(novos).filter((k) => atual[k] && String(atual[k]) !== String(novos[k]));
+    vazios.forEach((k) => { atual[k] = novos[k]; atual._origem = Object.assign({}, atual._origem, { [k]: "campanha" }); });
+    contrato.dados = atual;
+    if (vazios.length) contrato._mudou = true;
+    if (!diferentes.length) { recado(vazios.length ? `${plural(vazios.length, "campo trazido", "campos trazidos")} da campanha ✓` : "Os dados já estão iguais aos da campanha."); renderEditorContrato(area, contrato); return; }
+    abrirModal("🔄 Dados diferentes na campanha", `<p class="dica">Estes campos já têm um valor no contrato e estão diferentes na campanha. Marque o que quer trocar:</p>
+      <ul class="ct-difs">${diferentes.map((k) => `<li><label class="marcar"><input type="checkbox" data-trocar="${k}"> <b>${esc(CAMPO_CT[k] ? CAMPO_CT[k].rot : k)}</b></label><small>no contrato: ${esc(valorFormatado(k, atual))} → na campanha: ${esc(valorFormatado(k, novos))}</small></li>`).join("")}</ul>
+      <div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="ct-trocar">Aplicar</button></div>`);
+    $("#ct-trocar").addEventListener("click", () => {
+      $$("[data-trocar]").filter((c) => c.checked).forEach((c) => { atual[c.dataset.trocar] = novos[c.dataset.trocar]; atual._origem = Object.assign({}, atual._origem, { [c.dataset.trocar]: "campanha" }); contrato._mudou = true; });
+      fecharModal();
+      renderEditorContrato(area, contrato);
+    });
+  }
+  async function anexarNaCampanha(contrato, arquivos, tipo) {
+    const camp = dados.campanhas.find((c) => String(c.id) === String(contrato.campanha_id));
+    if (!camp) return;
+    const linha = await gravar("campanhas", { anexos: (camp.anexos || []).concat(arquivos.map((a) => ({ nome: a.nome, caminho: a.caminho, tipo, em: isoLocal(new Date()) }))) }, camp.id);
+    if (linha) trocarNaLista(dados.campanhas, linha);
+  }
+  async function marcarContratoNaCampanha(contrato) {
+    const camp = dados.campanhas.find((c) => String(c.id) === String(contrato.campanha_id));
+    if (!camp || camp.contrato_ok) return;
+    const linha = await gravar("campanhas", { contrato_ok: true }, camp.id);
+    if (linha) { trocarNaLista(dados.campanhas, linha); registrarHistorico(camp.id, "", "", "Contrato marcado como assinado (gerador de contratos)"); }
+  }
+  async function carregarHistoricoCT(contrato) {
+    const el = $("#ct-historico");
+    if (!el) return;
+    try {
+      const { data, error } = await banco.from("contratos_historico").select("*").eq("contrato_id", contrato.id).order("created_at", { ascending: false }).limit(60);
+      if (error) throw error;
+      const linhas = (data || []).filter((h) => h.contrato_id === contrato.id);
+      el.innerHTML = linhas.length ? linhas.map((h) => `<li><small>${quando(h.created_at)}</small> ${h.acao === "versao" ? "📄 " : h.acao === "assinado" ? "✍️ " : ""}${esc(h.nota || "")}${h.arquivo_docx ? ` <button type="button" class="md-link" data-hist-arq="${esc(h.arquivo_docx)}">DOCX</button>` : ""}${h.arquivo_pdf ? ` <button type="button" class="md-link" data-hist-arq="${esc(h.arquivo_pdf)}">PDF</button>` : ""}</li>`).join("") : `<li class="dica">Nada ainda.</li>`;
+      $$("[data-hist-arq]", el).forEach((b) => b.addEventListener("click", () => abrirArquivo(b.dataset.histArq)));
+    } catch (erro) { el.innerHTML = `<li class="dica">Não consegui carregar o histórico. Se a tabela ainda não existe, rode o SQL novo.</li>`; }
   }
 
   /* ---------------------------------------------------------------
