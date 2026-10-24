@@ -4879,6 +4879,389 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
   new MutationObserver(() => { if ($("#modal").hidden && abaAtual() === "meudia") renderMeuDia($("#area")); })
     .observe($("#modal"), { attributes: true, attributeFilter: ["hidden"] });
 
+  /* =================================================================
+     ENTRADA RÁPIDA (texto ou voz -> prévia -> salvar)
+     A IA (Gemini, com o Groq de reserva) só ENTENDE o pedido e preenche
+     os campos. Nada é salvo sem ela conferir e confirmar na prévia.
+     Voz: ditado do navegador (Chrome/Edge) ou, de reserva, gravação
+     transcrita pelo Groq. O botão só aparece se um dos dois funcionar.
+     ================================================================= */
+  const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  const podeGravarAudio = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder && chaveGroq());
+  const modoVoz = () => (Reconhecedor ? "ditado" : podeGravarAudio() ? "groq" : "");
+  const EXEMPLOS_RAPIDO = [
+    "Fechei uma campanha com a marca X por R$ 800, são três vídeos, com entrega no dia 12 do próximo mês e pagamento em 15 dias.",
+    "Me lembre de cobrar a marca amanhã.",
+    "Gravei o primeiro vídeo da campanha X.",
+    "Paguei R$ 120 de deslocamento.",
+    "Preciso publicar um Reels na sexta-feira."
+  ];
+  const ACOES_RAPIDO = {
+    nova_campanha: { emoji: "📋", nome: "Nova campanha", tabela: "campanhas" },
+    atualizar_campanha: { emoji: "🎬", nome: "Atualizar campanha", tabela: "campanhas" },
+    receber: { emoji: "💰", nome: "Marcar pagamento recebido", tabela: "campanhas" },
+    nova_tarefa: { emoji: "✅", nome: "Nova tarefa ou lembrete", tabela: "tarefas" },
+    novo_post: { emoji: "📱", nome: "Novo post no cronograma", tabela: "cronograma" },
+    novo_evento_calendario: { emoji: "📅", nome: "Novo item no calendário", tabela: "calendario" },
+    novo_gasto: { emoji: "💸", nome: "Novo gasto", tabela: "gastos" },
+    pagar_gasto: { emoji: "🧾", nome: "Marcar conta como paga", tabela: "gastos" },
+    novo_ganho: { emoji: "💵", nome: "Novo ganho", tabela: "ganhos" }
+  };
+  const campanhasAbertas = () => dados.campanhas.filter((c) => etapaDe(c) !== "Finalizada");
+  const opcoesCampanha = (vazio) => [["", vazio || "Escolha a campanha…"]].concat(dados.campanhas.slice().sort((a, b) => (concluida(a) ? 1 : 0) - (concluida(b) ? 1 : 0)).map((c) => [String(c.id), `${c.cliente || "Sem marca"} · ${c.campanha}${concluida(c) ? " (concluída)" : ""}`]));
+
+  /* campos de cada ação na prévia: [nome, rótulo, tipo, opções, obrigatório] */
+  function camposDaAcao(tipo) {
+    const sim = (lista) => lista.map((x) => (Array.isArray(x) ? x : [x, x]));
+    return {
+      nova_campanha: [["cliente", "Marca", "text", null, true], ["campanha", "Nome da campanha", "text"], ["trabalho", "Tipo de trabalho", "select", sim(TIPOS_TRABALHO)],
+        ["valor", "Valor (R$)", "number", null, true], ["qtd", "Quantidade de entregas", "number"], ["prazo", "Entrega dos conteúdos", "date"],
+        ["data_pagamento", "Dia previsto do pagamento", "date"], ["forma_pagamento", "Forma de pagamento", "select", sim(FORMAS_RECEBER)],
+        ["canal", "Como fechei", "select", [["", "Não sei agora"]].concat(CANAIS.map(([k, e, t]) => [k, `${e} ${t}`]))], ["uso_meses", "Uso de imagem", "select", MESES_USO], ["obs", "Anotações", "textarea"]],
+      atualizar_campanha: [["campanha_id", "Qual campanha", "select", opcoesCampanha(), true], ["status", "Nova etapa", "select", [["", "Não mudar"]].concat(FUNIL.map((s) => [s, ETAPA_ROTULO[s]]))],
+        ["roteiro_status", "Roteiro", "select", [["", "Não mudar"]].concat(ROTEIRO_SITUACAO)], ["nota", "Anotação na campanha", "text"]],
+      receber: [["campanha_id", "Qual campanha", "select", opcoesCampanha(), true], ["data", "Dia que recebi", "date", null, true]],
+      nova_tarefa: [["titulo", "O que fazer", "text", null, true], ["tipo", "Tipo", "select", [["tarefa", "✅ Tarefa"], ["compromisso", "🗓️ Compromisso pessoal"]]], ["data", "Dia", "date", null, true],
+        ["hora", "Horário", "time"], ["prioridade", "Importância", "select", [["alta", "🔴 Alta"], ["media", "🟡 Média"], ["baixa", "🟢 Baixa"]]], ["campanha_id", "Campanha relacionada", "select", opcoesCampanha("Nenhuma")]],
+      novo_post: [["titulo", "Conteúdo", "text", null, true], ["formato", "Formato", "select", CRON_FORMATOS], ["data", "Dia de postar", "date", null, true], ["horario", "Horário", "text"]],
+      novo_evento_calendario: [["titulo", "O que é", "text", null, true], ["tipo", "Tipo", "select", TIPOS_CAL], ["data", "Dia", "date", null, true], ["marca", "Marca", "text"]],
+      novo_gasto: [["descricao", "Com o que foi", "text", null, true], ["valor", "Valor (R$)", "number", null, true], ["data", "Dia", "date", null, true],
+        ["categoria", "Tipo de gasto", "select", CATEGORIAS_GASTO.map(([c]) => [c, c])], ["forma", "Como pagou", "select", sim(FORMAS_GASTO)], ["pago", "Já está pago", "check"]],
+      pagar_gasto: [["registro_id", "Qual conta", "select", [["", "Escolha a conta…"]].concat(dados.gastos.filter((g) => g.pago === false).map((g) => [String(g.id), `${g.descricao} · ${moeda(g.valor)} · ${dataBR(g.data)}`])), true]],
+      novo_ganho: [["descricao", "De onde veio", "text", null, true], ["tipo", "Tipo de ganho", "select", sim(TIPOS_TRABALHO)], ["valor", "Valor (R$)", "number", null, true],
+        ["data_receber", "Dia de receber", "date"], ["recebido", "Já recebi", "check"]]
+    }[tipo] || [];
+  }
+
+  function promptRapido(texto) {
+    const hoje = new Date();
+    const dias = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+    const camps = campanhasAbertas().slice(0, 40).map((c) => `${c.id} | marca: ${c.cliente || "-"} | ${c.campanha} | etapa: ${etapaDe(c)} | ${moeda(c.valor)} | entrega ${c.prazo || "-"} | pagamento ${c.pagamento === "pago" ? "recebido" : "a receber"}`).join("\n");
+    const contas = dados.gastos.filter((g) => g.pago === false).slice(0, 30).map((g) => `${g.id} | ${g.descricao} | ${moeda(g.valor)} | ${g.data}`).join("\n");
+    return `Você é a assistente do painel de uma creator UGC brasileira. Entenda o pedido dela e transforme em ações do painel.
+Hoje é ${dias[hoje.getDay()]}, ${isoLocal(hoje)} (formato AAAA-MM-DD). Converta datas relativas ("amanhã", "sexta-feira", "dia 12 do próximo mês", "em 15 dias") para AAAA-MM-DD. "Sexta-feira" sem mais detalhes é a próxima sexta a partir de hoje (se hoje for sexta, é hoje).
+
+Campanhas que existem (id | marca | nome | etapa | valor | entrega | pagamento):
+${camps || "nenhuma"}
+
+Contas a pagar que existem (id | descrição | valor | dia):
+${contas || "nenhuma"}
+
+Tipos de ação possíveis e os campos de cada uma:
+- nova_campanha: cliente (marca), campanha (nome curto), trabalho (um de: ${TIPOS_TRABALHO.join("; ")}), valor (número), qtd (número de vídeos/entregas), prazo (data de entrega), data_pagamento (data), forma_pagamento (um de: ${FORMAS_RECEBER.join(", ")}), canal (abordagem, inbound, plataforma, recorrente, agencia, indicacao ou vazio), uso_meses (0, 1, 3, 4, 6, 12, 24 ou 999), obs
+- atualizar_campanha: campanha_id (id de uma campanha da lista), status (${FUNIL.join(", ")} ou vazio para não mudar), roteiro_status (nao, enviado, aprovado, sem ou vazio), nota (frase curta do que aconteceu)
+- receber: campanha_id, data (dia que recebeu)
+- nova_tarefa: titulo, tipo (tarefa ou compromisso), data, hora (HH:MM ou vazio), prioridade (alta, media, baixa), campanha_id (se for de uma campanha da lista)
+- novo_post: titulo, formato (Reels, Carrossel, Stories, Post ou Publi), data, horario
+- novo_evento_calendario: titulo, tipo (gravar, editar ou postar), data, marca
+- novo_gasto: descricao, valor, data (hoje se não disser), categoria (${CATEGORIAS_GASTO.map(([c]) => c).join(", ")}), forma (${FORMAS_GASTO.join(", ")}), pago (true se ela já pagou)
+- pagar_gasto: registro_id (id de uma conta da lista)
+- novo_ganho: descricao, tipo, valor, data_receber, recebido (true/false)
+
+Regras:
+- Uma frase pode ter mais de uma ação. Use as campanhas e contas da lista quando o pedido falar delas (não crie de novo o que já existe). Se ela pagou uma conta que já está na lista, use pagar_gasto.
+- "Gravei", "editei", "entreguei", "mandei o roteiro" = atualizar_campanha. "Gravei o primeiro vídeo" de uma campanha com mais vídeos: não mude a etapa para Edição, mantenha "Gravação" e escreva a nota.
+- "Me lembre de..." = nova_tarefa.
+- "Pagamento em N dias" numa campanha nova: conte a partir da data de entrega, se houver; senão, a partir de hoje. Escreva essa suposição.
+- Não invente valores, marcas nem datas. O que ela não disse fica vazio.
+- Em "faltando", coloque SÓ o que é essencial e está ausente ou ambíguo, com uma pergunta curta. Ex.: "a marca" sem dizer qual, quando há mais de uma campanha possível, é ambíguo.
+- Em "suposicoes", explique em frases curtas o que você deduziu.
+
+Pedido: """${String(texto).slice(0, 2000)}"""
+
+Responda SOMENTE com JSON válido:
+{ "acoes": [ { "tipo": "um dos tipos", "resumo": "frase curta do que vai ser feito", "campos": { }, "faltando": [ { "campo": "nome do campo", "pergunta": "pergunta curta" } ], "suposicoes": [ "..." ] } ],
+  "nao_entendi": "se não der para entender nada, explique em uma frase; senão vazio" }
+Português do Brasil, nunca use travessão.`;
+  }
+
+  /* avisos para não duplicar */
+  function avisosDuplicado(tipo, v) {
+    const avisos = [];
+    if (tipo === "nova_campanha" && v.cliente) {
+      const iguais = dados.campanhas.filter((c) => normalNome(c.cliente) === normalNome(v.cliente) && !concluida(c));
+      if (iguais.length) avisos.push(`Já existe ${plural(iguais.length, "campanha em andamento", "campanhas em andamento")} com ${v.cliente}: ${iguais.map((c) => `${c.campanha} (${moeda(c.valor)})`).join(", ")}. Confira se não é a mesma.`);
+    }
+    if (tipo === "nova_tarefa" && v.titulo && v.data && dados.tarefas.some((t) => !t.feita && normalNome(t.titulo) === normalNome(v.titulo) && String(t.data).slice(0, 10) === v.data)) avisos.push("Já existe uma tarefa igual nesse dia.");
+    if (tipo === "novo_gasto" && v.descricao && dados.gastos.some((g) => normalNome(g.descricao) === normalNome(v.descricao) && numero(g.valor) === numero(v.valor) && String(g.data).slice(0, 10) === v.data)) avisos.push("Já existe um gasto igual nesse dia.");
+    if (tipo === "novo_post" && v.titulo && v.data && dados.cronograma.some((n) => normalNome(n.titulo) === normalNome(v.titulo) && String(n.data).slice(0, 10) === v.data)) avisos.push("Já existe esse post no cronograma nesse dia.");
+    if (tipo === "novo_evento_calendario" && v.titulo && v.data && dados.calendario.some((k) => normalNome(k.titulo) === normalNome(v.titulo) && String(k.data).slice(0, 10) === v.data)) avisos.push("Já existe esse item no calendário nesse dia.");
+    return avisos;
+  }
+
+  function htmlCampo(acaoIdx, [nome, rotulo, tipo, opcoes, obrigatorio], valor, pergunta) {
+    const id = `er-${acaoIdx}-${nome}`;
+    const v = valor == null ? "" : valor;
+    const marca = pergunta ? ` er-falta` : "";
+    const pede = pergunta ? ` data-pergunta="1"` : "";
+    const rot = `${esc(rotulo)}${obrigatorio ? " *" : ""}${pergunta ? `<small class="er-pergunta">❓ ${esc(semTravessao(pergunta))}</small>` : ""}`;
+    if (tipo === "check") return `<label class="marcar inteira${marca}"><input type="checkbox" id="${id}" data-campo="${nome}"${pede} ${v === true || v === "true" ? "checked" : ""}> ${rot}</label>`;
+    if (tipo === "select") return `<label class="${marca}">${rot}<select id="${id}" data-campo="${nome}"${pede}>${opcoes.map(([o, t]) => `<option value="${esc(o)}" ${String(v) === String(o) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>`;
+    if (tipo === "textarea") return `<label class="inteira${marca}">${rot}<textarea id="${id}" data-campo="${nome}"${pede}>${esc(v)}</textarea></label>`;
+    const val = tipo === "time" ? horaInput(v) : tipo === "date" ? (/^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10) : "") : v;
+    return `<label class="${marca}">${rot}<input type="${tipo}" id="${id}" data-campo="${nome}"${pede} value="${esc(val)}" ${tipo === "number" ? 'min="0" step="0.01"' : ""}></label>`;
+  }
+  function lerCampos(card, tipo) {
+    const v = {};
+    camposDaAcao(tipo).forEach(([nome, , t]) => {
+      const el = $(`[data-campo="${nome}"]`, card);
+      if (!el) return;
+      v[nome] = t === "check" ? el.checked : t === "number" ? (el.value === "" ? null : numero(String(el.value).replace(",", "."))) : el.value.trim();
+    });
+    return v;
+  }
+
+  /* registra o que foi feito (histórico da entrada rápida) */
+  async function registrarRapido(texto, tipo, resumo, tabela, id, antes, depois) {
+    try {
+      const { error } = await banco.from("registro_rapido").insert({ texto: String(texto).slice(0, 2000), acao: tipo, resumo, tabela, registro_id: String(id || ""), antes: antes || null, depois: depois || null });
+      if (error) throw error;
+    } catch (erro) { avisar("tabela-registro_rapido", traduzErro(erro, "registro_rapido")); }
+  }
+
+  /* executa uma ação já conferida; devolve o texto do que foi feito */
+  async function executarRapido(tipo, v, texto) {
+    const hoje = isoLocal(new Date());
+    const camp = v.campanha_id ? dados.campanhas.find((c) => String(c.id) === String(v.campanha_id)) : null;
+    let linha = null, antes = null, resumo = "";
+    if (tipo === "nova_campanha") {
+      const obj = { campanha: v.campanha || `Campanha ${v.cliente}`, cliente: v.cliente, trabalho: v.trabalho || "Conteúdo UGC", valor: numero(v.valor), qtd: Math.max(1, numero(v.qtd) || 1),
+        prazo: v.prazo || null, data_pagamento: v.data_pagamento || null, forma_pagamento: v.forma_pagamento || "Pix", canal: v.canal || "", origem: "direto", uso_meses: numero(v.uso_meses),
+        obs: v.obs || "", data_trabalho: hoje, status: "Em andamento", roteiro_status: "nao", pagamento: "pendente", ativa: true, favorita: false, tipo: "Conteúdo" };
+      linha = await gravar("campanhas", obj);
+      if (linha) dados.campanhas.unshift(linha);
+      resumo = `Campanha criada: ${obj.cliente} · ${moeda(obj.valor)}`;
+    } else if (tipo === "atualizar_campanha" || tipo === "receber") {
+      if (!camp) throw new Error("Escolha a campanha.");
+      const muda = {};
+      if (tipo === "receber") Object.assign(muda, { pagamento: "pago", data_pagamento: v.data || hoje }, concluida(camp) && etapaDe(camp) !== "Entregue" ? {} : { status: "Recebido" });
+      else {
+        if (v.status) muda.status = v.status;
+        if (v.roteiro_status) muda.roteiro_status = v.roteiro_status;
+        if (v.nota) muda.obs = `${camp.obs ? camp.obs + "\n" : ""}${dataBR(hoje)}: ${v.nota}`;
+      }
+      if (!Object.keys(muda).length) throw new Error("Nada para mudar nessa campanha.");
+      antes = Object.fromEntries(Object.keys(muda).map((k) => [k, camp[k] == null ? null : camp[k]]));
+      linha = await gravar("campanhas", muda, camp.id);
+      if (linha) trocarNaLista(dados.campanhas, linha);
+      resumo = tipo === "receber" ? `Recebido: ${camp.cliente || camp.campanha}` : `${camp.cliente || camp.campanha}: ${[muda.status && `etapa ${muda.status}`, muda.roteiro_status && `roteiro ${muda.roteiro_status}`, v.nota].filter(Boolean).join(", ")}`;
+    } else if (tipo === "nova_tarefa") {
+      const obj = { titulo: v.titulo, tipo: v.tipo || "tarefa", data: v.data || hoje, hora: v.hora || "", prioridade: v.prioridade || "media", tempo_min: 15, campanha_id: v.campanha_id ? Number(v.campanha_id) : null, recorrencia: "nenhuma", lembrete_min: 30, feita: false };
+      linha = await gravar("tarefas", obj);
+      if (linha) trocarNaLista(dados.tarefas, linha);
+      resumo = `Tarefa: ${obj.titulo} (${dataBR(obj.data)})`;
+    } else if (tipo === "novo_post") {
+      const formato = v.formato || "Reels";
+      const obj = { data: v.data, ordem: notasDoDia(v.data).length, titulo: v.titulo, formato, cor: CRON_COR_DO_FORMATO[formato] || "amarelo", horario: v.horario || "", status: "ideia", texto: "", detalhes: {} };
+      linha = await gravar("cronograma", obj);
+      if (linha) trocarNaLista(dados.cronograma, linha);
+      resumo = `Post no cronograma: ${formato} · ${obj.titulo} (${dataBR(obj.data)})`;
+    } else if (tipo === "novo_evento_calendario") {
+      const obj = { titulo: v.titulo, tipo: v.tipo || "gravar", data: v.data, marca: v.marca || "", status: "a fazer" };
+      linha = await gravar("calendario", obj);
+      if (linha) trocarNaLista(dados.calendario, linha);
+      resumo = `Calendário: ${obj.titulo} (${dataBR(obj.data)})`;
+    } else if (tipo === "novo_gasto") {
+      const obj = { descricao: v.descricao, valor: numero(v.valor), data: v.data || hoje, categoria: v.categoria || "Outros", forma: v.forma || "Pix", pago: v.pago !== false, fixo: false };
+      linha = await gravar("gastos", obj);
+      if (linha) trocarNaLista(dados.gastos, linha);
+      resumo = `Gasto: ${obj.descricao} · ${moeda(obj.valor)}`;
+    } else if (tipo === "pagar_gasto") {
+      const g = dados.gastos.find((x) => String(x.id) === String(v.registro_id));
+      if (!g) throw new Error("Escolha a conta.");
+      antes = { pago: g.pago };
+      linha = await gravar("gastos", { pago: true }, g.id);
+      if (linha) trocarNaLista(dados.gastos, linha);
+      resumo = `Conta paga: ${g.descricao}`;
+    } else if (tipo === "novo_ganho") {
+      const obj = { descricao: v.descricao, tipo: v.tipo || "Outro", valor: numero(v.valor), forma: "Pix", data_receber: v.data_receber || (v.recebido ? hoje : null), recebido: !!v.recebido, data_recebido: v.recebido ? hoje : null };
+      linha = await gravar("ganhos", obj);
+      if (linha) trocarNaLista(dados.ganhos, linha);
+      resumo = `Ganho: ${obj.descricao} · ${moeda(obj.valor)}`;
+    }
+    if (!linha) throw new Error("Não consegui salvar. Veja o aviso no topo.");
+    await registrarRapido(texto, tipo, resumo, ACOES_RAPIDO[tipo].tabela, linha.id, antes, linha);
+    return resumo;
+  }
+
+  /* ---- voz ---- */
+  let gravacaoAtiva = null;
+  async function transcreverGroq(blob) {
+    const corpo = new FormData();
+    corpo.append("file", blob, "audio.webm");
+    corpo.append("model", "whisper-large-v3-turbo");
+    corpo.append("language", "pt");
+    corpo.append("response_format", "json");
+    const resposta = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + chaveGroq() }, body: corpo });
+    const json = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new Error(resposta.status === 429 ? "O Groq chegou no limite agora. Tente de novo em alguns minutos ou escreva." : "Não consegui transcrever o áudio. Tente de novo ou escreva.");
+    return String(json.text || "").trim();
+  }
+  function ligarVoz(botao, caixa, estado) {
+    const parar = () => { if (gravacaoAtiva) { gravacaoAtiva.parar(); gravacaoAtiva = null; } };
+    botao.addEventListener("click", async () => {
+      if (gravacaoAtiva) { parar(); return; }
+      const modo = modoVoz();
+      const base = caixa.value ? caixa.value.trim() + " " : "";
+      if (modo === "ditado") {
+        const r = new Reconhecedor();
+        r.lang = "pt-BR"; r.interimResults = true; r.continuous = true;
+        let finalTxt = "";
+        r.onresult = (ev) => {
+          let parcial = "";
+          for (let k = ev.resultIndex; k < ev.results.length; k++) { if (ev.results[k].isFinal) finalTxt += ev.results[k][0].transcript; else parcial += ev.results[k][0].transcript; }
+          caixa.value = (base + finalTxt + parcial).trim();
+        };
+        r.onerror = (ev) => {
+          const msg = { "not-allowed": "O navegador bloqueou o microfone. Libere no cadeado ao lado do endereço do site.", "service-not-allowed": "O navegador bloqueou o microfone. Libere no cadeado ao lado do endereço do site.", "no-speech": "Não ouvi nada. Tente de novo mais perto do microfone.", network: "O ditado precisa de internet. Confira a conexão.", "audio-capture": "Não achei um microfone neste aparelho." }[ev.error];
+          if (msg) estado(msg, true);
+        };
+        r.onend = () => { gravacaoAtiva = null; botao.classList.remove("gravando"); botao.textContent = "🎤 Falar"; estado(caixa.value ? "Pronto. Confira o texto e clique em Entender." : "", false); };
+        r.start();
+        gravacaoAtiva = { parar: () => r.stop() };
+        botao.classList.add("gravando"); botao.textContent = "⏹️ Parar";
+        estado("🎙️ Ouvindo… pode falar. Clique em Parar quando terminar.", false);
+      } else if (modo === "groq") {
+        let fluxo;
+        try { fluxo = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch (erro) { estado("O navegador bloqueou o microfone. Libere no cadeado ao lado do endereço do site.", true); return; }
+        const pedacos = [];
+        const gravador = new MediaRecorder(fluxo);
+        gravador.ondataavailable = (ev) => { if (ev.data.size) pedacos.push(ev.data); };
+        gravador.onstop = async () => {
+          fluxo.getTracks().forEach((t) => t.stop());
+          botao.classList.remove("gravando"); botao.textContent = "🎤 Falar"; botao.disabled = true;
+          estado("✍️ Transcrevendo o áudio…", false);
+          try { caixa.value = (base + (await transcreverGroq(new Blob(pedacos, { type: gravador.mimeType || "audio/webm" })))).trim(); estado("Pronto. Confira o texto e clique em Entender.", false); }
+          catch (erro) { estado(erro.message, true); }
+          botao.disabled = false;
+        };
+        gravador.start();
+        gravacaoAtiva = { parar: () => gravador.stop() };
+        botao.classList.add("gravando"); botao.textContent = "⏹️ Parar";
+        estado("🎙️ Gravando… clique em Parar quando terminar.", false);
+      }
+    });
+    return parar;
+  }
+
+  /* ---- a janela ---- */
+  function abrirEntradaRapida(textoInicial) {
+    const modo = modoVoz();
+    abrirModal("⚡ Anotar rápido", `<div class="er">
+        <label class="er-label" for="er-texto">Escreva${modo ? " ou fale" : ""} do seu jeito</label>
+        <textarea id="er-texto" rows="3" placeholder="Ex.: ${esc(EXEMPLOS_RAPIDO[0])}">${esc(textoInicial || "")}</textarea>
+        <div class="er-botoes">
+          ${modo ? `<button type="button" class="botao botao-leve" id="er-voz">🎤 Falar</button>` : ""}
+          <span class="espaco"></span>
+          <button type="button" class="botao botao-principal" id="er-entender">✨ Entender</button>
+        </div>
+        <p class="dica er-estado" id="er-estado">${modo ? "" : "🎤 Este navegador não tem ditado. No celular, use o microfone do teclado para falar dentro da caixa."}</p>
+        <div class="er-exemplos">${EXEMPLOS_RAPIDO.map((e) => `<button type="button" class="er-exemplo" data-exemplo>${esc(e)}</button>`).join("")}</div>
+        <div id="er-resultado"></div>
+        <details class="er-historico" id="er-historico"><summary>🕘 Últimas alterações feitas por aqui</summary><div id="er-hist-lista"><p class="dica">Carregando…</p></div></details>
+      </div>`, true);
+    const caixa = $("#er-texto");
+    const estado = (msg, erro) => { const el = $("#er-estado"); if (el) { el.textContent = msg; el.classList.toggle("er-erro", !!erro); } };
+    let pararVoz = () => {};
+    if (modo) pararVoz = ligarVoz($("#er-voz"), caixa, estado);
+    /* fechou a janela: para de ouvir */
+    const vigia = new MutationObserver(() => { if ($("#modal").hidden) { pararVoz(); vigia.disconnect(); } });
+    vigia.observe($("#modal"), { attributes: true, attributeFilter: ["hidden"] });
+    $$("[data-exemplo]").forEach((b) => b.addEventListener("click", () => { caixa.value = b.textContent; caixa.focus(); }));
+    $("#er-entender").addEventListener("click", async (e) => {
+      pararVoz();
+      const texto = caixa.value.trim();
+      if (!texto) { estado("Escreva ou fale o que aconteceu.", true); caixa.focus(); return; }
+      if (!temIA()) { estado("Para entender o texto, salve a chave grátis do Gemini ou do Groq na aba 🔥 Virais.", true); return; }
+      e.target.disabled = true;
+      estado("✨ Entendendo…", false);
+      try {
+        const json = await perguntarGemini(promptRapido(texto), 0.2);
+        const acoes = (Array.isArray(json.acoes) ? json.acoes : []).filter((a) => a && ACOES_RAPIDO[a.tipo]);
+        if (!acoes.length) { estado(semTravessao(json.nao_entendi || "Não entendi bem. Tente escrever de outro jeito, com a marca, o valor ou a data."), true); e.target.disabled = false; $("#er-resultado").innerHTML = ""; return; }
+        estado("", false);
+        mostrarPrevia(texto, acoes);
+      } catch (erro) { estado(erro.message || "Não deu certo agora.", true); }
+      e.target.disabled = false;
+    });
+    $("#er-historico").addEventListener("toggle", async (ev) => {
+      if (!ev.target.open) return;
+      try {
+        const { data, error } = await banco.from("registro_rapido").select("*").order("created_at", { ascending: false }).limit(15);
+        if (error) throw error;
+        $("#er-hist-lista").innerHTML = (data || []).length ? `<ul class="er-hist">${data.map((r) => `<li><span>${ACOES_RAPIDO[r.acao] ? ACOES_RAPIDO[r.acao].emoji : "•"} ${esc(r.resumo)}</span><small>${quando(r.created_at)} · "${esc(String(r.texto).slice(0, 80))}${String(r.texto).length > 80 ? "…" : ""}"</small></li>`).join("")}</ul>` : `<p class="dica">Nada ainda.</p>`;
+      } catch (erro) { $("#er-hist-lista").innerHTML = `<p class="dica">Não consegui carregar o histórico. Se a tabela ainda não existe, rode o SQL novo no Supabase.</p>`; }
+    });
+    caixa.focus();
+  }
+
+  function mostrarPrevia(texto, acoes) {
+    const caixa = $("#er-resultado");
+    caixa.innerHTML = `<h3 class="er-titulo">Confira antes de salvar</h3>
+      ${acoes.map((a, i) => {
+        const info = ACOES_RAPIDO[a.tipo];
+        const campos = a.campos || {};
+        const falta = {};
+        (a.faltando || []).forEach((f) => { if (f && f.campo) falta[f.campo] = f.pergunta || "Preencha este campo."; });
+        if (a.campanha_id && !campos.campanha_id) campos.campanha_id = a.campanha_id;
+        const defs = camposDaAcao(a.tipo);
+        const padroes = { nova_campanha: { trabalho: "Conteúdo UGC", forma_pagamento: "Pix", uso_meses: "0", qtd: 1 }, novo_gasto: { data: isoLocal(new Date()), pago: true, categoria: "Outros", forma: "Pix" }, nova_tarefa: { tipo: "tarefa", prioridade: "media" }, receber: { data: isoLocal(new Date()) }, novo_post: { formato: "Reels" } }[a.tipo] || {};
+        const valores = Object.assign({}, padroes, Object.fromEntries(Object.entries(campos).filter(([, v]) => v !== null && v !== "")));
+        if (valores.uso_meses != null) valores.uso_meses = String(valores.uso_meses);
+        if (valores.campanha_id != null) valores.campanha_id = String(valores.campanha_id);
+        if (valores.registro_id != null) valores.registro_id = String(valores.registro_id);
+        /* se o assistente perguntou, o campo fica para ela responder (sem palpite) */
+        Object.keys(falta).forEach((k) => { delete valores[k]; });
+        const avisos = avisosDuplicado(a.tipo, valores);
+        return `<section class="er-acao" data-i="${i}" data-tipo="${esc(a.tipo)}">
+          <label class="er-fazer"><input type="checkbox" data-fazer checked> <b>${info.emoji} ${esc(info.nome)}</b></label>
+          ${a.resumo ? `<p class="er-resumo">${esc(semTravessao(a.resumo))}</p>` : ""}
+          ${avisos.map((t) => `<p class="er-aviso">⚠️ ${esc(t)}</p>`).join("")}
+          <div class="form-grade">${defs.map((d) => htmlCampo(i, d, valores[d[0]], falta[d[0]])).join("")}</div>
+          ${(a.suposicoes || []).length ? `<p class="dica">💭 ${a.suposicoes.map((s) => esc(semTravessao(s))).join(" ")}</p>` : ""}
+          ${a.tipo === "nova_campanha" ? `<p class="dica">📌 Depois de salvar, o Meu Dia já mostra os próximos passos (roteiro, gravação, edição, entrega) e o pagamento a receber. Não precisa criar essas tarefas.</p>` : ""}
+        </section>`;
+      }).join("")}
+      <div class="form-acoes"><button type="button" class="botao botao-leve" id="er-cancelar">Cancelar</button><span class="espaco"></span><button type="button" class="botao botao-principal" id="er-salvar">💾 Confirmar e salvar</button></div>`;
+    caixa.scrollIntoView({ behavior: "smooth", block: "start" });
+    $("#er-cancelar").addEventListener("click", () => { caixa.innerHTML = ""; });
+    $("#er-salvar").addEventListener("click", async (e) => {
+      const cards = $$(".er-acao", caixa).filter((c) => $("[data-fazer]", c).checked);
+      if (!cards.length) { recado("Marque pelo menos uma ação.", true); return; }
+      /* confere o que é obrigatório antes de salvar qualquer coisa */
+      for (const card of cards) {
+        const tipo = card.dataset.tipo;
+        const v = lerCampos(card, tipo);
+        const faltou = camposDaAcao(tipo).find(([nome, , t, , obrig]) => (obrig || ($(`[data-campo="${nome}"]`, card) && $(`[data-campo="${nome}"]`, card).dataset.pergunta)) && (v[nome] == null || v[nome] === "" || (t === "number" && !(v[nome] > 0))));
+        if (faltou) { const el = $(`[data-campo="${faltou[0]}"]`, card); el.closest("label").classList.add("er-falta"); el.focus(); recado(`Falta: ${faltou[1]}`, true); return; }
+      }
+      e.target.disabled = true;
+      const feitos = [];
+      for (const card of cards) {
+        try { feitos.push("✅ " + (await executarRapido(card.dataset.tipo, lerCampos(card, card.dataset.tipo), texto))); card.classList.add("er-feito"); $("[data-fazer]", card).checked = false; }
+        catch (erro) { feitos.push(`⚠️ ${erro.message}`); }
+      }
+      atualizarLembretes();
+      caixa.innerHTML = `<div class="er-pronto"><b>Pronto!</b><ul>${feitos.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>`;
+      $("#er-texto").value = "";
+      if ($("#er-historico").open) $("#er-historico").dispatchEvent(new Event("toggle"));
+      const area = $("#area");
+      const id = abaAtual();
+      if (["meudia", "campanhas", "financeiro", "calendario", "cronograma"].includes(id)) { try { ABAS[id][1](area); } catch (erro) { console.error(erro); } }
+    });
+  }
+
+  /* botão fixo, em todas as abas */
+  function criarBotaoRapido() {
+    if ($("#er-fab")) return;
+    const b = document.createElement("button");
+    b.type = "button"; b.id = "er-fab"; b.className = "er-fab"; b.setAttribute("aria-label", "Anotar rápido por texto ou voz");
+    b.innerHTML = `<span aria-hidden="true">⚡</span><b>Anotar rápido</b>`;
+    b.addEventListener("click", () => abrirEntradaRapida());
+    document.body.appendChild(b);
+  }
+
   /* ---------------------------------------------------------------
      5) COMEÇA
      --------------------------------------------------------------- */
@@ -4894,4 +5277,5 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
   mostrarAba();
   try { atualizarLembretes(); } catch (erro) { console.error(erro); }
   try { agendarLembretes(itensMeuDia()); } catch (erro) { console.error(erro); }
+  criarBotaoRapido();
 })();

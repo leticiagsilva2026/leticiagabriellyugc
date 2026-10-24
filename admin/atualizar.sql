@@ -574,4 +574,27 @@ grant select, insert, update, delete on public.tarefas_ocorrencias to authentica
 alter table public.campanhas add column if not exists canal text not null default '';
 update public.campanhas set canal = 'plataforma' where canal = '' and origem is not null and origem <> 'direto';
 
+-- ---------- Entrada rápida: histórico do que foi criado ou alterado por texto ou voz ----------
+create table if not exists public.registro_rapido (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  texto        text not null default '',
+  acao         text not null default '',
+  resumo       text not null default '',
+  tabela       text not null default '',
+  registro_id  text not null default '',
+  antes        jsonb,
+  depois       jsonb
+);
+create index if not exists registro_rapido_data_idx on public.registro_rapido (created_at desc);
+alter table public.registro_rapido enable row level security;
+drop policy if exists "dona le registro_rapido" on public.registro_rapido;
+create policy "dona le registro_rapido" on public.registro_rapido for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria registro_rapido" on public.registro_rapido;
+create policy "dona cria registro_rapido" on public.registro_rapido for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona apaga registro_rapido" on public.registro_rapido;
+create policy "dona apaga registro_rapido" on public.registro_rapido for delete to authenticated using (public.e_a_dona());
+revoke all on public.registro_rapido from anon;
+grant select, insert, delete on public.registro_rapido to authenticated;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
