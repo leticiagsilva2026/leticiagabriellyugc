@@ -1631,7 +1631,8 @@ ${blocos}`;
   const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
   const CHAVE_GROQ = "groq_api_key";
   const MODELOS_GROQ = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"];
-  const MODELOS_GROQ_BUSCA = ["groq/compound", "groq/compound-mini"];
+  /* pesquisa pelo Groq: o Compound e, se a conta não tiver acesso a ele, o GPT-OSS com busca no navegador */
+  const MODELOS_GROQ_BUSCA = [["groq/compound", {}], ["groq/compound-mini", {}], ["openai/gpt-oss-120b", { tools: [{ type: "browser_search" }] }], ["openai/gpt-oss-20b", { tools: [{ type: "browser_search" }] }]];
   const estadoVir = { aviso: null, busca: "", form: {} };
   const analisando = new Set();
   const chaveGemini = () => String(dados.config[CHAVE_GEMINI] || "").trim();
@@ -1726,14 +1727,14 @@ ${blocos}`;
     if (status >= 500) return falha("ocupado");
     return falha("outro");
   }
-  async function chamarGroq(modelo, prompt, temperatura, pedirJSON) {
+  async function chamarGroq(modelo, prompt, temperatura, pedirJSON, extras) {
     let resposta, corpo = null;
     try {
       resposta = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + chaveGroq() },
         body: JSON.stringify(Object.assign({ model: modelo, messages: [{ role: "user", content: prompt }], temperature: temperatura == null ? 0.7 : temperatura },
-          pedirJSON ? { response_format: { type: "json_object" } } : {}))
+          pedirJSON ? { response_format: { type: "json_object" } } : {}, extras || {}))
       });
       try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
     } catch (erro) { return { falha: "rede" }; }
@@ -2319,7 +2320,9 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
       const lista = porMotor[m];
       if (lista[0] === "sem-chave") return "Groq: a chave não está salva";
       const principal = ["chave", "limite", "grande", "sem-busca", "rede", "ocupado", "vazio", "outro", "modelo"].find((f) => lista.includes(f)) || lista[0];
-      return `${m}: ${NOME_FALHA[principal] || principal}`;
+      /* o detalhe técnico (em inglês) ajuda a descobrir o motivo exato quando ela manda o print */
+      const t = tentativas.slice().reverse().find((x) => x.motor === m && x.falha === principal && x.detalhe);
+      return `${m}: ${NOME_FALHA[principal] || principal}${t ? ` [${t.detalhe.slice(0, 110)}]` : ""}`;
     }).join("; ");
   }
 
@@ -2335,13 +2338,13 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
             .map((c) => c && c.web).filter((w) => w && w.uri).map((w) => ({ titulo: w.title || w.uri, link: w.uri }));
           return { texto: r.texto, fontes: fontesUnicas(fontes), motor: "Gemini" };
         }
-        tentativas.push({ motor: "Gemini", falha: r.falha });
+        tentativas.push({ motor: "Gemini", falha: r.falha, detalhe: r.detalhe });
         if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
     if (chaveGroq()) {
-      for (const modelo of MODELOS_GROQ_BUSCA) {
-        const r = await chamarGroq(modelo, pedido, 0.4, false);
+      for (const [modelo, extras] of MODELOS_GROQ_BUSCA) {
+        const r = await chamarGroq(modelo, pedido, 0.4, false, extras);
         if (r.texto) {
           const fontes = [];
           ((r.mensagem && r.mensagem.executed_tools) || []).forEach((ferramenta) => {
@@ -2350,7 +2353,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
           });
           return { texto: r.texto, fontes: fontesUnicas(fontes), motor: "Groq" };
         }
-        tentativas.push({ motor: "Groq", falha: r.falha });
+        tentativas.push({ motor: "Groq", falha: r.falha, detalhe: r.detalhe });
         if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
