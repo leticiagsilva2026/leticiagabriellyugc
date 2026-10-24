@@ -867,7 +867,7 @@
   const concluida = (c) => ["Entregue", "Recebido", "Finalizada"].includes(etapaDe(c));
   const ETAPA_ROTULO = { "Em andamento": "🟡 Em andamento", "Roteiro": "📝 Roteiro", "Gravação": "🎥 Gravação", "Edição": "✂️ Edição", "Entregue": "📦 Entregue", "Recebido": "💰 Recebido", "Finalizada": "✅ Finalizada" };
   const ROTEIRO_SITUACAO = [["nao", "Ainda não enviei"], ["enviado", "Enviado para a marca"], ["aprovado", "Aprovado pela marca"], ["sem", "Não precisa de roteiro"]];
-  const TIPOS_TRABALHO = ["Conteúdo UGC", "UGC Tech", "Afiliação", "TikTok Shop", "Design no Canva", "Edição de vídeo", "Captação de conteúdo", "Publicidade (no meu perfil)", "Outro"];
+  const TIPOS_TRABALHO = ["Conteúdo UGC", "UGC Tech", "UGC Canvas (perfil que eu crio para a marca)", "Afiliação", "TikTok Shop", "Design no Canva", "Edição de vídeo", "Captação de conteúdo", "Publicidade (no meu perfil)", "Outro"];
   const FORMAS_RECEBER = ["Pix", "Transferência", "Boleto", "Cartão", "Dinheiro", "Comissão", "Permuta (produto)"];
   const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["4", "4 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
   const PLATAFORMAS_UGC = ["Seu Influencer", "Spark", "Wake", "Brand Lovers", "Mis", "Squid", "Novid", "Pikko", "Pimbel", "Tribo"];
