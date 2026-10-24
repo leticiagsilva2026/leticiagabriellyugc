@@ -1984,7 +1984,8 @@ ${blocos}`;
   const CHAVE_GEMINI = "gemini_api_key";
   const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
   const CHAVE_GROQ = "groq_api_key";
-  const MODELOS_GROQ = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"];
+  /* Groq de reserva: o Llama 4 Scout aceita pedidos maiores no plano grátis (30 mil tokens por minuto) */
+  const MODELOS_GROQ = ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"];
   /* pesquisa pelo Groq: o Compound e, se a conta não tiver acesso a ele, o GPT-OSS com busca no navegador */
   const MODELOS_GROQ_BUSCA = [["groq/compound", {}], ["groq/compound-mini", {}], ["openai/gpt-oss-120b", { tools: [{ type: "browser_search" }] }], ["openai/gpt-oss-20b", { tools: [{ type: "browser_search" }] }]];
   const estadoVir = { aviso: null, busca: "", form: {} };
@@ -2088,7 +2089,7 @@ ${blocos}`;
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + chaveGroq() },
         body: JSON.stringify(Object.assign({ model: modelo, messages: [{ role: "user", content: prompt }], temperature: temperatura == null ? 0.7 : temperatura },
-          pedirJSON ? { response_format: { type: "json_object" } } : {}, extras || {}))
+          pedirJSON ? { response_format: { type: "json_object" }, max_completion_tokens: 6000 } : {}, extras || {}))
       });
       try { corpo = await resposta.json(); } catch (erro) { corpo = null; }
     } catch (erro) { return { falha: "rede" }; }
@@ -2113,37 +2114,38 @@ ${blocos}`;
     try { return JSON.parse(limpo.slice(i, j + 1)); }
     catch (erro) { throw new Error("A resposta veio bagunçada. Clique para tentar de novo."); }
   }
-  function erroDaIA(falhas) {
-    if (falhas.includes("chave-gemini") && !chaveGroq()) return "A chave do Gemini não foi aceita. Confira se copiou a chave inteira e salve de novo na aba Virais.";
-    if (falhas.includes("chave-groq")) return "A chave do Groq não foi aceita. Confira se copiou a chave inteira e salve de novo na aba Virais.";
-    if (falhas.includes("limite")) return chaveGroq()
-      ? "O Gemini e o Groq chegaram no limite grátis por agora. Espere alguns minutos e tente de novo (o limite do dia volta amanhã, sem pagar nada)."
-      : "O Gemini chegou no limite grátis por agora. Você não precisa pagar: o limite volta sozinho (o do dia volta amanhã). Para não ficar esperando, salve também a chave grátis do Groq na aba 🔥 Virais e eu uso ele de reserva.";
-    if (falhas.includes("rede")) return "Não consegui falar com a inteligência artificial. Confira a internet e tente de novo.";
-    if (falhas.includes("ocupado")) return "O serviço está sobrecarregado agora. Tente de novo em 1 minuto.";
-    return "Não deu certo agora. Tente de novo em instantes.";
+  /* mensagem com o motivo real de cada serviço (e o detalhe técnico entre colchetes) */
+  function erroDaIA(tentativas) {
+    const de = (m) => tentativas.filter((t) => t.motor === m).map((t) => t.falha);
+    const gemini = de("Gemini"), groq = de("Groq");
+    if (!chaveGroq() && gemini.length && gemini.every((f) => f === "limite"))
+      return "O Gemini chegou no limite grátis por agora. Você não precisa pagar: o limite volta sozinho (o do dia volta no começo da madrugada). Para não ficar esperando, salve também a chave grátis do Groq na aba 🔥 Virais e eu uso ele de reserva.";
+    if (gemini.includes("chave") && !chaveGroq()) return "A chave do Gemini não foi aceita. Confira se copiou a chave inteira e salve de novo na aba Virais.";
+    if (gemini.length && gemini.every((f) => f === "rede") && (!groq.length || groq.every((f) => f === "rede"))) return "Não consegui falar com a inteligência artificial. Confira a internet e tente de novo.";
+    const dica = gemini.includes("limite") ? " O limite do Gemini volta sozinho, sem pagar nada." : "";
+    return `Não consegui agora (${explicarFalhas(tentativas)}).${dica} Tente de novo em alguns minutos.`;
   }
 
   /* pergunta e devolve JSON (Gemini, e se acabar o limite, Groq) */
   async function perguntarGemini(prompt, temperatura) {
-    const falhas = [];
+    const tentativas = [];
     if (chaveGemini()) {
       for (const modelo of MODELOS_GEMINI) {
         const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: temperatura == null ? 0.7 : temperatura } });
         if (r.texto) return lerJSON(r.texto);
-        if (r.falha === "chave") { falhas.push("chave-gemini"); break; }
-        falhas.push(r.falha);
+        tentativas.push({ motor: "Gemini", falha: r.falha, detalhe: r.detalhe });
+        if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
     if (chaveGroq()) {
       for (const modelo of MODELOS_GROQ) {
         const r = await chamarGroq(modelo, prompt, temperatura, true);
         if (r.texto) return lerJSON(r.texto);
-        if (r.falha === "chave") { falhas.push("chave-groq"); break; }
-        falhas.push(r.falha);
+        tentativas.push({ motor: "Groq", falha: r.falha, detalhe: r.detalhe });
+        if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
-    throw new Error(erroDaIA(falhas));
+    throw new Error(erroDaIA(tentativas));
   }
 
   /* transcrição pela Supadata (a mesma chave da aba Roteiros) */
@@ -2656,7 +2658,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
     return lista.filter((f) => f && f.link && !vistos.has(f.link) && vistos.add(f.link)).slice(0, 25);
   }
   const NOME_FALHA = {
-    limite: "o limite grátis da busca acabou por agora",
+    limite: "o limite grátis acabou por agora",
     "sem-busca": "a busca no Google não está liberada para essa chave",
     grande: "o pedido ficou grande demais para o plano grátis",
     chave: "a chave não foi aceita",
@@ -2718,7 +2720,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
   async function perguntarGeminiComBusca(prompt, pergunta) {
     const pesquisa = await pesquisarNaInternet(pergunta);
     const completo = pesquisa.texto
-      ? `${prompt}\n\nO QUE A PESQUISA NA INTERNET ENCONTROU AGORA (use isto como base principal, não invente além disso):\n${pesquisa.texto.slice(0, 9000)}`
+      ? `${prompt}\n\nO QUE A PESQUISA NA INTERNET ENCONTROU AGORA (use isto como base principal, não invente além disso):\n${pesquisa.texto.slice(0, 6000)}`
       : prompt;
     const json = await perguntarGemini(completo, 0.8);
     return { json, fontes: pesquisa.fontes, comBusca: !!pesquisa.texto, motor: pesquisa.motor, motivo: pesquisa.motivo || "" };
