@@ -112,7 +112,7 @@
     videos: ["titulo", "link", "nicho", "formato", "marca", "destaque", "ordem", "visivel"],
     marcas: ["nome", "instagram", "email", "telefone", "situacao", "obs", "ultimo_contato"],
     calendario: ["titulo", "marca", "tipo", "data", "status"],
-    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita"],
+    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
@@ -121,9 +121,10 @@
     virais: ["url", "fonte", "perfil", "titulo", "nicho", "transcricao", "analise", "adaptacoes", "status"],
     tendencias: ["nichos", "plataformas", "resumo", "itens", "fontes", "sem_busca"],
     marcas_sugeridas: ["nichos", "resumo", "itens", "fontes", "sem_busca"],
-    cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"]
+    cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"],
+    gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -155,7 +156,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -168,9 +169,10 @@
       buscar("virais", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
       buscar("tendencias", (q) => q.select("*").order("created_at", { ascending: false }).limit(60)),
       buscar("marcas_sugeridas", (q) => q.select("*").order("created_at", { ascending: false }).limit(100)),
-      buscar("cronograma", (q) => q.select("*").order("data", { ascending: true }).order("ordem", { ascending: true }).limit(2000))
+      buscar("cronograma", (q) => q.select("*").order("data", { ascending: true }).order("ordem", { ascending: true }).limit(2000)),
+      buscar("gastos", (q) => q.select("*").order("data", { ascending: false }).limit(5000))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -237,6 +239,7 @@
     const v = valores[campo.nome];
     const classe = campo.inteira ? "inteira" : "";
     const dica = campo.dica ? `<small>${esc(campo.dica)}</small>` : "";
+    if (campo.tipo === "secao") return `<h3 class="form-secao inteira">${esc(campo.rotulo)}</h3>`;
     if (campo.tipo === "checkbox")
       return `<label class="marcar inteira"><input type="checkbox" name="${campo.nome}" ${v ? "checked" : ""}> ${esc(campo.rotulo)}</label>`;
     if (campo.tipo === "select")
@@ -295,6 +298,7 @@
     calendario: ["Calendário", renderCalendario],
     cronograma: ["🗒️ Cronograma", renderCronograma],
     campanhas: ["Campanhas", renderCampanhas],
+    financeiro: ["💰 Financeiro", renderFinanceiro],
     roteiros: ["📜 Roteiros", renderRoteiros],
     virais: ["🔥 Virais", renderVirais],
     tendencias: ["📈 Tendências", renderTendencias],
@@ -845,15 +849,51 @@
   }
 
   /* =================================================================
-     ABA 4: CAMPANHAS
+     ABA 4: CAMPANHAS (trabalhos do mês, tipo de trabalho, pagamento,
+     contrato, dados da marca, direito de uso de imagem e resumo do mês)
+     Os arquivos ficam na pasta privada "arquivos" do Supabase.
      ================================================================= */
   const FUNIL = ["Briefing", "Roteiro", "Aprovação Roteiro", "Gravação", "Edição", "Aprovado", "Entregue"];
-  const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1 };
+  const TIPOS_TRABALHO = ["Conteúdo UGC", "UGC Tech", "Afiliação", "TikTok Shop", "Design no Canva", "Edição de vídeo", "Captação de conteúdo", "Publicidade (no meu perfil)", "Outro"];
+  const FORMAS_RECEBER = ["Pix", "Transferência", "Boleto", "Cartão", "Dinheiro", "Comissão", "Permuta (produto)"];
+  const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
+  const MARCA_CAMPOS = [["razao", "Razão social"], ["cnpj", "CNPJ"], ["endereco", "Endereço"], ["responsavel", "Responsável"], ["email", "E-mail"], ["telefone", "Telefone"]];
+  const NOME_ANEXO = { contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
+  const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1, mes: isoLocal(hoje0()).slice(0, 7) };
   const COLUNAS = [
-    ["favorita", "", "bool"], ["campanha", "Campanha", "texto"], ["cliente", "Cliente", "texto"], ["tipo", "Tipo", "texto"],
-    ["status", "Status", "funil"], ["qtd", "Qtd", "numero"], ["valor", "Valor", "numero"], ["prazo", "Prazo", "data"], ["pagamento", "Pagamento", "texto"]
+    ["favorita", "", "bool"], ["data_trabalho", "Dia", "data"], ["campanha", "Trabalho", "texto"], ["cliente", "Marca", "texto"], ["trabalho", "Tipo", "texto"],
+    ["status", "Status", "funil"], ["valor", "Valor", "numero"], ["pagamento", "Pagamento", "texto"], ["uso", "Uso de imagem", "texto"]
   ];
+  const diaDoTrabalho = (c) => String(c.data_trabalho || c.prazo || c.criado_em || "").slice(0, 10);
+  const mesDo = (c) => diaDoTrabalho(c).slice(0, 7);
+  const nomeMesISO = (ym) => { const [a, m] = ym.split("-").map(Number); const t = new Date(a, m - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const andarMes = (ym, n) => { const [a, m] = ym.split("-").map(Number); const d = new Date(a, m - 1 + n, 1); return `${d.getFullYear()}-${dois(d.getMonth() + 1)}`; };
+
+  /* direito de uso de imagem: vence X meses depois do início (ou da entrega) */
+  function vencimentoUso(c) {
+    const meses = numero(c.uso_meses);
+    if (!meses || meses >= 999) return null;
+    const base = deISO(c.uso_inicio || c.prazo || diaDoTrabalho(c));
+    if (!base) return null;
+    const d = new Date(base); d.setMonth(d.getMonth() + meses);
+    return d;
+  }
+  function situacaoUso(c) {
+    const meses = numero(c.uso_meses);
+    if (!meses) return { tipo: "sem", texto: "Sem direito de uso" };
+    if (meses >= 999) return { tipo: "sempre", texto: "Uso vitalício" };
+    const v = vencimentoUso(c);
+    if (!v) return { tipo: "sem", texto: "" };
+    const dias = Math.round((v - hoje0()) / 86400000);
+    const verificado = c.uso_verificado_em && deISO(c.uso_verificado_em) >= v;
+    if (dias <= 0) return verificado ? { tipo: "verificado", texto: `Venceu em ${dataBR(isoLocal(v))} (conferido)`, v } : { tipo: "vencido", texto: `Venceu em ${dataBR(isoLocal(v))}`, v, dias };
+    if (dias <= 15) return { tipo: "vence", texto: `Vence em ${plural(dias, "dia", "dias")} (${dataBR(isoLocal(v))})`, v, dias };
+    return { tipo: "ativo", texto: `Até ${dataBR(isoLocal(v))}`, v, dias };
+  }
+
   function comparar(a, b, coluna, tipo) {
+    if (coluna === "uso") { const va = vencimentoUso(a), vb = vencimentoUso(b); return (va ? va.getTime() : 9e15) - (vb ? vb.getTime() : 9e15); }
+    if (coluna === "data_trabalho") { const va = diaDoTrabalho(a), vb = diaDoTrabalho(b); return va.localeCompare(vb); }
     const va = a[coluna], vb = b[coluna];
     if (tipo === "funil") return FUNIL.indexOf(va) - FUNIL.indexOf(vb);
     if (tipo === "numero") return numero(va) - numero(vb);
@@ -864,13 +904,14 @@
   function campanhasVisiveis() {
     const b = estadoCamp.busca.toLowerCase();
     let lista = dados.campanhas.filter((c) =>
-      (estadoCamp.filtro === "todas" || (estadoCamp.filtro === "ativas" ? c.ativa !== false : c.ativa === false)) &&
-      (!b || [c.campanha, c.cliente].some((x) => String(x || "").toLowerCase().includes(b))));
+      (estadoCamp.mes === "tudo" || mesDo(c) === estadoCamp.mes) &&
+      (estadoCamp.filtro === "todas" || (estadoCamp.filtro === "ativas" ? c.ativa !== false : estadoCamp.filtro === "areceber" ? c.pagamento !== "pago" : c.ativa === false)) &&
+      (!b || [c.campanha, c.cliente, c.trabalho].some((x) => String(x || "").toLowerCase().includes(b))));
     if (estadoCamp.coluna) {
       const tipo = (COLUNAS.find((x) => x[0] === estadoCamp.coluna) || [])[2];
-      lista = lista.slice().sort((a, b2) => comparar(a, b2, estadoCamp.coluna, tipo) * estadoCamp.sentido || b2.id - a.id);
+      lista = lista.slice().sort((a, b2) => comparar(a, b2, estadoCamp.coluna, tipo) * estadoCamp.sentido || String(b2.id).localeCompare(String(a.id)));
     } else {
-      lista = lista.slice().sort((a, b2) => comparar(b2, a, "favorita", "bool") || comparar(a, b2, "prazo", "data"));
+      lista = lista.slice().sort((a, b2) => comparar(b2, a, "favorita", "bool") || comparar(b2, a, "data_trabalho"));
     }
     return lista;
   }
@@ -884,40 +925,123 @@
     return "";
   }
 
+  /* ---- arquivos (pasta privada do Supabase) ---- */
+  async function enviarArquivo(arquivo, pasta) {
+    const nomeLimpo = String(arquivo.name || "arquivo").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "_").slice(-80);
+    const caminho = `${pasta}/${Date.now()}-${nomeLimpo}`;
+    try {
+      const { error } = await banco.storage.from("arquivos").upload(caminho, arquivo, { contentType: arquivo.type || "application/octet-stream", upsert: false });
+      if (error) throw error;
+      return caminho;
+    } catch (erro) {
+      const msg = String((erro && erro.message) || "").toLowerCase();
+      if (msg.includes("bucket") || msg.includes("not found")) recado("A pasta de arquivos ainda não existe no Supabase. Rode o SQL novo (botão Copiar o SQL) e tente de novo.", true);
+      else if (msg.includes("size") || msg.includes("too large")) recado("O arquivo é grande demais (máximo 50 MB).", true);
+      else if (msg.includes("row-level") || msg.includes("policy") || msg.includes("permission")) recado("Sem permissão para guardar o arquivo. Rode o SQL novo no Supabase.", true);
+      else recado("Não consegui guardar o arquivo agora. Tente de novo.", true);
+      return null;
+    }
+  }
+  async function abrirArquivo(caminho) {
+    const janela = window.open("", "_blank");
+    try {
+      const { data, error } = await banco.storage.from("arquivos").createSignedUrl(caminho, 300);
+      if (error) throw error;
+      if (janela) janela.location = data.signedUrl; else location.href = data.signedUrl;
+    } catch (erro) { if (janela) janela.close(); recado("Não consegui abrir o arquivo agora.", true); }
+  }
+
+  /* ---- resumo do mês por tipo de trabalho ---- */
+  function resumoDoMes(ym) {
+    const doMes = dados.campanhas.filter((c) => mesDo(c) === ym);
+    const total = doMes.reduce((s, c) => s + numero(c.valor), 0);
+    const recebido = doMes.filter((c) => c.pagamento === "pago").reduce((s, c) => s + numero(c.valor), 0);
+    const porTipo = {};
+    doMes.forEach((c) => { const t = c.trabalho || "Conteúdo UGC"; porTipo[t] = porTipo[t] || { total: 0, qtd: 0, trabalhos: 0 }; porTipo[t].total += numero(c.valor); porTipo[t].qtd += Math.max(1, numero(c.qtd)); porTipo[t].trabalhos += 1; });
+    const tipos = Object.entries(porTipo).sort((a, b) => b[1].total - a[1].total);
+    return { doMes, total, recebido, aReceber: total - recebido, tipos };
+  }
+
   function renderCampanhas(area) {
-    const lista = dados.campanhas;
-    const somaValor = lista.reduce((s, c) => s + numero(c.valor), 0);
-    const somaQtd = lista.reduce((s, c) => s + numero(c.qtd), 0);
-    const ticket = somaQtd > 0 ? somaValor / somaQtd : 0;
-    const aReceber = lista.filter((c) => c.pagamento !== "pago").reduce((s, c) => s + numero(c.valor), 0);
-    const recebido = lista.filter((c) => c.pagamento === "pago").reduce((s, c) => s + numero(c.valor), 0);
+    const ym = estadoCamp.mes === "tudo" ? isoLocal(hoje0()).slice(0, 7) : estadoCamp.mes;
+    const r = resumoDoMes(ym);
+    const anterior = resumoDoMes(andarMes(ym, -1));
+    const variacao = anterior.total > 0 ? Math.round(((r.total - anterior.total) / anterior.total) * 100) : null;
+    const usos = dados.campanhas.map((c) => ({ c, s: situacaoUso(c) })).filter((x) => ["vencido", "vence", "ativo"].includes(x.s.tipo)).sort((a, b) => a.s.v - b.s.v);
+    const topo = r.tipos[0];
+    const maiorMedia = r.tipos.slice().sort((a, b) => b[1].total / b[1].qtd - a[1].total / a[1].qtd)[0];
+
     area.innerHTML = `
-      <div class="faixa-numeros" style="--colunas:4">
-        <div><span>Total de campanhas</span><strong>${lista.length}</strong></div>
-        <div><span>Ativas</span><strong>${lista.filter((c) => c.ativa !== false).length}</strong></div>
-        <div><span>Valor total</span><strong>${moeda(somaValor)}</strong><small>ticket médio de ${moeda(ticket)} por vídeo</small></div>
-        <div><span>A receber</span><strong>${moeda(aReceber)}</strong><small>já recebido: ${moeda(recebido)}</small></div>
-      </div>
+      <section class="cartao">
+        <div class="cron-barra">
+          <div class="rot-linha">
+            <button type="button" class="botao botao-leve" id="camp-mes-antes" aria-label="Mês anterior">◀</button>
+            <h2 class="cron-titulo">${estadoCamp.mes === "tudo" ? "Todos os meses" : nomeMesISO(ym)}</h2>
+            <button type="button" class="botao botao-leve" id="camp-mes-depois" aria-label="Próximo mês">▶</button>
+          </div>
+          <div class="chips" role="group" aria-label="Período">
+            <button type="button" data-periodo="mes" aria-pressed="${estadoCamp.mes !== "tudo"}">Mês</button>
+            <button type="button" data-periodo="tudo" aria-pressed="${estadoCamp.mes === "tudo"}">Tudo</button>
+          </div>
+        </div>
+        <div class="faixa-numeros" style="--colunas:4;margin-top:12px">
+          <div><span>💰 Total do mês</span><strong>${moeda(r.total)}</strong><small>${variacao == null ? "&nbsp;" : `${variacao >= 0 ? "▲" : "▼"} ${Math.abs(variacao)}% em relação a ${nomeMesISO(andarMes(ym, -1)).split(" ")[0].toLowerCase()}`}</small></div>
+          <div><span>✅ Já recebido</span><strong>${moeda(r.recebido)}</strong></div>
+          <div><span>⏳ A receber</span><strong>${moeda(r.aReceber)}</strong></div>
+          <div><span>🎬 Trabalhos no mês</span><strong>${r.doMes.length}</strong></div>
+        </div>
+        <h3 class="achar-titulo">📊 Quanto cada tipo de trabalho rendeu em ${nomeMesISO(ym).split(" ")[0].toLowerCase()}</h3>
+        ${r.tipos.length ? `
+          ${topo ? `<p class="tend-resumo">🏆 <b>${esc(topo[0])}</b> foi o que mais te deu retorno no mês (${moeda(topo[1].total)}, ${Math.round((topo[1].total / (r.total || 1)) * 100)}% do total).${maiorMedia && maiorMedia[0] !== topo[0] ? ` Por entrega, quem paga melhor é <b>${esc(maiorMedia[0])}</b> (${moeda(maiorMedia[1].total / maiorMedia[1].qtd)} por entrega).` : ""}</p>` : ""}
+          <ul class="camp-tipos">${r.tipos.map(([t, v]) => `<li>
+            <div class="linha"><span>${esc(t)}</span><b>${moeda(v.total)}</b></div>
+            <div class="trilho"><i style="width:${Math.max(2, (v.total / (topo[1].total || 1)) * 100)}%"></i></div>
+            <small>${plural(v.trabalhos, "trabalho", "trabalhos")} · ${plural(v.qtd, "entrega", "entregas")} · média de ${moeda(v.total / v.qtd)} por entrega · ${Math.round((v.total / (r.total || 1)) * 100)}% do mês</small>
+          </li>`).join("")}</ul>` : `<p class="frase-vazia">Nenhum trabalho neste mês ainda.</p>`}
+      </section>
+
+      ${usos.length ? `<section class="cartao">
+        <h2 class="achar-titulo" style="margin-top:0">🖼️ Direito de uso de imagem</h2>
+        <ul class="cron-mudancas">${usos.map(({ c, s }) => `<li class="uso-${s.tipo}">
+          <span><b>${esc(c.cliente || c.campanha)}</b> · ${esc(c.campanha)} <span class="dica">${esc(s.texto)}</span></span>
+          <span class="rot-acoes" style="margin:0">
+            ${s.tipo === "vencido" ? `<span class="pilula p-pendente">🔔 Conferir se ainda usa</span><button type="button" class="botao botao-leve" data-uso-ok="${c.id}">✅ Conferi</button>` : s.tipo === "vence" ? `<span class="pilula p-pendente">⏰ Vence logo</span>` : `<span class="pilula p-pago">Em uso</span>`}
+            <button type="button" class="botao botao-leve" data-abrir-camp="${c.id}">Abrir</button>
+          </span></li>`).join("")}</ul>
+        <p class="dica" style="margin-top:8px">Quando vencer, confira no perfil e nos anúncios da marca (Biblioteca de Anúncios da Meta) se o seu vídeo ainda está no ar. Se estiver, dá para cobrar a renovação.</p>
+      </section>` : ""}
+
       <section class="cartao">
         <div class="ferramentas" style="margin-bottom:12px">
           <div class="chips" role="group" aria-label="Filtrar campanhas">
-            ${[["todas", "Todas"], ["ativas", "Ativas"], ["finalizadas", "Finalizadas"]].map(([v, t]) => `<button type="button" data-filtro="${v}" aria-pressed="${estadoCamp.filtro === v}">${t}</button>`).join("")}
+            ${[["todas", "Todas"], ["ativas", "Ativas"], ["areceber", "A receber"], ["finalizadas", "Finalizadas"]].map(([v, t]) => `<button type="button" data-filtro="${v}" aria-pressed="${estadoCamp.filtro === v}">${t}</button>`).join("")}
           </div>
-          <input class="campo-busca" id="busca-camp" type="search" placeholder="Buscar campanha ou cliente" value="${esc(estadoCamp.busca)}">
+          <input class="campo-busca" id="busca-camp" type="search" placeholder="Buscar trabalho, marca ou tipo" value="${esc(estadoCamp.busca)}">
           <span class="espaco"></span>
+          <button type="button" class="botao botao-leve" id="contrato-base">📄 Meu contrato base</button>
           <button type="button" class="botao botao-leve" id="csv-camp"><svg class="ic"><use href="#i-baixar"/></svg>Baixar</button>
-          <button type="button" class="botao botao-principal" id="add-camp"><svg class="ic"><use href="#i-mais"/></svg>Adicionar campanha</button>
+          <button type="button" class="botao botao-principal" id="add-camp"><svg class="ic"><use href="#i-mais"/></svg>Adicionar trabalho</button>
         </div>
         <div id="tabela-camp"></div>
       </section>`;
     desenharTabelaCamp();
-    $$(".chips [data-filtro]", area).forEach((b) => b.addEventListener("click", () => { estadoCamp.filtro = b.dataset.filtro; renderCampanhas(area); }));
+    $$("[data-filtro]", area).forEach((b) => b.addEventListener("click", () => { estadoCamp.filtro = b.dataset.filtro; renderCampanhas(area); }));
+    $$("[data-periodo]", area).forEach((b) => b.addEventListener("click", () => { estadoCamp.mes = b.dataset.periodo === "tudo" ? "tudo" : ym; renderCampanhas(area); }));
+    $("#camp-mes-antes").addEventListener("click", () => { estadoCamp.mes = andarMes(ym, -1); renderCampanhas(area); });
+    $("#camp-mes-depois").addEventListener("click", () => { estadoCamp.mes = andarMes(ym, 1); renderCampanhas(area); });
     $("#busca-camp").addEventListener("input", (e) => { estadoCamp.busca = e.target.value; desenharTabelaCamp(); });
     $("#add-camp").addEventListener("click", () => formCampanha());
+    $("#contrato-base").addEventListener("click", editarContratoBase);
+    $$("[data-abrir-camp]", area).forEach((b) => b.addEventListener("click", () => { const c = dados.campanhas.find((x) => String(x.id) === b.dataset.abrirCamp); if (c) formCampanha(c); }));
+    $$("[data-uso-ok]", area).forEach((b) => b.addEventListener("click", async () => {
+      b.disabled = true;
+      const linha = await gravar("campanhas", { uso_verificado_em: isoLocal(new Date()) }, b.dataset.usoOk);
+      if (linha) { trocarNaLista(dados.campanhas, linha); recado("Anotado: você conferiu ✓"); atualizarLembretes(); renderCampanhas(area); } else b.disabled = false;
+    }));
     $("#csv-camp").addEventListener("click", () => {
       baixarCSV(`campanhas-${isoLocal(new Date())}.csv`,
-        ["Favorita", "Campanha", "Cliente", "Tipo", "Status", "Qtd", "Valor", "Prazo", "Pagamento", "Ativa"],
-        campanhasVisiveis().map((c) => [c.favorita ? "sim" : "", c.campanha, c.cliente, c.tipo, c.status, numero(c.qtd), numero(c.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 }), dataBR(c.prazo), c.pagamento === "pago" ? "Pago" : "Pendente", c.ativa === false ? "não" : "sim"]));
+        ["Dia", "Trabalho", "Marca", "Tipo de trabalho", "Status", "Qtd", "Valor", "Forma de pagamento", "Pagamento", "Dia do pagamento", "Prazo", "Uso de imagem"],
+        campanhasVisiveis().map((c) => [dataBR(diaDoTrabalho(c)), c.campanha, c.cliente, c.trabalho, c.status, numero(c.qtd), numero(c.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 }), c.forma_pagamento, c.pagamento === "pago" ? "Recebido" : "A receber", dataBR(c.data_pagamento), dataBR(c.prazo), situacaoUso(c).texto]));
     });
   }
 
@@ -931,23 +1055,25 @@
       return `<th class="ordenavel ${ativa ? "ordenando" : ""}" data-coluna="${col}" title="Ordenar">${rotulo || "★"}<span class="seta">${seta}</span></th>`;
     }).join("");
     if (!lista.length) {
-      caixa.innerHTML = `<p class="frase-vazia">${dados.campanhas.length ? "Nenhuma campanha com esse filtro." : "Nenhuma campanha ainda. Clique em Adicionar campanha para cadastrar a primeira."}</p>`;
+      caixa.innerHTML = `<p class="frase-vazia">${dados.campanhas.length ? "Nenhum trabalho com esse filtro neste período." : "Nenhum trabalho ainda. Clique em Adicionar trabalho para cadastrar o primeiro."}</p>`;
       return;
     }
     caixa.innerHTML = `<div class="tabela-caixa"><table>
       <thead><tr>${cabecalho}</tr></thead>
       <tbody>${lista.map((c) => {
         const passo = Math.max(0, FUNIL.indexOf(c.status));
+        const uso = situacaoUso(c);
+        const anexos = (c.anexos || []).length;
         return `<tr class="clicavel ${c.favorita ? "favorita" : ""}" data-id="${c.id}">
           <td style="width:36px"><button type="button" class="botao-icone ${c.favorita ? "ligado" : ""}" data-estrela title="${c.favorita ? "Tirar destaque" : "Destacar"}"><svg class="ic"><use href="#i-estrela"/></svg></button></td>
-          <td><strong>${esc(c.campanha)}</strong></td>
+          <td style="white-space:nowrap">${dataBR(diaDoTrabalho(c)).slice(0, 5)}</td>
+          <td><strong>${esc(c.campanha)}</strong>${anexos ? ` <span class="dica" title="${plural(anexos, "arquivo", "arquivos")}">📎${anexos}</span>` : ""}${avisoPrazo(c)}</td>
           <td>${esc(c.cliente)}</td>
-          <td><span class="pilula ${c.tipo === "Publicidade" ? "p-publicidade" : "p-conteudo"}">${esc(c.tipo)}</span></td>
+          <td><span class="pilula p-conteudo">${esc(c.trabalho || "Conteúdo UGC")}</span></td>
           <td><span class="pilula p-s${passo}">${esc(c.status)}</span></td>
-          <td>${numero(c.qtd)}</td>
           <td style="white-space:nowrap">${moeda(c.valor)}</td>
-          <td style="white-space:nowrap">${dataBR(c.prazo)}${avisoPrazo(c)}</td>
-          <td><span class="pilula ${c.pagamento === "pago" ? "p-pago" : "p-pendente"}">${c.pagamento === "pago" ? "Pago" : "Pendente"}</span></td>
+          <td><span class="pilula ${c.pagamento === "pago" ? "p-pago" : "p-pendente"}">${c.pagamento === "pago" ? "Recebido" : "A receber"}</span><br><small class="dica">${esc(c.forma_pagamento || "")}${c.data_pagamento ? " · " + dataBR(c.data_pagamento).slice(0, 5) : ""}</small></td>
+          <td>${uso.tipo === "sem" ? `<span class="dica">${esc(uso.texto)}</span>` : `<span class="pilula ${uso.tipo === "vencido" ? "p-pendente" : uso.tipo === "vence" ? "p-pendente" : "p-pago"}">${uso.tipo === "vencido" ? "🔔 " : ""}${esc(uso.texto)}</span>`}</td>
         </tr>`;
       }).join("")}</tbody></table></div>`;
     $$("th[data-coluna]", caixa).forEach((th) => th.addEventListener("click", () => {
@@ -969,36 +1095,217 @@
   }
 
   function formCampanha(c) {
+    const md = (c && c.marca_dados) || {};
+    const valores = c
+      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c) }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
+      : { trabalho: "Conteúdo UGC", status: "Briefing", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
     formulario({
-      titulo: c ? "Editar campanha" : "Adicionar campanha",
-      valores: c || { tipo: "Conteúdo", status: "Briefing", qtd: 1, valor: 0, pagamento: "pendente", ativa: true, favorita: false },
+      titulo: c ? "Editar trabalho" : "Adicionar trabalho",
+      larga: true,
+      valores,
       campos: [
-        { nome: "campanha", rotulo: "Campanha", obrigatorio: true, inteira: true },
-        { nome: "cliente", rotulo: "Cliente", lista: dados.marcas.map((m) => m.nome) },
-        { nome: "tipo", rotulo: "Tipo", tipo: "select", opcoes: [["Conteúdo", "Conteúdo"], ["Publicidade", "Publicidade"]] },
-        { nome: "status", rotulo: "Status", tipo: "select", opcoes: FUNIL.map((s) => [s, s]) },
-        { nome: "qtd", rotulo: "Quantidade de vídeos", tipo: "number" },
-        { nome: "valor", rotulo: "Valor (R$)", tipo: "number", passo: "0.01" },
-        { nome: "prazo", rotulo: "Prazo", tipo: "date", dica: "Aparece sozinho no calendário." },
-        { nome: "pagamento", rotulo: "Pagamento", tipo: "select", opcoes: [["pendente", "Pendente"], ["pago", "Pago"]] },
-        { nome: "ativa", rotulo: "Campanha ativa", tipo: "checkbox" },
+        { tipo: "secao", rotulo: "🎬 O trabalho" },
+        { nome: "campanha", rotulo: "Nome do trabalho ou campanha", obrigatorio: true, inteira: true },
+        { nome: "cliente", rotulo: "Marca", lista: dados.marcas.map((m) => m.nome) },
+        { nome: "trabalho", rotulo: "Tipo de trabalho", tipo: "select", opcoes: TIPOS_TRABALHO.map((t) => [t, t]) },
+        { nome: "data_trabalho", rotulo: "Dia do trabalho", tipo: "date", obrigatorio: true, dica: "Define em qual mês ele entra no resumo." },
+        { nome: "status", rotulo: "Etapa", tipo: "select", opcoes: FUNIL.map((s) => [s, s]) },
+        { nome: "qtd", rotulo: "Quantidade de entregas (vídeos, posts...)", tipo: "number" },
+        { nome: "prazo", rotulo: "Prazo de entrega", tipo: "date", dica: "Aparece sozinho no calendário." },
+        { tipo: "secao", rotulo: "💰 Pagamento" },
+        { nome: "valor", rotulo: "Quanto vou ganhar (R$)", tipo: "number", passo: "0.01" },
+        { nome: "forma_pagamento", rotulo: "Forma de pagamento", tipo: "select", opcoes: FORMAS_RECEBER.map((f) => [f, f]) },
+        { nome: "pagamento", rotulo: "Situação", tipo: "select", opcoes: [["pendente", "A receber"], ["pago", "Recebido"]] },
+        { nome: "data_pagamento", rotulo: "Dia do pagamento (previsto ou recebido)", tipo: "date" },
+        { tipo: "secao", rotulo: "🖼️ Direito de uso de imagem" },
+        { nome: "uso_meses", rotulo: "Por quanto tempo a marca pode usar", tipo: "select", opcoes: MESES_USO },
+        { nome: "uso_inicio", rotulo: "O uso começa em", tipo: "date", dica: "Se ficar vazio, conto a partir do prazo de entrega." },
+        { tipo: "secao", rotulo: "🏢 Dados da marca (para o contrato)" },
+        ...MARCA_CAMPOS.map(([k, rot]) => ({ nome: "md_" + k, rotulo: rot, inteira: k === "endereco" })),
+        { nome: "obs", rotulo: "Anotações", tipo: "textarea" },
+        { nome: "ativa", rotulo: "Trabalho ativo", tipo: "checkbox" },
         { nome: "favorita", rotulo: "Destacar com estrela", tipo: "checkbox" }
       ],
       aoSalvar: async (obj) => {
+        const marca = {};
+        MARCA_CAMPOS.forEach(([k]) => { marca[k] = obj["md_" + k] || ""; delete obj["md_" + k]; });
+        obj.marca_dados = marca;
+        obj.uso_meses = numero(obj.uso_meses);
         const linha = await gravar("campanhas", obj, c && c.id);
         if (!linha) return false;
         if (c) trocarNaLista(dados.campanhas, linha); else dados.campanhas.unshift(linha);
-        recado("Campanha salva");
+        recado("Trabalho salvo");
+        atualizarLembretes();
         mostrarAba();
+        if (!c) setTimeout(() => formCampanha(linha), 50);
         return true;
       },
       aoApagar: c ? async () => {
         if (!(await apagar("campanhas", c.id))) return false;
+        for (const a of c.anexos || []) { try { await banco.storage.from("arquivos").remove([a.caminho]); } catch (erro) { /* segue */ } }
         dados.campanhas = dados.campanhas.filter((x) => x.id !== c.id);
-        recado("Campanha apagada");
+        recado("Trabalho apagado");
+        atualizarLembretes();
         mostrarAba();
         return true;
       } : null
+    });
+    /* arquivos e contrato: só depois de salvar (precisa do id) */
+    const form = $("#form-modal");
+    const bloco = document.createElement("div");
+    bloco.className = "inteira camp-arquivos";
+    bloco.innerHTML = c ? `<h3 class="form-secao">📎 Contrato e arquivos</h3><div id="camp-anexos"></div>
+      <div class="rot-acoes">
+        <label class="botao botao-leve">📄 Anexar contrato<input type="file" data-anexo="contrato" hidden></label>
+        <label class="botao botao-leve">🏢 Anexar dados da marca<input type="file" data-anexo="marca" hidden></label>
+        <label class="botao botao-leve">📎 Outro arquivo<input type="file" data-anexo="outro" hidden></label>
+        <button type="button" class="botao botao-principal" id="camp-gerar-contrato">📝 Gerar contrato a partir do meu modelo</button>
+      </div>` : `<p class="dica">📎 Depois de salvar, aparecem aqui os botões para anexar o contrato e os dados da marca e para gerar o contrato.</p>`;
+    form.insertBefore(bloco, form.querySelector(".form-acoes"));
+    if (!c) return;
+    const desenharAnexos = () => {
+      const atual = dados.campanhas.find((x) => x.id === c.id) || c;
+      const lista = atual.anexos || [];
+      $("#camp-anexos").innerHTML = lista.length ? `<ul class="cron-mudancas">${lista.map((a, i) => `<li><span>${NOME_ANEXO[a.tipo] || "📎"} <b>${esc(a.nome)}</b> <span class="dica">${a.em ? dataBR(a.em) : ""}</span></span><span class="rot-acoes" style="margin:0"><button type="button" class="botao botao-leve" data-abrir-anexo="${i}">Abrir</button><button type="button" class="botao botao-leve" data-tirar-anexo="${i}">Apagar</button></span></li>`).join("")}</ul>` : `<p class="dica">Nenhum arquivo ainda.</p>`;
+      $$("[data-abrir-anexo]", bloco).forEach((b) => b.addEventListener("click", () => abrirArquivo(lista[Number(b.dataset.abrirAnexo)].caminho)));
+      $$("[data-tirar-anexo]", bloco).forEach((b) => b.addEventListener("click", async () => {
+        const a = lista[Number(b.dataset.tirarAnexo)];
+        if (!confirm(`Apagar "${a.nome}"? Isso não tem volta.`)) return;
+        try { await banco.storage.from("arquivos").remove([a.caminho]); } catch (erro) { /* se já não existir, segue */ }
+        const linha = await gravar("campanhas", { anexos: lista.filter((x) => x !== a) }, c.id);
+        if (linha) { trocarNaLista(dados.campanhas, linha); desenharAnexos(); desenharTabelaCamp(); }
+      }));
+    };
+    desenharAnexos();
+    $$("[data-anexo]", bloco).forEach((input) => input.addEventListener("change", async () => {
+      const arquivo = input.files && input.files[0];
+      if (!arquivo) return;
+      const rotulo = input.parentElement;
+      rotulo.classList.add("carregando");
+      const caminho = await enviarArquivo(arquivo, `campanhas/${c.id}`);
+      rotulo.classList.remove("carregando");
+      input.value = "";
+      if (!caminho) return;
+      const atual = dados.campanhas.find((x) => x.id === c.id) || c;
+      const linha = await gravar("campanhas", { anexos: (atual.anexos || []).concat([{ nome: arquivo.name, caminho, tipo: input.dataset.anexo, em: isoLocal(new Date()) }]) }, c.id);
+      if (linha) { trocarNaLista(dados.campanhas, linha); recado("Arquivo guardado ✓"); desenharAnexos(); desenharTabelaCamp(); }
+    }));
+    $("#camp-gerar-contrato").addEventListener("click", () => gerarContrato(dados.campanhas.find((x) => x.id === c.id) || c));
+  }
+
+  /* ---- contrato: modelo base + adaptação para cada trabalho ---- */
+  const CHAVE_CONTRATO = "contrato_base";
+  const MARCADORES = [["[MARCA]", "nome da marca"], ["[RAZAO_SOCIAL]", "razão social"], ["[CNPJ]", "CNPJ da marca"], ["[ENDERECO_MARCA]", "endereço da marca"], ["[RESPONSAVEL]", "responsável da marca"], ["[EMAIL_MARCA]", "e-mail da marca"], ["[TELEFONE_MARCA]", "telefone da marca"], ["[CAMPANHA]", "nome do trabalho"], ["[TIPO_TRABALHO]", "tipo de trabalho"], ["[QUANTIDADE]", "quantidade de entregas"], ["[VALOR]", "valor em reais"], ["[VALOR_EXTENSO]", "valor por extenso (com a IA)"], ["[FORMA_PAGAMENTO]", "forma de pagamento"], ["[DATA_PAGAMENTO]", "dia do pagamento"], ["[PRAZO_ENTREGA]", "prazo de entrega"], ["[PRAZO_USO]", "tempo de uso de imagem"], ["[FIM_USO]", "data em que o uso termina"], ["[DATA_HOJE]", "data de hoje"]];
+  function carregarScript(src) {
+    return new Promise((ok, falha) => {
+      if ($(`script[src="${src}"]`)) { ok(); return; }
+      const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = falha; document.head.appendChild(s);
+    });
+  }
+  function editarContratoBase() {
+    abrirModal("📄 Meu contrato base", `<div class="form-grade">
+        <p class="inteira dica">Cole aqui o seu contrato modelo, ou carregue o arquivo (.docx ou .txt). Para cada trabalho, eu adapto com os dados da marca, o valor, o pagamento e o tempo de uso de imagem. Se quiser, use estes marcadores no texto e eu troco sozinha: ${MARCADORES.map(([m]) => `<code>${m}</code>`).join(" ")}</p>
+        <label class="inteira">📎 Carregar de um arquivo<input type="file" id="contrato-arquivo" accept=".docx,.txt"></label>
+        <label class="inteira">Texto do contrato<textarea id="contrato-texto" class="alto" style="min-height:340px">${esc(dados.config[CHAVE_CONTRATO] || "")}</textarea></label>
+        <div class="form-acoes inteira"><span class="espaco"></span><button type="button" class="botao botao-leve" id="contrato-cancelar">Cancelar</button><button type="button" class="botao botao-principal" id="contrato-salvar">💾 Salvar modelo</button></div>
+      </div>`, true);
+    $("#contrato-cancelar").addEventListener("click", fecharModal);
+    $("#contrato-arquivo").addEventListener("change", async (e) => {
+      const arquivo = e.target.files && e.target.files[0];
+      if (!arquivo) return;
+      try {
+        let texto;
+        if (/\.docx$/i.test(arquivo.name)) {
+          await carregarScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js");
+          texto = (await window.mammoth.extractRawText({ arrayBuffer: await arquivo.arrayBuffer() })).value;
+        } else texto = await arquivo.text();
+        $("#contrato-texto").value = String(texto || "").replace(/\n{3,}/g, "\n\n").trim();
+        recado("Contrato carregado. Confira o texto e clique em Salvar modelo.");
+      } catch (erro) { recado("Não consegui ler esse arquivo. Tente copiar e colar o texto.", true); }
+    });
+    $("#contrato-salvar").addEventListener("click", async () => {
+      const texto = $("#contrato-texto").value.trim();
+      if (!texto) { recado("Cole ou carregue o contrato antes de salvar.", true); return; }
+      if (await salvarConfig(CHAVE_CONTRATO, texto)) { recado("Contrato modelo salvo ✓"); fecharModal(); }
+    });
+  }
+  function dadosContrato(c) {
+    const md = c.marca_dados || {};
+    const uso = numero(c.uso_meses);
+    const fim = vencimentoUso(c);
+    return {
+      "[MARCA]": c.cliente || "", "[RAZAO_SOCIAL]": md.razao || c.cliente || "", "[CNPJ]": md.cnpj || "", "[ENDERECO_MARCA]": md.endereco || "", "[RESPONSAVEL]": md.responsavel || "",
+      "[EMAIL_MARCA]": md.email || "", "[TELEFONE_MARCA]": md.telefone || "", "[CAMPANHA]": c.campanha || "", "[TIPO_TRABALHO]": c.trabalho || "", "[QUANTIDADE]": String(numero(c.qtd) || 1),
+      "[VALOR]": moeda(c.valor), "[FORMA_PAGAMENTO]": c.forma_pagamento || "", "[DATA_PAGAMENTO]": dataBR(c.data_pagamento), "[PRAZO_ENTREGA]": dataBR(c.prazo),
+      "[PRAZO_USO]": !uso ? "sem cessão de direito de uso de imagem para anúncios" : uso >= 999 ? "prazo indeterminado" : plural(uso, "mês", "meses"),
+      "[FIM_USO]": fim ? dataBR(isoLocal(fim)) : "", "[DATA_HOJE]": new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" })
+    };
+  }
+  function contratoParaWord(texto, titulo) {
+    const corpo = esc(texto).split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+    return new Blob(["﻿", `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.5}p{margin:0 0 10pt;text-align:justify}</style></head><body>${corpo}</body></html>`], { type: "application/msword" });
+  }
+  async function gerarContrato(c) {
+    const base = String(dados.config[CHAVE_CONTRATO] || "").trim();
+    if (!base) { recado("Primeiro salve o seu contrato modelo no botão 📄 Meu contrato base.", true); editarContratoBase(); return; }
+    abrirModal(`📝 Contrato: ${c.cliente || c.campanha}`, `<div class="form-grade">
+        <label class="marcar inteira"><input type="checkbox" id="contrato-ia" ${temIA() ? "checked" : "disabled"}> Adaptar com inteligência artificial (ajusta cláusulas de valor, pagamento, entregas e uso de imagem)</label>
+        <p class="inteira dica">🔒 No plano grátis, o Google e o Groq podem usar o texto enviado para melhorar os serviços deles. Se o seu contrato tiver CPF ou dados sensíveis, desmarque: eu só troco os marcadores, sem enviar nada.</p>
+        <div class="form-acoes inteira" style="margin-top:0"><span class="espaco"></span><button type="button" class="botao botao-principal" id="contrato-montar">📝 Montar contrato</button></div>
+        <div id="contrato-resultado" class="inteira"></div>
+      </div>`, true);
+    $("#contrato-montar").addEventListener("click", async (e) => {
+      const botao = e.target; botao.disabled = true;
+      const caixa = $("#contrato-resultado");
+      const valores = dadosContrato(c);
+      let texto = base;
+      Object.entries(valores).forEach(([m, v]) => { if (v) texto = texto.split(m).join(v); });
+      if ($("#contrato-ia").checked && temIA()) {
+        caixa.innerHTML = `<div class="rot-aviso andamento"><span>Adaptando o contrato…</span></div>`;
+        try {
+          const json = await perguntarGemini(`Você é assistente jurídica de uma creator de conteúdo UGC no Brasil. Adapte o CONTRATO MODELO abaixo para este trabalho.
+
+Regras:
+- Mantenha a estrutura, as cláusulas e a linguagem do modelo. Não remova cláusulas.
+- Preencha nomes, dados da marca, valor (em número e por extenso), forma e data de pagamento, quantidade de entregas, prazo de entrega e o tempo de direito de uso de imagem com os DADOS abaixo.
+- Ajuste só as cláusulas que dependem desses dados (por exemplo, se não houver direito de uso, deixe claro que o uso é só orgânico; se houver, coloque o prazo e a data de término).
+- Onde faltar algum dado, deixe "________" para preencher à mão. Nunca invente dados.
+- Português do Brasil, nunca use travessão.
+
+DADOS DO TRABALHO:
+${Object.entries(valores).filter(([, v]) => v).map(([m, v]) => `${MARCADORES.find((x) => x[0] === m)[1]}: ${v}`).join("\n")}
+
+CONTRATO MODELO:
+${base.slice(0, 24000)}
+
+Responda SOMENTE com JSON válido: { "contrato": "texto completo do contrato adaptado, com quebras de linha", "ajustes": ["o que você ajustou, em frases curtas"] }`, 0.2);
+          if (json && json.contrato) { texto = semTravessao(json.contrato); caixa.dataset.ajustes = JSON.stringify(json.ajustes || []); }
+        } catch (erro) { recado("A adaptação com IA não deu certo agora, então só troquei os marcadores. " + (erro.message || ""), true); }
+      }
+      const ajustes = (() => { try { return JSON.parse(caixa.dataset.ajustes || "[]"); } catch (erro) { return []; } })();
+      const nome = `Contrato - ${(c.cliente || "marca").replace(/[\\/:*?"<>|]/g, "")} - ${(c.campanha || "").replace(/[\\/:*?"<>|]/g, "").slice(0, 40)}.doc`;
+      caixa.innerHTML = `${ajustes.length ? `<div class="tend-adaptar"><b>O que eu ajustei</b><ul class="cron-dicas">${ajustes.map((a) => `<li>${esc(semTravessao(a))}</li>`).join("")}</ul></div>` : ""}
+        <label>Confira e edite antes de baixar<textarea id="contrato-final" class="alto" style="min-height:380px;width:100%">${esc(texto)}</textarea></label>
+        <p class="dica">⚠️ Leia o contrato inteiro antes de mandar para a marca. Os campos com ________ precisam ser preenchidos.</p>
+        <div class="form-acoes"><span class="espaco"></span>
+          <button type="button" class="botao botao-leve" id="contrato-baixar">⬇️ Baixar (Word)</button>
+          <button type="button" class="botao botao-principal" id="contrato-guardar">💾 Salvar no painel</button>
+        </div>`;
+      botao.disabled = false;
+      $("#contrato-baixar").addEventListener("click", () => {
+        const blob = contratoParaWord($("#contrato-final").value, nome);
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      });
+      $("#contrato-guardar").addEventListener("click", async (ev) => {
+        ev.target.disabled = true;
+        const arquivo = new File([contratoParaWord($("#contrato-final").value, nome)], nome, { type: "application/msword" });
+        const caminho = await enviarArquivo(arquivo, `campanhas/${c.id}`);
+        if (!caminho) { ev.target.disabled = false; return; }
+        const atual = dados.campanhas.find((x) => x.id === c.id) || c;
+        const linha = await gravar("campanhas", { anexos: (atual.anexos || []).concat([{ nome, caminho, tipo: "gerado", em: isoLocal(new Date()) }]) }, c.id);
+        if (linha) { trocarNaLista(dados.campanhas, linha); ev.target.textContent = "salvo nos arquivos do trabalho ✓"; desenharTabelaCamp(); }
+      });
     });
   }
 
@@ -3348,6 +3655,311 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
     }
   }
 
+  /* =================================================================
+     ABA 11: FINANCEIRO (gastos do mês x ganhos das campanhas)
+     ================================================================= */
+  /* cada categoria tem sempre a mesma cor (a cor segue a categoria, nunca a posição) */
+  const CATEGORIAS_GASTO = [
+    ["Pessoal", "#2a78d6"], ["Trabalho", "#eb6834"], ["Saúde", "#1baf7a"], ["Casa", "#eda100"],
+    ["Alimentação", "#e87ba4"], ["Filhos", "#008300"], ["Contas fixas", "#6250d6"], ["Lazer", "#e34948"], ["Outros", "#8a8a80"]
+  ];
+  const corCategoria = (nome) => (CATEGORIAS_GASTO.find((x) => x[0] === nome) || CATEGORIAS_GASTO[CATEGORIAS_GASTO.length - 1])[1];
+  const FORMAS_GASTO = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro", "Boleto", "Transferência"];
+  const estadoFin = { mes: isoLocal(hoje0()).slice(0, 7), categoria: "todas", dicas: false };
+  const LIMITE_ALERTA = 0.8;
+
+  function contasDoMes(ym) {
+    const gastos = dados.gastos.filter((g) => String(g.data).slice(0, 7) === ym);
+    const totalGastos = gastos.reduce((s, g) => s + numero(g.valor), 0);
+    const aPagar = gastos.filter((g) => g.pago === false).reduce((s, g) => s + numero(g.valor), 0);
+    const ganhos = resumoDoMes(ym);
+    const porCategoria = {};
+    gastos.forEach((g) => { const k = CATEGORIAS_GASTO.some((x) => x[0] === g.categoria) ? g.categoria : "Outros"; porCategoria[k] = (porCategoria[k] || 0) + numero(g.valor); });
+    const porForma = {};
+    gastos.forEach((g) => { porForma[g.forma || "Outro"] = (porForma[g.forma || "Outro"] || 0) + numero(g.valor); });
+    const proporcao = ganhos.total > 0 ? totalGastos / ganhos.total : (totalGastos > 0 ? Infinity : 0);
+    return { gastos, totalGastos, aPagar, ganhos, saldo: ganhos.total - totalGastos, porCategoria, porForma, proporcao };
+  }
+  function alertaFinanceiro(contas) {
+    if (!contas.totalGastos) return null;
+    if (contas.proporcao > 1) return { tipo: "perigo", texto: `🚨 Seus gastos (${moeda(contas.totalGastos)}) passaram dos seus ganhos (${moeda(contas.ganhos.total)}) em ${moeda(-contas.saldo)}.` };
+    if (contas.proporcao >= LIMITE_ALERTA) return { tipo: "cuidado", texto: `⚠️ Você já gastou ${Math.round(contas.proporcao * 100)}% do que ganhou no mês. Sobram só ${moeda(contas.saldo)}.` };
+    return null;
+  }
+
+  /* gráfico de rosca (pizza) com as categorias, desenhado em SVG */
+  function graficoPizza(pares, total) {
+    if (!total) return `<p class="frase-vazia">Nenhum gasto neste mês ainda.</p>`;
+    const R = 80, r = 50, cx = 100, cy = 100;
+    let angulo = -Math.PI / 2;
+    const ponto = (a, raio) => [cx + raio * Math.cos(a), cy + raio * Math.sin(a)];
+    const fatias = pares.map(([nome, valor]) => {
+      const fracao = valor / total;
+      const inicio = angulo, fim = angulo + fracao * Math.PI * 2;
+      angulo = fim;
+      if (fracao >= 0.9999) return `<g class="fatia" data-nome="${esc(nome)}" data-valor="${valor}"><circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="${corCategoria(nome)}" stroke-width="${R - r}"/></g>`;
+      const [x1, y1] = ponto(inicio, R), [x2, y2] = ponto(fim, R), [x3, y3] = ponto(fim, r), [x4, y4] = ponto(inicio, r);
+      const grande = fim - inicio > Math.PI ? 1 : 0;
+      return `<path class="fatia" data-nome="${esc(nome)}" data-valor="${valor}" d="M${x1},${y1} A${R},${R} 0 ${grande} 1 ${x2},${y2} L${x3},${y3} A${r},${r} 0 ${grande} 0 ${x4},${y4} Z" fill="${corCategoria(nome)}" stroke="var(--branco)" stroke-width="2"/>`;
+    }).join("");
+    return `<div class="fin-pizza">
+      <div class="fin-pizza-grafico">
+        <svg viewBox="0 0 200 200" role="img" aria-label="Gastos por categoria">${fatias}
+          <text x="100" y="95" text-anchor="middle" class="fin-centro-rotulo">total</text>
+          <text x="100" y="116" text-anchor="middle" class="fin-centro-valor">${esc(moeda(total).replace(/,\d\d$/, ""))}</text>
+        </svg>
+        <div class="fin-dica" hidden></div>
+      </div>
+      <ul class="fin-legenda">${pares.map(([nome, valor]) => `<li data-nome="${esc(nome)}"><i style="background:${corCategoria(nome)}"></i><span>${esc(nome)}</span><b>${moeda(valor)}</b><small>${Math.round((valor / total) * 100)}%</small></li>`).join("")}</ul>
+    </div>`;
+  }
+
+  function formGasto(g, padrao) {
+    formulario({
+      titulo: g ? "Editar gasto" : "Adicionar gasto",
+      valores: g || Object.assign({ data: isoLocal(new Date()), forma: "Pix", categoria: "Pessoal", pago: true, fixo: false, valor: "" }, padrao || {}),
+      campos: [
+        { nome: "descricao", rotulo: "Com o que foi", obrigatorio: true, inteira: true, lista: Array.from(new Set(dados.gastos.map((x) => x.descricao).filter(Boolean))).slice(0, 60) },
+        { nome: "valor", rotulo: "Valor (R$)", tipo: "number", passo: "0.01", obrigatorio: true },
+        { nome: "data", rotulo: "Dia", tipo: "date", obrigatorio: true },
+        { nome: "categoria", rotulo: "Tipo de gasto", tipo: "select", opcoes: CATEGORIAS_GASTO.map(([c]) => [c, c]) },
+        { nome: "forma", rotulo: "Como pagou", tipo: "select", opcoes: FORMAS_GASTO.map((f) => [f, f]) },
+        { nome: "pago", rotulo: "Já está pago (desmarque se ainda vai pagar)", tipo: "checkbox" },
+        { nome: "fixo", rotulo: "É um gasto fixo de todo mês", tipo: "checkbox" },
+        { nome: "obs", rotulo: "Anotações", tipo: "textarea" }
+      ],
+      aoSalvar: async (obj) => {
+        if (!(numero(obj.valor) > 0)) { recado("Coloque o valor do gasto.", true); return false; }
+        const linha = await gravar("gastos", obj, g && g.id);
+        if (!linha) return false;
+        trocarNaLista(dados.gastos, linha);
+        dados.gastos.sort((a, b) => String(b.data).localeCompare(String(a.data)));
+        recado("Gasto salvo");
+        atualizarLembretes();
+        mostrarAba();
+        return true;
+      },
+      aoApagar: g ? async () => {
+        if (!(await apagar("gastos", g.id))) return false;
+        dados.gastos = dados.gastos.filter((x) => x.id !== g.id);
+        recado("Gasto apagado");
+        atualizarLembretes();
+        mostrarAba();
+        return true;
+      } : null
+    });
+  }
+
+  async function trazerFixos(ym) {
+    const anterior = andarMes(ym, -1);
+    const fixos = dados.gastos.filter((g) => g.fixo && String(g.data).slice(0, 7) === anterior);
+    const jaTem = dados.gastos.filter((g) => String(g.data).slice(0, 7) === ym).map((g) => normalNome(g.descricao));
+    const novos = fixos.filter((g) => !jaTem.includes(normalNome(g.descricao)));
+    if (!novos.length) { recado(fixos.length ? "Os gastos fixos do mês passado já estão neste mês." : "Não achei gastos marcados como fixos no mês passado.", !fixos.length); return; }
+    if (!confirm(`Trazer ${plural(novos.length, "gasto fixo", "gastos fixos")} do mês passado para ${nomeMesISO(ym).toLowerCase()}? Eles entram como "a pagar".`)) return;
+    const [a, m] = ym.split("-").map(Number);
+    const ultimoDia = new Date(a, m, 0).getDate();
+    for (const g of novos) {
+      const dia = Math.min(Number(String(g.data).slice(8, 10)) || 1, ultimoDia);
+      const linha = await gravar("gastos", { data: `${ym}-${dois(dia)}`, descricao: g.descricao, valor: numero(g.valor), forma: g.forma, categoria: g.categoria, pago: false, fixo: true, obs: g.obs || "" });
+      if (linha) dados.gastos.unshift(linha);
+    }
+    recado(`${plural(novos.length, "gasto fixo trazido", "gastos fixos trazidos")} ✓`);
+    atualizarLembretes();
+    mostrarAba();
+  }
+
+  async function dicasFinanceiras(ym, contas) {
+    if (!temIA()) { recado("Para as dicas, salve a chave grátis do Gemini ou do Groq na aba Virais.", true); return; }
+    const botao = $("#fin-dicas"); if (botao) botao.disabled = true;
+    const caixa = $("#fin-dicas-caixa");
+    if (caixa) caixa.innerHTML = `<div class="rot-aviso andamento"><span>Olhando as suas contas do mês…</span></div>`;
+    try {
+      const resumo = `Mês: ${nomeMesISO(ym)}
+Ganhos do mês (trabalhos de creator): ${moeda(contas.ganhos.total)} (recebido ${moeda(contas.ganhos.recebido)}, a receber ${moeda(contas.ganhos.aReceber)})
+Ganhos por tipo de trabalho: ${contas.ganhos.tipos.map(([t, v]) => `${t} ${moeda(v.total)}`).join("; ") || "nenhum"}
+Gastos do mês: ${moeda(contas.totalGastos)} (ainda a pagar ${moeda(contas.aPagar)})
+Gastos por tipo: ${Object.entries(contas.porCategoria).map(([k, v]) => `${k} ${moeda(v)}`).join("; ") || "nenhum"}
+Gastos por forma de pagamento: ${Object.entries(contas.porForma).map(([k, v]) => `${k} ${moeda(v)}`).join("; ") || "nenhum"}
+Mês anterior: ganhos ${moeda(resumoDoMes(andarMes(ym, -1)).total)}, gastos ${moeda(contasDoMes(andarMes(ym, -1)).totalGastos)}`;
+      const json = await perguntarGemini(`Você é uma educadora financeira gentil e prática. Ajude uma mãe creator de conteúdo UGC que mora na roça a organizar o dinheiro do mês, com renda que varia de mês para mês.
+${resumo}
+
+Dê de 4 a 6 dicas curtas, concretas e possíveis para a realidade dela (por exemplo: separar uma reserva dos trabalhos, cuidar do cartão de crédito, qual tipo de gasto cortar ou segurar, qual tipo de trabalho vale buscar mais). Não dê conselho de investimento específico. Fale com carinho, sem julgar.
+Responda SOMENTE com JSON válido: { "resumo": "uma frase sobre como está o mês", "dicas": [ { "titulo": "título curto", "texto": "dica em uma ou duas frases" } ] }
+Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
+      const valor = { resumo: semTravessao(json.resumo || ""), dicas: (json.dicas || []).filter((d) => d && (d.titulo || d.texto)), em: new Date().toISOString() };
+      await salvarConfig("financeiro_dicas_" + ym, JSON.stringify(valor));
+      mostrarAba();
+    } catch (erro) {
+      if (caixa) caixa.innerHTML = `<div class="rot-aviso erro"><span>😕 ${esc(erro.message || "Não deu certo agora.")}</span></div>`;
+      if (botao) botao.disabled = false;
+    }
+  }
+
+  function renderFinanceiro(area) {
+    const ym = estadoFin.mes;
+    const contas = contasDoMes(ym);
+    const alerta = alertaFinanceiro(contas);
+    const pares = Object.entries(contas.porCategoria).sort((a, b) => b[1] - a[1]);
+    const formas = Object.entries(contas.porForma).sort((a, b) => b[1] - a[1]);
+    const lista = contas.gastos.filter((g) => estadoFin.categoria === "todas" || (estadoFin.categoria === "apagar" ? g.pago === false : (CATEGORIAS_GASTO.some((x) => x[0] === g.categoria) ? g.categoria : "Outros") === estadoFin.categoria));
+    let dicas = null; try { dicas = JSON.parse(dados.config["financeiro_dicas_" + ym] || "null"); } catch (erro) { dicas = null; }
+    const usado = contas.ganhos.total > 0 ? Math.min(100, Math.round(contas.proporcao * 100)) : (contas.totalGastos ? 100 : 0);
+
+    area.innerHTML = `
+      <section class="cartao">
+        <div class="cron-barra">
+          <div class="rot-linha">
+            <button type="button" class="botao botao-leve" id="fin-antes" aria-label="Mês anterior">◀</button>
+            <h2 class="cron-titulo">${nomeMesISO(ym)}</h2>
+            <button type="button" class="botao botao-leve" id="fin-depois" aria-label="Próximo mês">▶</button>
+          </div>
+          <div class="rot-linha">
+            <button type="button" class="botao botao-leve" id="fin-fixos">🔁 Trazer gastos fixos do mês passado</button>
+            <button type="button" class="botao botao-principal" id="fin-add"><svg class="ic"><use href="#i-mais"/></svg>Adicionar gasto</button>
+          </div>
+        </div>
+        <div class="faixa-numeros" style="--colunas:4;margin-top:12px">
+          <div><span>💰 Ganhos do mês</span><strong>${moeda(contas.ganhos.total)}</strong><small>recebido ${moeda(contas.ganhos.recebido)} · a receber ${moeda(contas.ganhos.aReceber)}</small></div>
+          <div><span>💸 Gastos do mês</span><strong>${moeda(contas.totalGastos)}</strong><small>${plural(contas.gastos.length, "gasto", "gastos")}</small></div>
+          <div><span>🧾 Ainda vou pagar</span><strong>${moeda(contas.aPagar)}</strong><small>contas marcadas como a pagar</small></div>
+          <div class="${contas.saldo < 0 ? "fin-negativo" : ""}"><span>${contas.saldo < 0 ? "🚨 Faltando" : "🌱 Sobra"}</span><strong>${moeda(Math.abs(contas.saldo))}</strong><small>ganhos menos gastos</small></div>
+        </div>
+        <div class="fin-medidor" title="Quanto dos ganhos já foi gasto">
+          <div class="linha"><span>Quanto dos seus ganhos já foi gasto</span><b>${contas.ganhos.total > 0 ? Math.round(contas.proporcao * 100) + "%" : contas.totalGastos ? "sem ganhos no mês" : "0%"}</b></div>
+          <div class="trilho"><i class="${usado >= 100 ? "perigo" : usado >= LIMITE_ALERTA * 100 ? "cuidado" : ""}" style="width:${usado}%"></i><span class="marca80" style="left:${LIMITE_ALERTA * 100}%" title="80%"></span></div>
+        </div>
+        ${alerta ? `<div class="rot-aviso ${alerta.tipo === "perigo" ? "erro" : "erro"} fin-alerta-${alerta.tipo}" style="margin-top:12px"><span>${alerta.texto}</span></div>` : contas.totalGastos ? `<div class="rot-aviso ok" style="margin-top:12px"><span>✅ Tudo sob controle: você gastou ${Math.round(contas.proporcao * 100)}% do que ganhou no mês.</span></div>` : ""}
+      </section>
+
+      <div class="fin-grade">
+        <section class="cartao">
+          <h2 class="achar-titulo" style="margin-top:0">🥧 Com o que estou gastando</h2>
+          ${graficoPizza(pares, contas.totalGastos)}
+        </section>
+        <section class="cartao">
+          <h2 class="achar-titulo" style="margin-top:0">💳 Como estou pagando</h2>
+          ${formas.length ? `<ul class="camp-tipos">${formas.map(([f, v]) => `<li><div class="linha"><span>${esc(f)}</span><b>${moeda(v)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v / formas[0][1]) * 100)}%"></i></div><small>${Math.round((v / contas.totalGastos) * 100)}% dos gastos</small></li>`).join("")}</ul>` : `<p class="frase-vazia">Nada ainda.</p>`}
+          <h2 class="achar-titulo">💼 De onde vem o dinheiro</h2>
+          ${contas.ganhos.tipos.length ? `<ul class="camp-tipos">${contas.ganhos.tipos.map(([t, v]) => `<li><div class="linha"><span>${esc(t)}</span><b>${moeda(v.total)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v.total / contas.ganhos.tipos[0][1].total) * 100)}%"></i></div></li>`).join("")}</ul>` : `<p class="frase-vazia">Nenhum trabalho neste mês na aba <a href="#campanhas">Campanhas</a>.</p>`}
+        </section>
+      </div>
+
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>🧭 Me ajude a organizar o mês</h2>
+          <button type="button" class="botao botao-leve" id="fin-dicas" ${contas.totalGastos || contas.ganhos.total ? "" : "disabled"}>${dicas ? "🔄 Novas dicas" : "✨ Ver dicas para este mês"}</button>
+        </div>
+        <div id="fin-dicas-caixa">${dicas ? `${dicas.resumo ? `<p class="tend-resumo">${esc(dicas.resumo)}</p>` : ""}<div class="cron-dicas-grade">${dicas.dicas.map((d) => `<div class="tend-adaptar"><b>${esc(semTravessao(d.titulo || ""))}</b><p>${esc(semTravessao(d.texto || ""))}</p></div>`).join("")}</div>` : `<p class="dica">Eu olho os seus ganhos e gastos do mês e te dou dicas práticas para organizar o dinheiro. Não é aconselhamento financeiro profissional.</p>`}</div>
+      </section>
+
+      <section class="cartao">
+        <div class="ferramentas" style="margin-bottom:12px">
+          <div class="chips" role="group" aria-label="Filtrar gastos">
+            ${[["todas", "Todos"], ["apagar", "🧾 A pagar"]].concat(pares.map(([n]) => [n, n])).map(([v, t]) => `<button type="button" data-cat="${esc(v)}" aria-pressed="${estadoFin.categoria === v}">${esc(t)}</button>`).join("")}
+          </div>
+          <span class="espaco"></span>
+          <button type="button" class="botao botao-leve" id="fin-csv"><svg class="ic"><use href="#i-baixar"/></svg>Baixar</button>
+        </div>
+        ${lista.length ? `<div class="tabela-caixa"><table>
+          <thead><tr><th>Dia</th><th>Com o que</th><th>Tipo</th><th>Como pagou</th><th>Valor</th><th>Situação</th></tr></thead>
+          <tbody>${lista.map((g) => `<tr class="clicavel" data-gasto="${esc(g.id)}">
+            <td style="white-space:nowrap">${dataBR(g.data).slice(0, 5)}</td>
+            <td><strong>${esc(g.descricao)}</strong>${g.fixo ? ` <span class="dica">🔁 fixo</span>` : ""}</td>
+            <td><span class="fin-cat"><i style="background:${corCategoria(g.categoria)}"></i>${esc(g.categoria)}</span></td>
+            <td>${esc(g.forma)}</td>
+            <td style="white-space:nowrap">${moeda(g.valor)}</td>
+            <td>${g.pago === false ? `<button type="button" class="pilula p-pendente fin-pagar" data-pagar="${esc(g.id)}" title="Marcar como pago">🧾 A pagar</button>` : `<span class="pilula p-pago">Pago</span>`}</td>
+          </tr>`).join("")}</tbody></table></div>` : `<p class="frase-vazia">${contas.gastos.length ? "Nenhum gasto com esse filtro." : "Nenhum gasto neste mês. Clique em Adicionar gasto."}</p>`}
+      </section>`;
+
+    $("#fin-antes").addEventListener("click", () => { estadoFin.mes = andarMes(ym, -1); renderFinanceiro(area); });
+    $("#fin-depois").addEventListener("click", () => { estadoFin.mes = andarMes(ym, 1); renderFinanceiro(area); });
+    $("#fin-add").addEventListener("click", () => formGasto(null, ym === isoLocal(hoje0()).slice(0, 7) ? null : { data: ym + "-01" }));
+    $("#fin-fixos").addEventListener("click", () => trazerFixos(ym));
+    $("#fin-dicas").addEventListener("click", () => dicasFinanceiras(ym, contas));
+    $$("[data-cat]", area).forEach((b) => b.addEventListener("click", () => { estadoFin.categoria = b.dataset.cat; renderFinanceiro(area); }));
+    $$("[data-gasto]", area).forEach((tr) => tr.addEventListener("click", async (e) => {
+      const g = dados.gastos.find((x) => x.id === tr.dataset.gasto);
+      if (!g) return;
+      if (e.target.closest("[data-pagar]")) {
+        e.target.disabled = true;
+        const linha = await gravar("gastos", { pago: true }, g.id);
+        if (linha) { trocarNaLista(dados.gastos, linha); recado("Marcado como pago ✓"); atualizarLembretes(); renderFinanceiro(area); }
+        return;
+      }
+      formGasto(g);
+    }));
+    $("#fin-csv").addEventListener("click", () => baixarCSV(`gastos-${ym}.csv`, ["Dia", "Com o que", "Tipo", "Como pagou", "Valor", "Situação", "Fixo"],
+      lista.map((g) => [dataBR(g.data), g.descricao, g.categoria, g.forma, numero(g.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 }), g.pago === false ? "A pagar" : "Pago", g.fixo ? "sim" : ""])));
+    /* dica ao passar o mouse nas fatias e na legenda */
+    const pizza = $(".fin-pizza", area);
+    if (pizza) {
+      const dica = $(".fin-dica", pizza);
+      const mostrar = (nome, ev) => {
+        const valor = contas.porCategoria[nome] || 0;
+        dica.innerHTML = `<b>${esc(nome)}</b><br>${moeda(valor)} · ${Math.round((valor / contas.totalGastos) * 100)}%`;
+        dica.hidden = false;
+        const caixa = $(".fin-pizza-grafico", pizza).getBoundingClientRect();
+        dica.style.left = Math.min(caixa.width - 120, Math.max(0, ev.clientX - caixa.left + 12)) + "px";
+        dica.style.top = Math.max(0, ev.clientY - caixa.top - 10) + "px";
+        $$(".fatia", pizza).forEach((f) => f.classList.toggle("apagada", f.dataset.nome !== nome));
+        $$(".fin-legenda li", pizza).forEach((l) => l.classList.toggle("destaque", l.dataset.nome === nome));
+      };
+      const esconder = () => { dica.hidden = true; $$(".fatia", pizza).forEach((f) => f.classList.remove("apagada")); $$(".fin-legenda li", pizza).forEach((l) => l.classList.remove("destaque")); };
+      $$(".fatia", pizza).forEach((f) => { f.addEventListener("mousemove", (ev) => mostrar(f.dataset.nome, ev)); f.addEventListener("mouseleave", esconder); });
+      $$(".fin-legenda li", pizza).forEach((l) => { l.addEventListener("mouseenter", () => { $$(".fatia", pizza).forEach((f) => f.classList.toggle("apagada", f.dataset.nome !== l.dataset.nome)); l.classList.add("destaque"); }); l.addEventListener("mouseleave", esconder); });
+    }
+  }
+
+  /* =================================================================
+     LEMBRETES (aparecem no topo de todas as abas e, se ela permitir,
+     também como notificação do computador quando o painel abre)
+     ================================================================= */
+  function listaLembretes() {
+    const itens = [];
+    dados.campanhas.forEach((c) => {
+      const s = situacaoUso(c);
+      if (s.tipo === "vencido") itens.push({ chave: "uso-" + c.id + "-" + isoLocal(s.v), tipo: "perigo", texto: `🖼️ O direito de uso de imagem de <b>${esc(c.cliente || c.campanha)}</b> venceu em ${dataBR(isoLocal(s.v))}. Confira se a marca ainda está usando o seu conteúdo.`, aba: "campanhas" });
+      else if (s.tipo === "vence" && s.dias <= 7) itens.push({ chave: "usovence-" + c.id, tipo: "cuidado", texto: `⏰ O direito de uso de <b>${esc(c.cliente || c.campanha)}</b> vence em ${plural(s.dias, "dia", "dias")}.`, aba: "campanhas" });
+      if (c.pagamento !== "pago" && c.data_pagamento && diasAte(c.data_pagamento) < 0) itens.push({ chave: "pag-" + c.id, tipo: "cuidado", texto: `💰 O pagamento de <b>${esc(c.cliente || c.campanha)}</b> (${moeda(c.valor)}) era para ${dataBR(c.data_pagamento)} e ainda está como a receber.`, aba: "campanhas" });
+    });
+    const ym = isoLocal(hoje0()).slice(0, 7);
+    const alerta = alertaFinanceiro(contasDoMes(ym));
+    if (alerta) itens.push({ chave: "fin-" + ym + "-" + alerta.tipo, tipo: alerta.tipo, texto: alerta.texto.replace(/^(🚨|⚠️) /, "$1 <b>Financeiro:</b> "), aba: "financeiro" });
+    const contasVencidas = dados.gastos.filter((g) => g.pago === false && diasAte(g.data) != null && diasAte(g.data) <= 0);
+    if (contasVencidas.length) itens.push({ chave: "contas-" + isoLocal(hoje0()), tipo: "cuidado", texto: `🧾 ${plural(contasVencidas.length, "conta a pagar venceu ou vence hoje", "contas a pagar venceram ou vencem hoje")} (${moeda(contasVencidas.reduce((s, g) => s + numero(g.valor), 0))}).`, aba: "financeiro" });
+    return itens;
+  }
+  function lerVistos() { try { return JSON.parse(localStorage.getItem("painel_notificados") || "{}"); } catch (erro) { return {}; } }
+  function atualizarLembretes() {
+    let caixa = $("#lembretes");
+    if (!caixa) { caixa = document.createElement("div"); caixa.id = "lembretes"; caixa.className = "lembretes"; $("#area").parentNode.insertBefore(caixa, $("#area")); }
+    const itens = listaLembretes();
+    const podeNotificar = "Notification" in window;
+    caixa.hidden = !itens.length;
+    caixa.innerHTML = itens.length ? `<details ${itens.some((i) => i.tipo === "perigo") ? "open" : ""}>
+      <summary>🔔 ${plural(itens.length, "lembrete", "lembretes")} para você</summary>
+      <ul>${itens.map((i) => `<li class="lembrete-${i.tipo}"><span>${i.texto}</span><a class="botao botao-leve" href="#${i.aba}">Ver</a></li>`).join("")}</ul>
+      ${podeNotificar && Notification.permission === "default" ? `<button type="button" class="botao botao-leve" id="lembretes-ativar">🔔 Avisar também no computador</button>` : ""}
+    </details>` : "";
+    const ativar = $("#lembretes-ativar");
+    if (ativar) ativar.addEventListener("click", async () => { try { await Notification.requestPermission(); } catch (erro) { /* navegador sem suporte */ } atualizarLembretes(); });
+    /* notificação do computador: no máximo uma vez por dia para cada lembrete */
+    if (podeNotificar && Notification.permission === "granted" && itens.length) {
+      const vistos = lerVistos(), hoje = isoLocal(new Date());
+      const novos = itens.filter((i) => vistos[i.chave] !== hoje);
+      if (novos.length) {
+        try {
+          new Notification("Painel da Letícia", { body: novos.map((i) => i.texto.replace(/<[^>]+>/g, "")).slice(0, 3).join("\n"), tag: "painel-lembretes" });
+          novos.forEach((i) => { vistos[i.chave] = hoje; });
+          localStorage.setItem("painel_notificados", JSON.stringify(vistos));
+        } catch (erro) { /* sem notificação, os lembretes continuam no topo */ }
+      }
+    }
+  }
+
   /* ---------------------------------------------------------------
      5) COMEÇA
      --------------------------------------------------------------- */
@@ -3360,4 +3972,5 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
       avisar("dona", `Você entrou com ${sessao.user.email || "um e-mail"}, mas esse e-mail não está liberado como dono do painel. Por isso as listas aparecem vazias e nada salva. Coloque esse e-mail na parte 1 do banco.sql e rode o arquivo de novo no Supabase.`);
   } catch (erro) { /* se a função ainda não existe, os avisos das tabelas já explicam */ }
   mostrarAba();
+  try { atualizarLembretes(); } catch (erro) { console.error(erro); }
 })();

@@ -483,3 +483,58 @@ ul.origens { margin: 0; padding: 0; }
   .cron-mes-dia { min-height: 60px; }
   .postit.mini { font-size: 0; padding: 0; height: 8px; }
 }
+
+/* ---------- Campanhas (resumo do mês, arquivos) ---------- */
+.form-secao { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--borda); font-size: .86rem; color: var(--verde-texto); }
+.form-grade > .form-secao:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.camp-tipos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.camp-tipos li { display: grid; gap: 4px; }
+.camp-tipos .linha { display: flex; justify-content: space-between; gap: 10px; font-size: .86rem; color: var(--tinta); }
+.camp-tipos .trilho { height: 8px; border-radius: 99px; background: var(--gelo); overflow: hidden; }
+.camp-tipos .trilho i { display: block; height: 100%; border-radius: 99px; background: var(--verde-escuro); }
+.camp-tipos small { color: var(--texto); font-size: .74rem; }
+.camp-arquivos { display: grid; gap: 8px; }
+.camp-arquivos label.botao { cursor: pointer; }
+.camp-arquivos label.carregando { opacity: .55; pointer-events: none; }
+.camp-arquivos label.carregando::after { content: " enviando…"; }
+.uso-vencido { border-color: var(--vermelho) !important; background: var(--vermelho-claro); }
+.uso-vence { border-color: #efd99a !important; background: var(--amarelo-claro); }
+code { font-size: .78rem; background: var(--gelo); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- Financeiro ---------- */
+.fin-grade { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
+.fin-negativo strong { color: var(--vermelho); }
+.fin-medidor { margin-top: 14px; display: grid; gap: 5px; }
+.fin-medidor .linha { display: flex; justify-content: space-between; font-size: .84rem; color: var(--tinta); }
+.fin-medidor .trilho { position: relative; height: 10px; border-radius: 99px; background: var(--gelo); }
+.fin-medidor .trilho i { display: block; height: 100%; border-radius: 99px; background: var(--verde-escuro); }
+.fin-medidor .trilho i.cuidado { background: #c98500; }
+.fin-medidor .trilho i.perigo { background: var(--vermelho); }
+.fin-medidor .marca80 { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--tinta); opacity: .35; }
+.fin-alerta-perigo { background: var(--vermelho-claro) !important; color: var(--vermelho) !important; }
+.fin-pizza { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 18px; align-items: center; }
+.fin-pizza-grafico { position: relative; }
+.fin-pizza svg { width: 100%; height: auto; display: block; }
+.fin-pizza .fatia { cursor: pointer; transition: opacity .15s; }
+.fin-pizza .fatia.apagada { opacity: .25; }
+.fin-centro-rotulo { font: 600 11px var(--fonte); fill: var(--texto); }
+.fin-centro-valor { font: 800 16px var(--fonte); fill: var(--tinta); }
+.fin-dica { position: absolute; pointer-events: none; background: var(--tinta); color: #fff; font-size: .76rem; padding: 6px 9px; border-radius: 6px; white-space: nowrap; z-index: 2; }
+.fin-legenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.fin-legenda li { display: grid; grid-template-columns: 12px 1fr auto 42px; align-items: center; gap: 8px; font-size: .84rem; padding: 5px 6px; border-radius: 6px; color: var(--tinta); }
+.fin-legenda li.destaque { background: var(--fundo); }
+.fin-legenda i, .fin-cat i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.fin-legenda small { color: var(--texto); text-align: right; }
+.fin-cat { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fin-pagar { border: 0; cursor: pointer; font-family: inherit; }
+@media (max-width: 960px) { .fin-grade { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .fin-pizza { grid-template-columns: 1fr; } .fin-pizza-grafico { max-width: 220px; margin: 0 auto; } }
+
+/* ---------- Lembretes no topo ---------- */
+.lembretes { margin-bottom: 14px; }
+.lembretes details { background: var(--branco); border: 1px solid #efd99a; border-left: 4px solid #c98500; border-radius: var(--raio-p); padding: 10px 14px; box-shadow: var(--sombra); }
+.lembretes summary { cursor: pointer; font-weight: 800; font-size: .88rem; color: var(--tinta); }
+.lembretes ul { list-style: none; margin: 10px 0 8px; padding: 0; display: grid; gap: 6px; }
+.lembretes li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: .84rem; padding: 7px 10px; border-radius: 8px; background: var(--amarelo-claro); color: #5a4300; }
+.lembretes li.lembrete-perigo { background: var(--vermelho-claro); color: var(--vermelho); }
+.lembretes li .botao { padding: 4px 10px; flex-shrink: 0; }

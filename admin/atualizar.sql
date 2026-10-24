@@ -412,6 +412,58 @@ create policy "dona apaga cronograma" on public.cronograma for delete to authent
 revoke all on public.cronograma from anon;
 grant select, insert, update, delete on public.cronograma to authenticated;
 
--- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
+
+
+-- ---------- Campanhas completas, Financeiro e pasta de arquivos ----------
+-- 1) CAMPANHAS: tipo de trabalho, dia, forma de pagamento, direito de uso, dados da marca e anexos
+alter table public.campanhas add column if not exists trabalho          text not null default 'Conteúdo UGC';
+alter table public.campanhas add column if not exists data_trabalho     date default current_date;
+alter table public.campanhas add column if not exists forma_pagamento   text not null default 'Pix';
+alter table public.campanhas add column if not exists data_pagamento    date;
+alter table public.campanhas add column if not exists uso_meses         integer not null default 0;
+alter table public.campanhas add column if not exists uso_inicio        date;
+alter table public.campanhas add column if not exists uso_verificado_em date;
+alter table public.campanhas add column if not exists marca_dados       jsonb not null default '{}'::jsonb;
+alter table public.campanhas add column if not exists anexos            jsonb not null default '[]'::jsonb;
+alter table public.campanhas add column if not exists obs               text not null default '';
+update public.campanhas set data_trabalho = coalesce(prazo, criado_em::date) where data_trabalho is null;
+
+-- 2) GASTOS (aba Financeiro)
+create table if not exists public.gastos (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  data        date not null default current_date,
+  descricao   text not null default '',
+  valor       numeric(12,2) not null default 0 check (valor >= 0),
+  forma       text not null default 'Pix',
+  categoria   text not null default 'Pessoal',
+  pago        boolean not null default true,
+  fixo        boolean not null default false,
+  obs         text not null default ''
+);
+create index if not exists gastos_data_idx on public.gastos (data desc);
+
+alter table public.gastos enable row level security;
+drop policy if exists "dona le gastos" on public.gastos;
+create policy "dona le gastos" on public.gastos for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria gastos" on public.gastos;
+create policy "dona cria gastos" on public.gastos for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita gastos" on public.gastos;
+create policy "dona edita gastos" on public.gastos for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga gastos" on public.gastos;
+create policy "dona apaga gastos" on public.gastos for delete to authenticated using (public.e_a_dona());
+revoke all on public.gastos from anon;
+grant select, insert, update, delete on public.gastos to authenticated;
+
+-- 3) PASTA PRIVADA "arquivos" (contratos, cartão CNPJ, dados das marcas). Só você abre.
+insert into storage.buckets (id, name, public) values ('arquivos', 'arquivos', false) on conflict (id) do nothing;
+drop policy if exists "dona le arquivos" on storage.objects;
+create policy "dona le arquivos" on storage.objects for select to authenticated using (bucket_id = 'arquivos' and public.e_a_dona());
+drop policy if exists "dona envia arquivos" on storage.objects;
+create policy "dona envia arquivos" on storage.objects for insert to authenticated with check (bucket_id = 'arquivos' and public.e_a_dona());
+drop policy if exists "dona troca arquivos" on storage.objects;
+create policy "dona troca arquivos" on storage.objects for update to authenticated using (bucket_id = 'arquivos' and public.e_a_dona()) with check (bucket_id = 'arquivos' and public.e_a_dona());
+drop policy if exists "dona apaga arquivos" on storage.objects;
+create policy "dona apaga arquivos" on storage.objects for delete to authenticated using (bucket_id = 'arquivos' and public.e_a_dona());
 
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
