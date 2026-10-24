@@ -351,4 +351,34 @@ create policy "dona apaga tendencias" on public.tendencias for delete to authent
 revoke all on public.tendencias from anon;
 grant select, insert, update, delete on public.tendencias to authenticated;
 
+
+-- ---------- aba Achar marcas ----------
+create table if not exists public.marcas_sugeridas (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  nichos       text[] not null default '{}',
+  resumo       text not null default '',
+  itens        jsonb not null default '[]'::jsonb,
+  fontes       jsonb not null default '[]'::jsonb,
+  sem_busca    boolean not null default false
+);
+
+create index if not exists marcas_sugeridas_created_at_idx on public.marcas_sugeridas (created_at desc);
+
+-- A TRANCA: só você, logada, lê, cria, edita e apaga
+alter table public.marcas_sugeridas enable row level security;
+drop policy if exists "dona le marcas_sugeridas" on public.marcas_sugeridas;
+create policy "dona le marcas_sugeridas" on public.marcas_sugeridas for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria marcas_sugeridas" on public.marcas_sugeridas;
+create policy "dona cria marcas_sugeridas" on public.marcas_sugeridas for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita marcas_sugeridas" on public.marcas_sugeridas;
+create policy "dona edita marcas_sugeridas" on public.marcas_sugeridas for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga marcas_sugeridas" on public.marcas_sugeridas;
+create policy "dona apaga marcas_sugeridas" on public.marcas_sugeridas for delete to authenticated using (public.e_a_dona());
+
+revoke all on public.marcas_sugeridas from anon;
+grant select, insert, update, delete on public.marcas_sugeridas to authenticated;
+
+-- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

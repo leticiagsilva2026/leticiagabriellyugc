@@ -417,3 +417,11 @@ ul.origens { margin: 0; padding: 0; }
 .tend-fontes { margin-top: 14px; }
 .tend-fontes > summary { cursor: pointer; font-size: .82rem; font-weight: 700; color: var(--verde-texto); }
 @media (max-width: 860px) { .tend-grade { grid-template-columns: 1fr; } }
+
+/* ---------- aba Achar marcas ---------- */
+.achar-titulo { font-size: .95rem; margin: 18px 0 10px; color: var(--tinta); }
+.achar-nichos { margin-bottom: 4px; }
+.achar-card.certa { border-color: var(--verde); box-shadow: 0 0 0 1px var(--verde) inset; background: linear-gradient(180deg, var(--verde-claro) 0, var(--branco) 90px); }
+.achar-selo { background: var(--verde-escuro); color: #fff; }
+#achar-msg { width: 100%; min-height: 200px; font: inherit; padding: 10px 12px; border: 1px solid var(--borda); border-radius: var(--raio-p); margin-top: 6px; }
+@media (max-width: 860px) { .achar-numeros { --colunas: 2 !important; } }

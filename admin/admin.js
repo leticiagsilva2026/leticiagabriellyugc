@@ -119,9 +119,10 @@
     roteiros: ["fonte", "url", "perfil", "de_quem", "titulo", "transcricao", "legenda", "postado_em", "tags", "obs", "status", "erro"],
     configuracoes: ["chave", "valor"],
     virais: ["url", "fonte", "perfil", "titulo", "nicho", "transcricao", "analise", "adaptacoes", "status"],
-    tendencias: ["nichos", "plataformas", "resumo", "itens", "fontes", "sem_busca"]
+    tendencias: ["nichos", "plataformas", "resumo", "itens", "fontes", "sem_busca"],
+    marcas_sugeridas: ["nichos", "resumo", "itens", "fontes", "sem_busca"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -153,7 +154,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -164,9 +165,10 @@
       buscar("roteiros", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
       buscar("configuracoes", (q) => q.select("*")),
       buscar("virais", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
-      buscar("tendencias", (q) => q.select("*").order("created_at", { ascending: false }).limit(60))
+      buscar("tendencias", (q) => q.select("*").order("created_at", { ascending: false }).limit(60)),
+      buscar("marcas_sugeridas", (q) => q.select("*").order("created_at", { ascending: false }).limit(100))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -287,6 +289,7 @@
   const ABAS = {
     portfolio: ["Portfólio", renderPortfolio],
     marcas: ["Marcas", renderMarcas],
+    achar: ["🎯 Achar marcas", renderAchar],
     calendario: ["Calendário", renderCalendario],
     campanhas: ["Campanhas", renderCampanhas],
     roteiros: ["📜 Roteiros", renderRoteiros],
@@ -2592,6 +2595,285 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
       estadoTend.autoTentado = true;
       buscarTendencias(true);
     }
+  }
+
+  /* =================================================================
+     ABA 9: ACHAR MARCAS (marcas dos nichos da Letícia para abordar,
+     com destaque para as que já trabalham com UGC)
+     Pesquisa pela mesma inteligência artificial das abas Virais e Tendências.
+     ================================================================= */
+  const NICHOS_MARCAS_PADRAO = [
+    "Maternidade",
+    "Rotina na roça e vida no campo",
+    "Horta e plantas",
+    "Culinária típica do Sul de Minas",
+    "Pães e bolos",
+    "Casa e limpeza",
+    "Decoração e DIY",
+    "Reforma barata, feita por mim mesma",
+    "Autocuidado simples para mãe",
+    "Tech"
+  ];
+  const CHAVE_NICHOS_MARCAS = "marcas_nichos";
+  const estadoAchar = { nicho: "todos", foco: "todas", status: "abertas", buscando: false, aviso: null, nichoBusca: "todos" };
+  const nichosMarcas = () => lerLista(CHAVE_NICHOS_MARCAS, NICHOS_MARCAS_PADRAO);
+  const normalNome = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const ehUGC = (x) => /^sim/i.test(String(x.trabalha_com_ugc || ""));
+  const talvezUGC = (x) => /prov/i.test(String(x.trabalha_com_ugc || ""));
+  const jaNaLista = (x) => dados.marcas.some((m) => normalNome(m.nome) === normalNome(x.nome));
+
+  /* junta as marcas de todas as buscas, sem repetir (a mais nova vale) */
+  function todasSugeridas() {
+    const vistas = new Map();
+    dados.marcasSugeridas.forEach((busca) => (busca.itens || []).forEach((x) => {
+      const k = normalNome(x.nome);
+      if (k && !vistas.has(k)) vistas.set(k, { ...x, _busca: busca });
+    }));
+    const peso = (x) => (ehUGC(x) ? 0 : talvezUGC(x) ? 1 : 2);
+    return Array.from(vistas.values()).sort((a, b) => peso(a) - peso(b) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+  }
+
+  function promptMarcas(nichos, quantas, evitar) {
+    const hoje = new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+    return `Hoje é ${hoje}. Você é especialista em prospecção de marcas para creators UGC no Brasil.
+Pesquise na internet marcas que vendem no Brasil e que combinam com estes nichos:
+${nichos.map((n) => "- " + n).join("\n")}
+
+Sobre a creator: Letícia Gabrielly (@leh.gsilva), creator UGC que mora na roça no Sul de Minas Gerais com os filhos. Grava conteúdo real e aconchegante: rotina na roça, maternidade, horta, comida caseira mineira, pão e bolo, casa e limpeza, decoração e reformas baratas feitas por ela mesma, autocuidado simples de mãe e achadinhos de tecnologia para o dia a dia. Já trabalhou com marcas de casa e limpeza.
+
+Traga ${quantas} marcas DIFERENTES, espalhadas pelos nichos, misturando marcas grandes, médias e pequenas (pequenas e médias costumam fechar mais rápido com creators novas).
+Dê prioridade às marcas que TRABALHAM COM UGC de verdade: têm programa de creators ou embaixadoras, contratam UGC em plataformas (ex: Squid, Inflr, BrandLovers, Minha Marca UGC, Hotmart, Shopee Creators, TikTok Shop afiliados), usam vídeos de creators nos anúncios ou no perfil, ou têm página de parceria.
+${evitar.length ? `Não repita estas marcas, que ela já tem: ${evitar.join(", ")}.` : ""}
+
+Regras de honestidade (muito importante):
+- "trabalha_com_ugc" só pode ser "sim" se você encontrou uma prova na pesquisa. Escreva a prova em "prova_ugc".
+- Se parece que trabalha mas não tem prova, use "provável". Se não sabe, use "não sei".
+- Não invente @ de Instagram, site nem e-mail. Se não encontrou, deixe vazio.
+
+Responda SOMENTE com um JSON válido, sem nenhum texto antes ou depois, exatamente neste formato:
+{
+  "resumo": "duas frases com o panorama das marcas desses nichos agora",
+  "marcas": [
+    {
+      "nome": "nome da marca",
+      "nicho": "um dos nichos da lista, escrito igual",
+      "o_que_vende": "o que a marca vende, em uma frase",
+      "porte": "pequena, média ou grande",
+      "instagram": "@perfil ou vazio",
+      "site": "https://... ou vazio",
+      "trabalha_com_ugc": "sim, provável ou não sei",
+      "prova_ugc": "o que mostra que ela trabalha com UGC, ou vazio",
+      "onde_abordar": "por onde chegar: direct do Instagram, e-mail de parcerias, formulário do site, plataforma de UGC",
+      "por_que_combina": "por que combina com a Letícia, em uma frase",
+      "ideia_de_video": "uma ideia de vídeo UGC para essa marca com a realidade dela (roça, filhos, horta, cozinha mineira)",
+      "mensagem": "mensagem curta e simpática de primeiro contato, em primeira pessoa, como a Letícia mandaria no direct, citando a ideia de vídeo e o portfólio leticiagsilva2026.github.io/leticiagabriellyugc"
+    }
+  ]
+}
+
+Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca use travessão.`;
+  }
+
+  async function buscarMarcas() {
+    if (estadoAchar.buscando) return;
+    if (!temIA()) { avisoAchar("erro", `✨ Para eu pesquisar as marcas, falta a chave grátis do Gemini ou do Groq. Salve na aba <a href="#virais">🔥 Virais</a> e volte aqui.`); return; }
+    const nichos = estadoAchar.nichoBusca === "todos" ? nichosMarcas() : [estadoAchar.nichoBusca];
+    const quantas = nichos.length === 1 ? "de 8 a 10" : "de 15 a 20";
+    const evitar = Array.from(new Set(dados.marcas.map((m) => m.nome).concat(todasSugeridas().map((x) => x.nome)).filter(Boolean))).slice(0, 80);
+    estadoAchar.buscando = true;
+    const inicio = Date.now();
+    const andar = () => avisoAchar("andamento", `🔎 Procurando marcas ${nichos.length === 1 ? "de " + esc(nichos[0]) : "dos seus nichos"} que trabalham com UGC… ${Math.round((Date.now() - inicio) / 1000)}s. Costuma levar até 1 minuto.`);
+    andar();
+    const relogio = setInterval(andar, 3000);
+    const parar = () => { clearInterval(relogio); estadoAchar.buscando = false; };
+    try {
+      const { json, fontes, comBusca, motor } = await perguntarGeminiComBusca(promptMarcas(nichos, quantas, evitar));
+      const itens = (Array.isArray(json.marcas) ? json.marcas : []).filter((x) => x && x.nome).map((x, i) => ({ ...x, id: "m" + Date.now() + i, status: "nova" }));
+      if (!itens.length) throw new Error("Não encontrei marcas dessa vez. Tente buscar de novo.");
+      const linha = await gravar("marcas_sugeridas", { nichos, resumo: semTravessao(json.resumo || ""), itens, fontes, sem_busca: !comBusca });
+      parar();
+      if (!linha) { avisoAchar("erro", "😕 Achei as marcas, mas não consegui guardar porque a tabela ainda não existe no Supabase. Clique em Copiar o SQL, cole no SQL Editor, clique em Run e busque de novo.", { texto: "📋 Copiar o SQL", fazer: copiarSQL }); return; }
+      dados.marcasSugeridas.unshift(linha);
+      const certas = itens.filter(ehUGC).length;
+      avisoAchar("ok", `✅ ${plural(itens.length, "marca nova", "marcas novas")}${certas ? `, ${plural(certas, "com certeza trabalha", "com certeza trabalham")} com UGC` : ""}${motor === "Groq" ? " (pelo Groq, porque o Gemini estava no limite)" : ""}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet: confira tudo antes de abordar"}.`);
+      if (abaAtual() === "achar") renderAchar($("#area"));
+    } catch (erro) {
+      parar();
+      avisoAchar("erro", "😕 " + esc(erro.message || "A busca não deu certo agora."));
+    }
+  }
+
+  function avisoAchar(tipo, html, acao) {
+    estadoAchar.aviso = tipo ? { tipo, html, acao } : null;
+    const el = $("#achar-aviso");
+    if (!el) return;
+    const a = estadoAchar.aviso;
+    if (!a) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.className = "rot-aviso " + a.tipo;
+    el.innerHTML = `<span>${a.html}</span>${a.acao ? `<button type="button" class="botao botao-leve" id="achar-aviso-acao">${esc(a.acao.texto)}</button>` : ""}`;
+    if (a.acao) $("#achar-aviso-acao").addEventListener("click", a.acao.fazer);
+  }
+
+  const instaDaMarca = (x) => { const u = String(x.instagram || "").trim().replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/\/.*$/, ""); return /^[\w.]{2,30}$/.test(u) ? `https://www.instagram.com/${u}/` : ""; };
+  const siteDaMarca = (x) => (/^https?:\/\/[^\s"<>]+$/i.test(String(x.site || "").trim()) ? String(x.site).trim() : "");
+
+  function cardMarca(x) {
+    const t = (v) => esc(semTravessao(v));
+    const insta = instaDaMarca(x), site = siteDaMarca(x);
+    const google = `https://www.google.com/search?q=${encodeURIComponent(x.nome + " instagram parceria creators")}`;
+    const selo = ehUGC(x) ? `<span class="pilula achar-selo">⭐ Trabalha com UGC</span>` : talvezUGC(x) ? `<span class="pilula">🤔 Provavelmente trabalha</span>` : `<span class="pilula">❔ Não sei se trabalha com UGC</span>`;
+    return `<article class="tend-card achar-card ${ehUGC(x) ? "certa" : ""} ${x.status === "abordei" ? "quero" : ""} ${x.status === "descartada" ? "feito" : ""}" data-item="${esc(x.id)}">
+      <div class="tend-topo">
+        ${selo}
+        ${x.nicho ? `<span class="pilula p-minha">${t(x.nicho)}</span>` : ""}
+        ${x.porte ? `<span class="pilula">${t(x.porte)}</span>` : ""}
+        ${jaNaLista(x) ? `<span class="pilula tend-marca">📒 Já está em Marcas</span>` : ""}
+        ${x.status === "abordei" ? `<span class="pilula tend-marca">💬 Já abordei</span>` : ""}
+      </div>
+      <h3>${t(x.nome)}</h3>
+      ${x.o_que_vende ? `<p>${t(x.o_que_vende)}</p>` : ""}
+      ${x.prova_ugc ? `<p class="dica">🔎 ${ehUGC(x) ? "Prova" : "O que encontrei"}: ${t(x.prova_ugc)}</p>` : ""}
+      ${x.por_que_combina ? `<p><b>💚 Por que combina com você:</b> ${t(x.por_que_combina)}</p>` : ""}
+      ${x.ideia_de_video ? `<div class="tend-adaptar"><b>🎬 Ideia de vídeo para oferecer</b><p>${t(x.ideia_de_video)}</p></div>` : ""}
+      ${x.onde_abordar ? `<p class="dica">📮 Onde abordar: ${t(x.onde_abordar)}</p>` : ""}
+      <div class="rot-acoes">
+        <button type="button" class="botao botao-principal" data-acao="mensagem">💬 Mensagem pronta</button>
+        ${insta ? `<a class="botao botao-leve" href="${esc(insta)}" target="_blank" rel="noopener">📸 Instagram</a>` : ""}
+        ${site ? `<a class="botao botao-leve" href="${esc(site)}" target="_blank" rel="noopener">🌐 Site</a>` : ""}
+        <a class="botao botao-leve" href="${esc(google)}" target="_blank" rel="noopener">🔍 Pesquisar</a>
+        ${jaNaLista(x) ? "" : `<button type="button" class="botao botao-leve" data-acao="salvar">📒 Salvar em Marcas</button>`}
+        <button type="button" class="botao botao-leve" data-acao="abordei">${x.status === "abordei" ? "↩️ Ainda não abordei" : "💬 Já abordei"}</button>
+        <button type="button" class="botao botao-leve" data-acao="descartar">${x.status === "descartada" ? "↩️ Trazer de volta" : "🙈 Não combina"}</button>
+      </div>
+    </article>`;
+  }
+
+  async function mudarMarcaSugerida(x, mudanca) {
+    const busca = x._busca;
+    const itens = (busca.itens || []).map((i) => (i.id === x.id ? { ...i, ...mudanca } : i));
+    const linha = await gravar("marcas_sugeridas", { itens }, busca.id);
+    if (linha) { trocarNaLista(dados.marcasSugeridas, linha); return linha; }
+    return null;
+  }
+  async function salvarEmMarcas(x) {
+    const obs = [x.nicho && `Nicho: ${x.nicho}`, ehUGC(x) && "Trabalha com UGC", x.prova_ugc, x.onde_abordar && `Abordar por: ${x.onde_abordar}`, x.ideia_de_video && `Ideia: ${x.ideia_de_video}`, siteDaMarca(x)]
+      .filter(Boolean).map(semTravessao).join(". ");
+    const linha = await gravar("marcas", { nome: semTravessao(x.nome).slice(0, 200), instagram: instaDaMarca(x) ? "@" + instaDaMarca(x).split("/")[3] : "", situacao: "lead", obs: obs.slice(0, 2000), ultimo_contato: isoLocal(new Date()) });
+    if (linha) { dados.marcas.unshift(linha); recado(`${semTravessao(x.nome)} salva na aba Marcas como Lead ✓`); }
+    return linha;
+  }
+  function verMensagem(x) {
+    abrirModal(`💬 ${semTravessao(x.nome)}`, `<div class="ficha vir-resultado">
+        ${x.onde_abordar ? `<p class="dica">📮 Onde mandar: ${esc(semTravessao(x.onde_abordar))}</p>` : ""}
+        <label class="inteira">Mensagem (pode editar antes de copiar)<textarea id="achar-msg" rows="9">${esc(semTravessao(x.mensagem || ""))}</textarea></label>
+        ${x.ideia_de_video ? `<h3>🎬 Ideia de vídeo</h3><p>${esc(semTravessao(x.ideia_de_video))}</p>` : ""}
+      </div>
+      <div class="form-acoes">
+        <span class="espaco"></span>
+        <button type="button" class="botao botao-principal" id="achar-copiar">📋 Copiar mensagem</button>
+      </div>`, true);
+    $("#achar-copiar").addEventListener("click", async (e) => {
+      try { await navigator.clipboard.writeText($("#achar-msg").value); e.target.textContent = "copiada ✓"; }
+      catch (erro) { recado("Não consegui copiar. Selecione o texto e copie.", true); }
+    });
+  }
+
+  function renderAchar(area) {
+    const nichos = nichosMarcas();
+    const todas = todasSugeridas();
+    const ultima = dados.marcasSugeridas[0];
+    const nichosNaLista = Array.from(new Set(todas.map((x) => x.nicho).filter(Boolean)));
+    const filtradas = todas.filter((x) =>
+      (estadoAchar.nicho === "todos" || x.nicho === estadoAchar.nicho) &&
+      (estadoAchar.foco === "todas" || (estadoAchar.foco === "ugc" ? ehUGC(x) : estadoAchar.foco === "talvez" ? ehUGC(x) || talvezUGC(x) : true)) &&
+      (estadoAchar.status === "todas" ? true : estadoAchar.status === "abordei" ? x.status === "abordei" : estadoAchar.status === "descartadas" ? x.status === "descartada" : x.status !== "descartada" && x.status !== "abordei"));
+    const certas = filtradas.filter(ehUGC), outras = filtradas.filter((x) => !ehUGC(x));
+    const quando = (b) => { const d = new Date(b.created_at); return `${dois(d.getDate())}/${dois(d.getMonth() + 1)} às ${dois(d.getHours())}:${dois(d.getMinutes())}`; };
+    const conta = (f) => todas.filter(f).length;
+
+    area.innerHTML = `
+      <section class="cartao rot-topo">
+        <p class="rot-frase">Eu pesquiso marcas dos seus nichos que vendem no Brasil e te mostro primeiro as que <b>com certeza trabalham com UGC</b>, com uma ideia de vídeo e a mensagem pronta para você abordar.</p>
+        <div class="rot-linha">
+          <select class="filtro" id="achar-nicho-busca" aria-label="Nicho da busca">
+            <option value="todos">Todos os meus nichos</option>
+            ${nichos.map((n) => `<option value="${esc(n)}" ${estadoAchar.nichoBusca === n ? "selected" : ""}>Só ${esc(n)}</option>`).join("")}
+          </select>
+          <span class="dica" style="flex:1">${ultima ? `🗓️ Última busca: ${quando(ultima)}` : "🗓️ Nenhuma busca ainda."}</span>
+          <button type="button" class="botao botao-principal" id="achar-buscar" ${estadoAchar.buscando ? "disabled" : ""}>🔎 Buscar marcas</button>
+        </div>
+        <div id="achar-aviso" class="rot-aviso" aria-live="polite" hidden></div>
+        <details class="tend-temas">
+          <summary>🎯 Meus nichos (${nichos.length})</summary>
+          <div class="tend-temas-corpo">
+            <div class="tend-chips">${nichos.map((n, i) => `<span class="tend-chip">${esc(n)}<button type="button" data-tirar-nicho="${i}" aria-label="Tirar o nicho ${esc(n)}">×</button></span>`).join("")}</div>
+            <form class="rot-linha" id="achar-novo-nicho"><input class="campo-busca" name="nicho" placeholder="+ Adicionar um nicho, ex: Pets da roça" style="flex:1"><button type="submit" class="botao botao-leve">Adicionar</button>
+              ${nichos.join("|") !== NICHOS_MARCAS_PADRAO.join("|") ? `<button type="button" class="botao botao-leve" id="achar-padrao">Voltar aos nichos iniciais</button>` : ""}</form>
+          </div>
+        </details>
+      </section>
+      ${todas.length ? `
+      <section class="cartao">
+        <div class="faixa-numeros achar-numeros" style="--colunas:4">
+          <div><span>Marcas encontradas</span><strong>${todas.length}</strong></div>
+          <div><span>⭐ Com certeza UGC</span><strong>${conta(ehUGC)}</strong></div>
+          <div><span>💬 Já abordei</span><strong>${conta((x) => x.status === "abordei")}</strong></div>
+          <div><span>📒 Salvas em Marcas</span><strong>${conta(jaNaLista)}</strong></div>
+        </div>
+        <div class="ferramentas" style="margin:14px 0">
+          <div class="chips" role="group" aria-label="Filtrar por UGC">
+            ${[["todas", "Todas"], ["ugc", "⭐ Só as que trabalham com UGC"], ["talvez", "⭐ + 🤔 prováveis"]].map(([v, t]) => `<button type="button" data-foco="${v}" aria-pressed="${estadoAchar.foco === v}">${t}</button>`).join("")}
+          </div>
+          <div class="chips" role="group" aria-label="Filtrar por situação">
+            ${[["abertas", "Para abordar"], ["abordei", "💬 Já abordei"], ["descartadas", "🙈 Não combinam"], ["todas", "Tudo"]].map(([v, t]) => `<button type="button" data-status="${v}" aria-pressed="${estadoAchar.status === v}">${t}</button>`).join("")}
+          </div>
+        </div>
+        <div class="chips achar-nichos" role="group" aria-label="Filtrar por nicho">
+          ${[["todos", "Todos os nichos"]].concat(nichosNaLista.map((n) => [n, `${n} (${conta((x) => x.nicho === n)})`])).map(([v, t]) => `<button type="button" data-nicho="${esc(v)}" aria-pressed="${estadoAchar.nicho === v}">${esc(t)}</button>`).join("")}
+        </div>
+        ${certas.length ? `<h2 class="achar-titulo">⭐ Foque nestas: com certeza trabalham com UGC <span class="dica">(${certas.length})</span></h2><div class="tend-grade">${certas.map(cardMarca).join("")}</div>` : ""}
+        ${outras.length ? `<h2 class="achar-titulo">🌱 Outras marcas que combinam com você <span class="dica">(${outras.length})</span></h2><div class="tend-grade">${outras.map(cardMarca).join("")}</div>` : ""}
+        ${filtradas.length ? "" : `<p class="frase-vazia">Nenhuma marca com esse filtro.</p>`}
+        <p class="dica" style="margin-top:14px">⚠️ A pesquisa é feita por inteligência artificial: antes de mandar mensagem, abra o Instagram ou o site da marca e confira se está tudo certo.</p>
+        ${ultima && (ultima.fontes || []).length ? `<details class="tend-fontes"><summary>📚 Onde eu pesquisei na última busca (${ultima.fontes.length})</summary><ul class="lista-simples">${ultima.fontes.slice(0, 20).map((f) => `<li><a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.titulo)}</a></li>`).join("")}</ul></details>` : ""}
+      </section>` : `
+      <section class="cartao"><p class="frase-vazia">📭 Nenhuma marca ainda. ${temIA() ? "Clique em Buscar marcas." : "Salve a chave grátis do Gemini ou do Groq na aba 🔥 Virais e volte aqui."}</p></section>`}`;
+
+    avisoAchar(estadoAchar.aviso ? estadoAchar.aviso.tipo : null, estadoAchar.aviso ? estadoAchar.aviso.html : "", estadoAchar.aviso ? estadoAchar.aviso.acao : null);
+    $("#achar-buscar").addEventListener("click", buscarMarcas);
+    $("#achar-nicho-busca").addEventListener("change", (e) => { estadoAchar.nichoBusca = e.target.value; });
+    $$("[data-foco]", area).forEach((b) => b.addEventListener("click", () => { estadoAchar.foco = b.dataset.foco; renderAchar(area); }));
+    $$("[data-status]", area).forEach((b) => b.addEventListener("click", () => { estadoAchar.status = b.dataset.status; renderAchar(area); }));
+    $$("[data-nicho]", area).forEach((b) => b.addEventListener("click", () => { estadoAchar.nicho = b.dataset.nicho; renderAchar(area); }));
+    $$("[data-tirar-nicho]", area).forEach((b) => b.addEventListener("click", async () => {
+      const lista = nichosMarcas(); lista.splice(Number(b.dataset.tirarNicho), 1);
+      if (!lista.length) { recado("Deixe pelo menos um nicho.", true); return; }
+      if (await salvarConfig(CHAVE_NICHOS_MARCAS, JSON.stringify(lista))) { renderAchar(area); $(".tend-temas", area).open = true; }
+    }));
+    $("#achar-novo-nicho").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const novo = e.target.elements.nicho.value.trim();
+      if (!novo) return;
+      const lista = nichosMarcas(); if (!lista.includes(novo)) lista.push(novo);
+      if (await salvarConfig(CHAVE_NICHOS_MARCAS, JSON.stringify(lista))) { recado("Nicho adicionado ✓"); renderAchar(area); $(".tend-temas", area).open = true; }
+    });
+    const padrao = $("#achar-padrao");
+    if (padrao) padrao.addEventListener("click", async () => { if (await salvarConfig(CHAVE_NICHOS_MARCAS, JSON.stringify(NICHOS_MARCAS_PADRAO))) { renderAchar(area); $(".tend-temas", area).open = true; } });
+    $$(".tend-grade", area).forEach((grade) => grade.addEventListener("click", async (e) => {
+      const botao = e.target.closest("[data-acao]");
+      if (!botao) return;
+      const x = todas.find((i) => i.id === botao.closest("[data-item]").dataset.item);
+      if (!x) return;
+      const acao = botao.dataset.acao;
+      if (acao === "mensagem") { verMensagem(x); return; }
+      botao.disabled = true;
+      let deu = null;
+      if (acao === "salvar") deu = await salvarEmMarcas(x);
+      if (acao === "abordei") deu = await mudarMarcaSugerida(x, { status: x.status === "abordei" ? "nova" : "abordei" });
+      if (acao === "descartar") deu = await mudarMarcaSugerida(x, { status: x.status === "descartada" ? "nova" : "descartada" });
+      if (deu) renderAchar(area); else botao.disabled = false;
+    }));
   }
 
   /* ---------------------------------------------------------------
