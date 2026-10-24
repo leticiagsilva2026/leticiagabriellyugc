@@ -425,3 +425,61 @@ ul.origens { margin: 0; padding: 0; }
 .achar-selo { background: var(--verde-escuro); color: #fff; }
 #achar-msg { width: 100%; min-height: 200px; font: inherit; padding: 10px 12px; border: 1px solid var(--borda); border-radius: var(--raio-p); margin-top: 6px; }
 @media (max-width: 860px) { .achar-numeros { --colunas: 2 !important; } }
+
+/* ---------- aba Cronograma (post-its) ---------- */
+.cron-barra { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cron-titulo { margin: 0; font-size: 1.05rem; min-width: 120px; text-align: center; }
+.cron-contagem { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.cron-semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.cron-dia { background: var(--fundo); border: 1px dashed var(--borda); border-radius: var(--raio-p); padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 340px; transition: background .15s, border-color .15s; }
+.cron-dia header { display: flex; justify-content: space-between; align-items: baseline; font-size: .8rem; color: var(--texto); padding: 2px 2px 4px; }
+.cron-dia header b { color: var(--tinta); font-size: .85rem; }
+.cron-dia.hoje { border: 2px solid var(--verde); background: var(--verde-claro); }
+.cron-dia.alvo, .cron-mes-dia.alvo { background: var(--terracota-claro); border-color: var(--terracota); }
+.cron-notas { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.cron-novo { border: 0; background: transparent; color: var(--verde-texto); font: 700 .78rem var(--fonte); cursor: pointer; padding: 6px; border-radius: 6px; }
+.cron-novo:hover { background: rgba(0,0,0,.05); }
+.postit, .cron-ideia { --p: #fff3a6; --p2: #f2e17a; background: linear-gradient(180deg, var(--p) 0, var(--p) 85%, var(--p2) 100%); color: #3b3520; border-radius: 3px 3px 10px 3px; padding: 9px 9px 7px; box-shadow: 0 2px 4px rgba(60,50,20,.14), 0 6px 10px -6px rgba(60,50,20,.25); cursor: grab; font-size: .78rem; line-height: 1.35; position: relative; overflow-wrap: anywhere; }
+.postit:nth-child(odd) { transform: rotate(-.6deg); }
+.postit:nth-child(even) { transform: rotate(.5deg); }
+.postit:hover, .postit:focus-visible { transform: rotate(0) translateY(-1px); outline: none; box-shadow: 0 4px 10px rgba(60,50,20,.22); }
+.postit.arrastando, .cron-ideia.arrastando { opacity: .4; }
+.postit.postado { opacity: .62; }
+.postit.postado strong { text-decoration: line-through; }
+.postit strong { display: block; font-size: .84rem; margin: 3px 0; color: #2b2615; }
+.postit p { margin: 0; color: #4f4830; white-space: pre-line; }
+.postit-topo, .postit-rodape { display: flex; justify-content: space-between; gap: 4px; font-size: .68rem; font-weight: 700; color: #6b6136; flex-wrap: wrap; }
+.postit-rodape { margin-top: 6px; align-items: center; }
+.postit-setas button { border: 0; background: rgba(0,0,0,.07); color: inherit; font-size: .6rem; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; margin-left: 2px; }
+.postit-setas button:hover { background: rgba(0,0,0,.15); }
+.cor-amarelo { --p: #fff3a6; --p2: #f2e17a; }
+.cor-rosa { --p: #ffd9e3; --p2: #f6bccc; }
+.cor-verde { --p: #ddefc4; --p2: #c6e1a3; }
+.cor-azul { --p: #d6e9fb; --p2: #b9d6f2; }
+.cor-laranja { --p: #ffe0c2; --p2: #f8c79a; }
+.cor-lilas { --p: #e7dcfa; --p2: #d2c1f2; }
+.cron-mes { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cron-mes-cab { font-size: .72rem; font-weight: 800; text-transform: uppercase; color: var(--texto); text-align: center; padding: 4px 0; }
+.cron-mes-dia { background: var(--fundo); border: 1px solid var(--borda); border-radius: 6px; min-height: 92px; padding: 4px; display: flex; flex-direction: column; gap: 3px; }
+.cron-mes-dia.fora { opacity: .45; }
+.cron-mes-dia.hoje { border: 2px solid var(--verde); }
+.cron-mes-num { border: 0; background: transparent; font: 800 .75rem var(--fonte); color: var(--tinta); text-align: left; cursor: pointer; padding: 2px; }
+.postit.mini { padding: 3px 5px; font-size: .68rem; transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 3px; box-shadow: 0 1px 2px rgba(60,50,20,.15); }
+.cron-ideias { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 12px; margin-top: 12px; }
+.cron-ideia { display: flex; flex-direction: column; gap: 6px; }
+.cron-ideia strong { font-size: .88rem; color: #2b2615; }
+.cron-ideia p { margin: 0; }
+.cron-ideia .rot-acoes { margin-top: auto; }
+.cron-ideia .filtro { font-size: .76rem; padding: 6px 8px; background: rgba(255,255,255,.6); }
+.cron-dicas { margin: 10px 0 0; padding-left: 20px; font-size: .86rem; display: grid; gap: 4px; }
+.cron-dicas-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 10px; margin-top: 10px; }
+.cron-mudancas { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cron-mudancas li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); font-size: .85rem; }
+.cron-slides { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+@media (max-width: 1100px) { .cron-semana { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .cron-semana { grid-template-columns: 1fr; }
+  .cron-dia { min-height: 0; }
+  .cron-mes-dia { min-height: 60px; }
+  .postit.mini { font-size: 0; padding: 0; height: 8px; }
+}

@@ -120,9 +120,10 @@
     configuracoes: ["chave", "valor"],
     virais: ["url", "fonte", "perfil", "titulo", "nicho", "transcricao", "analise", "adaptacoes", "status"],
     tendencias: ["nichos", "plataformas", "resumo", "itens", "fontes", "sem_busca"],
-    marcas_sugeridas: ["nichos", "resumo", "itens", "fontes", "sem_busca"]
+    marcas_sugeridas: ["nichos", "resumo", "itens", "fontes", "sem_busca"],
+    cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -154,7 +155,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -166,9 +167,10 @@
       buscar("configuracoes", (q) => q.select("*")),
       buscar("virais", (q) => q.select("*").order("created_at", { ascending: false }).limit(1000)),
       buscar("tendencias", (q) => q.select("*").order("created_at", { ascending: false }).limit(60)),
-      buscar("marcas_sugeridas", (q) => q.select("*").order("created_at", { ascending: false }).limit(100))
+      buscar("marcas_sugeridas", (q) => q.select("*").order("created_at", { ascending: false }).limit(100)),
+      buscar("cronograma", (q) => q.select("*").order("data", { ascending: true }).order("ordem", { ascending: true }).limit(2000))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -291,6 +293,7 @@
     marcas: ["Marcas", renderMarcas],
     achar: ["🎯 Achar marcas", renderAchar],
     calendario: ["Calendário", renderCalendario],
+    cronograma: ["🗒️ Cronograma", renderCronograma],
     campanhas: ["Campanhas", renderCampanhas],
     roteiros: ["📜 Roteiros", renderRoteiros],
     virais: ["🔥 Virais", renderVirais],
@@ -2874,6 +2877,442 @@ Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca 
       if (acao === "descartar") deu = await mudarMarcaSugerida(x, { status: x.status === "descartada" ? "nova" : "descartada" });
       if (deu) renderAchar(area); else botao.disabled = false;
     }));
+  }
+
+  /* =================================================================
+     ABA 10: CRONOGRAMA (post-its da semana que mudam de dia arrastando,
+     ideias da semana a partir das tendências e dicas de estratégia)
+     As ideias e as dicas de cada semana ficam em "configuracoes".
+     ================================================================= */
+  const CRON_DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+  const CRON_FORMATOS = [["Reels", "🎬 Reels"], ["Carrossel", "🖼️ Carrossel"], ["Stories", "📱 Stories"], ["Post", "📷 Post"], ["Publi", "🤝 Publi (marca)"]];
+  const CRON_CORES = [["amarelo", "🟨 Amarelo"], ["rosa", "🩷 Rosa"], ["verde", "🟩 Verde"], ["azul", "🟦 Azul"], ["laranja", "🟧 Laranja"], ["lilas", "🟪 Lilás"]];
+  const CRON_COR_DO_FORMATO = { Reels: "amarelo", Carrossel: "azul", Stories: "rosa", Post: "verde", Publi: "laranja" };
+  const CRON_STATUS = [["ideia", "💡 Ideia"], ["roteiro", "📝 Roteiro pronto"], ["gravado", "🎥 Gravado"], ["editado", "✂️ Editado"], ["postado", "✅ Postado"]];
+  const nomeStatusCron = (s) => (CRON_STATUS.find((x) => x[0] === s) || ["", "💡 Ideia"])[1];
+  const nomeFormatoCron = (f) => (CRON_FORMATOS.find((x) => x[0] === f) || [f, f || ""])[1];
+  const segundaDe = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const maisDias = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const estadoCron = { semana: isoLocal(segundaDe(new Date())), vista: "semana", gerando: false, analisando: false, aviso: null, autoTentado: new Set(), arrastando: null };
+  const chaveSemanaCron = (iso) => "cronograma_semana_" + iso;
+  const lerSemanaCron = (iso) => { try { return JSON.parse(dados.config[chaveSemanaCron(iso)] || "null") || {}; } catch (erro) { return {}; } };
+  const diasDaSemanaCron = (iso) => CRON_DIAS.map((nome, i) => ({ nome, iso: isoLocal(maisDias(deISO(iso), i)) }));
+  const notasDoDia = (iso) => dados.cronograma.filter((n) => String(n.data).slice(0, 10) === iso).sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+  const dataCurta = (iso) => { const d = deISO(iso); return `${dois(d.getDate())}/${dois(d.getMonth() + 1)}`; };
+
+  function avisoCron(tipo, html, acao) {
+    estadoCron.aviso = tipo ? { tipo, html, acao } : null;
+    const el = $("#cron-aviso");
+    if (!el) return;
+    const a = estadoCron.aviso;
+    if (!a) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.className = "rot-aviso " + a.tipo;
+    el.innerHTML = `<span>${a.html}</span>${a.acao ? `<button type="button" class="botao botao-leve" id="cron-aviso-acao">${esc(a.acao.texto)}</button>` : ""}`;
+    if (a.acao) $("#cron-aviso-acao").addEventListener("click", a.acao.fazer);
+  }
+  const redesenharCron = () => { if (abaAtual() === "cronograma") renderCronograma($("#area")); };
+
+  /* ---- post-its: criar, editar, mover ---- */
+  async function moverNota(id, diaIso, posicao) {
+    const nota = dados.cronograma.find((n) => n.id === id);
+    if (!nota) return;
+    const destino = notasDoDia(diaIso).filter((n) => n.id !== id);
+    const pos = posicao == null || posicao > destino.length ? destino.length : Math.max(0, posicao);
+    destino.splice(pos, 0, nota);
+    const mudancas = [];
+    destino.forEach((n, i) => {
+      const novo = { ordem: i };
+      if (n.id === id) novo.data = diaIso;
+      if (n.ordem !== i || (n.id === id && String(n.data).slice(0, 10) !== diaIso)) { Object.assign(n, novo); mudancas.push([n.id, novo]); }
+    });
+    redesenharCron();
+    const resultados = await Promise.all(mudancas.map(([nid, valores]) => gravar("cronograma", valores, nid)));
+    resultados.forEach((linha) => { if (linha) trocarNaLista(dados.cronograma, linha); });
+    if (resultados.some((r) => !r)) redesenharCron();
+  }
+
+  function editarNota(nota, padrao) {
+    const novo = !nota;
+    formulario({
+      titulo: novo ? "📝 Novo post-it" : "📝 Editar post-it",
+      valores: nota || Object.assign({ formato: "Reels", cor: "amarelo", status: "ideia" }, padrao || {}),
+      campos: [
+        { nome: "titulo", rotulo: "O que é o conteúdo", obrigatorio: true, inteira: true },
+        { nome: "data", rotulo: "Dia", tipo: "date", obrigatorio: true },
+        { nome: "horario", rotulo: "Horário (opcional)", dica: "ex: 19h" },
+        { nome: "formato", rotulo: "Formato", tipo: "select", opcoes: CRON_FORMATOS },
+        { nome: "status", rotulo: "Situação", tipo: "select", opcoes: CRON_STATUS },
+        { nome: "cor", rotulo: "Cor do post-it", tipo: "select", opcoes: CRON_CORES },
+        { nome: "texto", rotulo: "Anotações (gancho, ideia, o que gravar)", tipo: "textarea", inteira: true }
+      ],
+      aoApagar: novo ? null : async () => {
+        if (await apagar("cronograma", nota.id)) { dados.cronograma = dados.cronograma.filter((n) => n.id !== nota.id); redesenharCron(); return true; }
+        return false;
+      },
+      aoSalvar: async (v) => {
+        if (novo && (!padrao || !padrao.cor) && v.cor === "amarelo") v.cor = CRON_COR_DO_FORMATO[v.formato] || "amarelo";
+        if (novo || String(nota.data).slice(0, 10) !== v.data) v.ordem = notasDoDia(v.data).length;
+        if (padrao && padrao.detalhes) v.detalhes = padrao.detalhes;
+        const linha = await gravar("cronograma", v, novo ? null : nota.id);
+        if (!linha) return false;
+        trocarNaLista(dados.cronograma, linha);
+        recado(novo ? "Post-it criado ✓" : "Post-it salvo ✓");
+        redesenharCron();
+        return true;
+      }
+    });
+    if (!novo && nota.detalhes && (nota.detalhes.roteiro || nota.detalhes.slides)) {
+      const acoes = $("#form-modal .form-acoes");
+      const ver = document.createElement("button");
+      ver.type = "button"; ver.className = "botao botao-leve"; ver.textContent = "🎬 Ver roteiro";
+      ver.addEventListener("click", () => verIdeiaCron(nota.detalhes));
+      acoes.insertBefore(ver, acoes.querySelector(".espaco"));
+    }
+  }
+
+  function postit(n) {
+    const t = (v) => esc(semTravessao(v));
+    return `<article class="postit cor-${esc(n.cor || "amarelo")} ${n.status === "postado" ? "postado" : ""}" draggable="true" data-nota="${esc(n.id)}" tabindex="0" aria-label="${t(n.titulo)}. Arraste para mudar de dia.">
+      <div class="postit-topo"><span>${esc(nomeFormatoCron(n.formato))}</span>${n.horario ? `<span>🕒 ${t(n.horario)}</span>` : ""}</div>
+      <strong>${t(n.titulo)}</strong>
+      ${n.texto ? `<p>${t(n.texto).slice(0, 160)}${String(n.texto).length > 160 ? "…" : ""}</p>` : ""}
+      <div class="postit-rodape">
+        <span>${esc(nomeStatusCron(n.status))}</span>
+        <span class="postit-setas"><button type="button" data-mover="-1" aria-label="Passar para o dia anterior">◀</button><button type="button" data-mover="1" aria-label="Passar para o dia seguinte">▶</button></span>
+      </div>
+    </article>`;
+  }
+
+  /* ---- ideias da semana (pesquisa + tendências + virais) ---- */
+  function contextoCron() {
+    const tend = (dados.tendencias[0] && dados.tendencias[0].itens) || [];
+    const linhasTend = tend.slice(0, 10).map((x) => `- ${x.titulo} (${x.plataforma || ""}, ${x.formato || ""}): ${x.por_que_esta_bombando || ""} Adaptação: ${x.como_adaptar || ""}`).join("\n");
+    const linhasVir = dados.virais.filter((v) => v.analise).slice(0, 5).map((v) => `- ${v.titulo || v.perfil || "viral"}: gancho "${(v.analise.gancho && (v.analise.gancho.frase || v.analise.gancho.tipo)) || ""}", formato ${String(v.analise.formato || "")}`).join("\n");
+    return { linhasTend, linhasVir };
+  }
+  function promptIdeiasCron(iso, semana) {
+    const dias = diasDaSemanaCron(iso);
+    const { linhasTend, linhasVir } = contextoCron();
+    const ja = dias.map((d) => notasDoDia(d.iso).map((n) => `${d.nome}: ${n.formato} "${n.titulo}"`)).flat();
+    const hoje = new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+    return `Hoje é ${hoje}. Você é estrategista de conteúdo para Instagram de uma creator brasileira.
+Pesquise na internet o que está viralizando e dando bons resultados NESTA semana em Reels e carrosséis no Instagram (e TikTok) nos temas dela, e monte opções de conteúdo para a semana de ${dataBR(dias[0].iso)} a ${dataBR(dias[6].iso)}.
+
+Sobre a creator: Letícia Gabrielly (@leh.gsilva), creator UGC que mora na roça no Sul de Minas com os filhos. Temas: ${temasTend().join("; ")}. Conteúdo real, aconchegante, com a naturalidade de uma amiga. O cenário dela: verde, horta, galinhas, varal ao sol, mesa de madeira, cozinha simples, luz de fim de tarde.
+${linhasTend ? `\nTendências que ela já pesquisou no painel:\n${linhasTend}\n` : ""}${linhasVir ? `\nVirais que ela analisou:\n${linhasVir}\n` : ""}${ja.length ? `\nO que ela já colocou nesta semana:\n${ja.join("\n")}\n` : ""}
+Traga 12 ideias: 7 Reels e 5 carrosséis, variando temas e objetivos (alcance, conexão, salvamento, venda/portfólio para marcas). Sugira o melhor dia e horário para cada uma, pensando na semana inteira equilibrada.
+
+Responda SOMENTE com um JSON válido, sem nenhum texto antes ou depois, exatamente neste formato:
+{
+  "resumo": "duas frases sobre o que está funcionando nesta semana",
+  "dicas": ["dica estratégica curta e prática para a semana", "outra dica"],
+  "ideias": [
+    {
+      "formato": "Reels ou Carrossel",
+      "titulo": "título curto do conteúdo",
+      "tema": "um dos temas dela",
+      "objetivo": "alcance, conexão, salvamento ou venda",
+      "baseado_em": "qual tendência ou viral da semana inspirou e por que está funcionando",
+      "gancho": "frase de gancho pronta (Reels: primeiros 3 segundos; Carrossel: capa)",
+      "descricao": "o que ela faz no conteúdo, com a realidade dela, em duas frases",
+      "dia_sugerido": "Segunda, Terça, Quarta, Quinta, Sexta, Sábado ou Domingo",
+      "horario_sugerido": "ex: 19h",
+      "roteiro": ${MODELO_BLOCOS_ROTEIRO},
+      "slides": ["Slide 1 (capa): texto", "Slide 2: texto", "último slide: chamada para salvar ou comentar"],
+      "legenda": "legenda pronta, com no máximo 3 hashtags"
+    }
+  ]
+}
+
+Para Reels, preencha "roteiro" (4 a 6 blocos) e deixe "slides" vazio. Para Carrossel, preencha "slides" (5 a 8 slides) e deixe "roteiro" vazio.
+${REGRAS_ROTEIRO}
+Regras gerais: português do Brasil, linguagem simples, nada robotizado e nunca use travessão.`;
+  }
+  async function gerarIdeiasCron(iso, automatica) {
+    if (estadoCron.gerando) return;
+    if (!temIA()) { avisoCron("erro", `✨ Para eu montar as ideias da semana, falta a chave grátis do Gemini ou do Groq. Salve na aba <a href="#virais">🔥 Virais</a> e volte aqui.`); return; }
+    estadoCron.gerando = true;
+    const inicio = Date.now();
+    const andar = () => avisoCron("andamento", `🔎 ${automatica ? "Semana nova! Montando sozinha" : "Montando"} as ideias da semana com o que está viralizando… ${Math.round((Date.now() - inicio) / 1000)}s. Costuma levar até 1 minuto.`);
+    andar();
+    const relogio = setInterval(andar, 3000);
+    const parar = () => { clearInterval(relogio); estadoCron.gerando = false; };
+    try {
+      const { json, fontes, comBusca, motor } = await perguntarGeminiComBusca(promptIdeiasCron(iso));
+      const ideias = (Array.isArray(json.ideias) ? json.ideias : []).filter((x) => x && x.titulo).map((x, i) => ({ ...x, id: "i" + Date.now() + i, usada: false }));
+      if (!ideias.length) throw new Error("Não consegui montar ideias dessa vez. Tente de novo.");
+      const atual = lerSemanaCron(iso);
+      const valor = Object.assign({}, atual, { ideias, dicas: (json.dicas || []).map(semTravessao), resumo: semTravessao(json.resumo || ""), fontes, comBusca, geradoEm: new Date().toISOString() });
+      const ok = await salvarConfig(chaveSemanaCron(iso), JSON.stringify(valor));
+      parar();
+      if (!ok) { avisoCron("erro", "😕 Montei as ideias, mas não consegui guardar. Tente de novo em instantes."); return; }
+      avisoCron("ok", `✅ ${plural(ideias.length, "ideia nova", "ideias novas")} para a semana${motor === "Groq" ? " (pelo Groq, porque o Gemini estava no limite)" : ""}${comBusca ? "" : ". Desta vez não consegui pesquisar na internet, então usei as suas tendências e virais salvos"}. Arraste para o dia que quiser.`);
+      redesenharCron();
+    } catch (erro) {
+      parar();
+      avisoCron("erro", "😕 " + esc(erro.message || "Não deu certo agora."));
+    }
+  }
+
+  /* ---- dicas de estratégia para a semana e o mês ---- */
+  async function analisarSemanaCron(iso) {
+    if (estadoCron.analisando) return;
+    if (!temIA()) { avisoCron("erro", `✨ Falta a chave grátis do Gemini ou do Groq. Salve na aba <a href="#virais">🔥 Virais</a>.`); return; }
+    const dias = diasDaSemanaCron(iso);
+    const semana = dias.map((d) => `${d.nome} ${dataCurta(d.iso)}: ${notasDoDia(d.iso).map((n) => `[id ${n.id}] ${n.formato} "${n.titulo}"${n.horario ? " às " + n.horario : ""} (${nomeStatusCron(n.status)})`).join("; ") || "nada"}`).join("\n");
+    const mesRef = deISO(iso);
+    const doMes = dados.cronograma.filter((n) => { const d = deISO(n.data); return d && d.getMonth() === mesRef.getMonth() && d.getFullYear() === mesRef.getFullYear(); });
+    const contaMes = CRON_FORMATOS.map(([f]) => `${f}: ${doMes.filter((n) => n.formato === f).length}`).join(", ");
+    estadoCron.analisando = true;
+    avisoCron("andamento", "🧭 Olhando a sua semana e o seu mês para te dar dicas…");
+    try {
+      const json = await perguntarGemini(`Você é estrategista de conteúdo para Instagram. Analise o cronograma da creator Letícia (@leh.gsilva), creator UGC da roça no Sul de Minas, com filhos. Temas: ${temasTend().join("; ")}.
+
+Semana de ${dataBR(dias[0].iso)} a ${dataBR(dias[6].iso)}:
+${semana}
+
+No mês inteiro ela tem: ${contaMes} (total ${doMes.length}).
+
+Dê dicas práticas para deixar a semana e o mês mais estratégicos: equilíbrio entre Reels (alcance) e carrosséis (salvamento), dias e horários, sequência entre os conteúdos (um puxando o outro), dias sobrecarregados ou vazios, conteúdo de conexão e de portfólio para marcas, e quando gravar em lote.
+Se fizer sentido trocar algum conteúdo de dia, sugira a troca usando o id exato do post-it.
+
+Responda SOMENTE com JSON válido neste formato:
+{
+  "nota": "uma frase sobre como está a semana",
+  "dicas": [ { "titulo": "título curto", "texto": "dica prática em uma ou duas frases" } ],
+  "mudancas": [ { "id": "id do post-it", "para": "Segunda, Terça, Quarta, Quinta, Sexta, Sábado ou Domingo", "motivo": "por que mudar" } ]
+}
+De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples, nunca use travessão.`, 0.6);
+      const atual = lerSemanaCron(iso);
+      const analise = { nota: semTravessao(json.nota || ""), dicas: (json.dicas || []).filter((d) => d && (d.titulo || d.texto)), mudancas: (json.mudancas || []).filter((m) => m && dados.cronograma.some((n) => n.id === m.id) && CRON_DIAS.includes(m.para)), feitaEm: new Date().toISOString() };
+      await salvarConfig(chaveSemanaCron(iso), JSON.stringify(Object.assign({}, atual, { analise })));
+      estadoCron.analisando = false;
+      avisoCron("ok", "✅ Dicas prontas aqui embaixo.");
+      redesenharCron();
+    } catch (erro) {
+      estadoCron.analisando = false;
+      avisoCron("erro", "😕 " + esc(erro.message || "Não deu certo agora."));
+    }
+  }
+
+  function verIdeiaCron(x, aoColocar) {
+    const t = (v) => esc(semTravessao(v));
+    const ehCarrossel = /carross/i.test(x.formato || "") || (Array.isArray(x.slides) && x.slides.length && !(x.roteiro || []).length);
+    abrirModal(`${ehCarrossel ? "🖼️" : "🎬"} ${semTravessao(x.titulo)}`, `<div class="ficha vir-resultado">
+        ${x.baseado_em ? `<p class="dica">🔥 Baseado em: ${t(x.baseado_em)}</p>` : ""}
+        ${x.descricao ? `<p>${t(x.descricao)}</p>` : ""}
+        ${x.gancho ? `<h3>🎣 ${ehCarrossel ? "Capa" : "Gancho"}</h3><p class="gancho">"${t(x.gancho)}"</p>` : ""}
+        ${ehCarrossel ? `<h3>🖼️ Slides</h3><ol class="cron-slides">${(x.slides || []).map((s) => `<li>${t(s)}</li>`).join("")}</ol>` : `<h3>🎬 Roteiro</h3>${tabelaRoteiro(x.roteiro)}`}
+        ${x.legenda ? `<h3>✍️ Legenda</h3><p>${t(x.legenda)}</p>` : ""}
+      </div>
+      <div class="form-acoes">
+        <span class="espaco"></span>
+        <button type="button" class="botao botao-leve" id="cron-copiar">📋 Copiar</button>
+        ${aoColocar ? `<button type="button" class="botao botao-principal" id="cron-colocar">📌 Pôr na ${esc(x.dia_sugerido || "semana")}</button>` : ""}
+      </div>`, true);
+    $("#cron-copiar").addEventListener("click", async (e) => {
+      const texto = [semTravessao(x.titulo), "", x.gancho ? (ehCarrossel ? "Capa: " : "Gancho: ") + semTravessao(x.gancho) : "", "", ehCarrossel ? (x.slides || []).map(semTravessao).join("\n") : textoBlocos(x.roteiro), "", x.legenda ? "Legenda: " + semTravessao(x.legenda) : ""].join("\n");
+      try { await navigator.clipboard.writeText(texto); e.target.textContent = "copiado ✓"; } catch (erro) { recado("Não consegui copiar. Selecione o texto e copie.", true); }
+    });
+    if (aoColocar) $("#cron-colocar").addEventListener("click", () => { fecharModal(); aoColocar(); });
+  }
+
+  async function colocarIdeia(iso, ideiaId, diaIso, posicao) {
+    const semana = lerSemanaCron(iso);
+    const x = (semana.ideias || []).find((i) => i.id === ideiaId);
+    if (!x) return;
+    const dias = diasDaSemanaCron(iso);
+    const destino = diaIso || (dias.find((d) => d.nome === x.dia_sugerido) || dias[0]).iso;
+    const formato = /carross/i.test(x.formato || "") ? "Carrossel" : "Reels";
+    const linha = await gravar("cronograma", {
+      data: destino, ordem: notasDoDia(destino).length, titulo: semTravessao(x.titulo).slice(0, 200), formato, cor: CRON_COR_DO_FORMATO[formato],
+      horario: semTravessao(x.horario_sugerido || ""), status: "ideia",
+      texto: [x.gancho && `🎣 ${semTravessao(x.gancho)}`, semTravessao(x.descricao || "")].filter(Boolean).join("\n"),
+      detalhes: { roteiro: x.roteiro || [], slides: x.slides || [], legenda: x.legenda || "", gancho: x.gancho || "", titulo: x.titulo, formato, baseado_em: x.baseado_em || "", descricao: x.descricao || "" }
+    });
+    if (!linha) return;
+    trocarNaLista(dados.cronograma, linha);
+    semana.ideias = semana.ideias.map((i) => (i.id === ideiaId ? { ...i, usada: true } : i));
+    await salvarConfig(chaveSemanaCron(iso), JSON.stringify(semana));
+    if (posicao != null) await moverNota(linha.id, destino, posicao);
+    recado(`Colocado na ${CRON_DIAS[dias.findIndex((d) => d.iso === destino)] || "semana"} ✓`);
+    redesenharCron();
+  }
+
+  /* ---- arrastar e soltar (mouse) ---- */
+  function posicaoNoDia(coluna, y) {
+    const notas = $$(".postit", coluna).filter((n) => n.dataset.nota !== (estadoCron.arrastando || "").replace(/^nota:/, ""));
+    const i = notas.findIndex((n) => { const r = n.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    return i < 0 ? notas.length : i;
+  }
+  function ligarArrastar(area, iso) {
+    $$("[draggable=true]", area).forEach((el) => {
+      el.addEventListener("dragstart", (e) => {
+        estadoCron.arrastando = el.dataset.nota ? "nota:" + el.dataset.nota : "ideia:" + el.dataset.ideia;
+        e.dataTransfer.setData("text/plain", estadoCron.arrastando);
+        e.dataTransfer.effectAllowed = "move";
+        setTimeout(() => el.classList.add("arrastando"), 0);
+      });
+      el.addEventListener("dragend", () => { el.classList.remove("arrastando"); estadoCron.arrastando = null; $$(".cron-dia.alvo", area).forEach((c) => c.classList.remove("alvo")); });
+    });
+    $$("[data-dia]", area).forEach((coluna) => {
+      coluna.addEventListener("dragover", (e) => { if (!estadoCron.arrastando) return; e.preventDefault(); coluna.classList.add("alvo"); });
+      coluna.addEventListener("dragleave", (e) => { if (!coluna.contains(e.relatedTarget)) coluna.classList.remove("alvo"); });
+      coluna.addEventListener("drop", (e) => {
+        e.preventDefault();
+        coluna.classList.remove("alvo");
+        const item = e.dataTransfer.getData("text/plain") || estadoCron.arrastando || "";
+        const pos = estadoCron.vista === "semana" ? posicaoNoDia(coluna, e.clientY) : null;
+        if (item.startsWith("nota:")) moverNota(item.slice(5), coluna.dataset.dia, pos);
+        if (item.startsWith("ideia:")) colocarIdeia(iso, item.slice(6), coluna.dataset.dia, pos);
+      });
+    });
+  }
+
+  function renderCronograma(area) {
+    const iso = estadoCron.semana;
+    const dias = diasDaSemanaCron(iso);
+    const hojeIso = isoLocal(new Date());
+    const semana = lerSemanaCron(iso);
+    const ideias = semana.ideias || [];
+    const livres = ideias.filter((x) => !x.usada);
+    const daSemana = dias.map((d) => notasDoDia(d.iso)).flat();
+    const doMesCron = dados.cronograma.filter((n) => { const d = deISO(n.data); return d && d.getMonth() === deISO(iso).getMonth() && d.getFullYear() === deISO(iso).getFullYear(); });
+    const contados = estadoCron.vista === "semana" ? daSemana : doMesCron;
+    const conta = (f) => contados.filter((n) => n.formato === f).length;
+    const mesRef = deISO(iso);
+    const nomeMes = mesRef.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(/^./, (l) => l.toUpperCase());
+    const ehSemanaAtual = iso === isoLocal(segundaDe(new Date()));
+    const ehFutura = deISO(iso) >= segundaDe(new Date());
+
+    let quadro;
+    if (estadoCron.vista === "semana") {
+      quadro = `<div class="cron-semana">${dias.map((d) => `
+        <section class="cron-dia ${d.iso === hojeIso ? "hoje" : ""}" data-dia="${d.iso}" aria-label="${d.nome} ${dataCurta(d.iso)}">
+          <header><b>${d.nome}</b><span>${dataCurta(d.iso)}</span></header>
+          <div class="cron-notas">${notasDoDia(d.iso).map(postit).join("")}</div>
+          <button type="button" class="cron-novo" data-novo="${d.iso}">+ post-it</button>
+        </section>`).join("")}</div>`;
+    } else {
+      const inicioMes = new Date(mesRef.getFullYear(), mesRef.getMonth(), 1);
+      const primeira = segundaDe(inicioMes);
+      const semanas = [];
+      for (let s = 0; s < 6; s++) { const seg = maisDias(primeira, s * 7); if (s > 3 && seg.getMonth() !== mesRef.getMonth()) break; semanas.push(seg); }
+      quadro = `<div class="cron-mes">
+        ${CRON_DIAS.map((n) => `<div class="cron-mes-cab">${n.slice(0, 3)}</div>`).join("")}
+        ${semanas.map((seg) => CRON_DIAS.map((_, i) => { const d = maisDias(seg, i); const di = isoLocal(d); return `
+          <section class="cron-mes-dia ${d.getMonth() !== mesRef.getMonth() ? "fora" : ""} ${di === hojeIso ? "hoje" : ""}" data-dia="${di}">
+            <button type="button" class="cron-mes-num" data-ir-semana="${isoLocal(seg)}">${d.getDate()}</button>
+            ${notasDoDia(di).map((n) => `<div class="postit mini cor-${esc(n.cor || "amarelo")} ${n.status === "postado" ? "postado" : ""}" draggable="true" data-nota="${esc(n.id)}" title="${esc(n.titulo)}">${esc(nomeFormatoCron(n.formato).split(" ")[0])} ${esc(semTravessao(n.titulo))}</div>`).join("")}
+          </section>`; }).join("")).join("")}
+      </div>`;
+    }
+
+    const analise = semana.analise;
+    area.innerHTML = `
+      <section class="cartao">
+        <div class="cron-barra">
+          <div class="rot-linha">
+            <button type="button" class="botao botao-leve" id="cron-antes" aria-label="${estadoCron.vista === "semana" ? "Semana anterior" : "Mês anterior"}">◀</button>
+            <h2 class="cron-titulo">${estadoCron.vista === "semana" ? `${dataCurta(dias[0].iso)} a ${dataCurta(dias[6].iso)}` : nomeMes}</h2>
+            <button type="button" class="botao botao-leve" id="cron-depois" aria-label="${estadoCron.vista === "semana" ? "Próxima semana" : "Próximo mês"}">▶</button>
+            ${ehSemanaAtual ? "" : `<button type="button" class="botao botao-leve" id="cron-hoje">Hoje</button>`}
+          </div>
+          <div class="chips" role="group" aria-label="Ver por">
+            <button type="button" data-vista="semana" aria-pressed="${estadoCron.vista === "semana"}">Semana</button>
+            <button type="button" data-vista="mes" aria-pressed="${estadoCron.vista === "mes"}">Mês</button>
+          </div>
+        </div>
+        <div class="cron-contagem">${CRON_FORMATOS.filter(([f]) => conta(f)).map(([f, n]) => `<span class="pilula">${n}: ${conta(f)}</span>`).join("") || `<span class="dica">${estadoCron.vista === "semana" ? "Semana vazia. Crie um post-it ou arraste uma ideia para um dia." : "Mês vazio."}</span>`}
+          ${contados.length ? `<span class="pilula">✅ Postados: ${contados.filter((n) => n.status === "postado").length} de ${contados.length}</span>` : ""}</div>
+        <div id="cron-aviso" class="rot-aviso" aria-live="polite" hidden></div>
+        ${quadro}
+        <p class="dica" style="margin-top:10px">💡 Arraste os post-its para trocar de dia ou de ordem. No celular, use as setinhas ◀ ▶ ou toque no post-it e mude o dia.</p>
+      </section>
+
+      ${estadoCron.vista === "semana" ? `
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>✨ Ideias da semana <span class="dica">(${livres.length} para usar)</span></h2>
+          <button type="button" class="botao ${ideias.length ? "botao-leve" : "botao-principal"}" id="cron-gerar" ${estadoCron.gerando ? "disabled" : ""}>${ideias.length ? "🔄 Gerar novas ideias" : "✨ Gerar ideias da semana"}</button>
+        </div>
+        ${semana.resumo ? `<p class="tend-resumo">🧭 ${esc(semana.resumo)}</p>` : ""}
+        ${(semana.dicas || []).length ? `<ul class="cron-dicas">${semana.dicas.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
+        ${livres.length ? `<div class="cron-ideias">${livres.map((x) => `
+          <article class="cron-ideia cor-${/carross/i.test(x.formato || "") ? "azul" : "amarelo"}" draggable="true" data-ideia="${esc(x.id)}">
+            <div class="postit-topo"><span>${/carross/i.test(x.formato || "") ? "🖼️ Carrossel" : "🎬 Reels"}</span><span>📅 ${esc(x.dia_sugerido || "")} ${esc(x.horario_sugerido || "")}</span></div>
+            <strong>${esc(semTravessao(x.titulo))}</strong>
+            ${x.gancho ? `<p>🎣 "${esc(semTravessao(x.gancho))}"</p>` : ""}
+            ${x.baseado_em ? `<p class="dica">🔥 ${esc(semTravessao(x.baseado_em))}</p>` : ""}
+            <div class="rot-acoes">
+              <button type="button" class="botao botao-leve" data-ver-ideia="${esc(x.id)}">Ver ${/carross/i.test(x.formato || "") ? "slides" : "roteiro"}</button>
+              <select class="filtro" data-colocar-ideia="${esc(x.id)}" aria-label="Colocar em qual dia">
+                <option value="">📌 Pôr no dia…</option>
+                ${dias.map((d) => `<option value="${d.iso}">${d.nome}${d.nome === x.dia_sugerido ? " (sugerido)" : ""}</option>`).join("")}
+              </select>
+            </div>
+          </article>`).join("")}</div>` : `<p class="frase-vazia">${ideias.length ? "🎉 Você já usou todas as ideias desta semana. Quer mais? Clique em Gerar novas ideias." : `${ehFutura ? "Toda semana nova eu monto sozinha as ideias quando você abre esta aba." : "Semana que já passou."} Uso a pesquisa do que está viralizando, as suas tendências e os virais que você analisou, adaptando para a sua realidade.`}</p>`}
+      </section>
+
+      <section class="cartao">
+        <div class="cartao-topo">
+          <h2>🧭 Dicas para deixar a semana mais estratégica</h2>
+          <button type="button" class="botao botao-leve" id="cron-analisar" ${estadoCron.analisando || !daSemana.length ? "disabled" : ""}>${analise ? "🔄 Analisar de novo" : "🧭 Analisar minha semana"}</button>
+        </div>
+        ${analise ? `
+          ${analise.nota ? `<p class="tend-resumo">${esc(analise.nota)}</p>` : ""}
+          <div class="cron-dicas-grade">${(analise.dicas || []).map((d) => `<div class="tend-adaptar"><b>${esc(semTravessao(d.titulo || ""))}</b><p>${esc(semTravessao(d.texto || ""))}</p></div>`).join("")}</div>
+          ${(analise.mudancas || []).length ? `<h3 class="achar-titulo">🔀 Trocas de dia que eu sugiro</h3><ul class="cron-mudancas">${analise.mudancas.map((m, i) => { const n = dados.cronograma.find((x) => x.id === m.id); if (!n) return ""; const destino = dias.find((d) => d.nome === m.para); const ja = destino && String(n.data).slice(0, 10) === destino.iso; return `<li><span><b>${esc(semTravessao(n.titulo))}</b> para <b>${esc(m.para)}</b>. <span class="dica">${esc(semTravessao(m.motivo || ""))}</span></span>${ja ? `<span class="pilula">✓ feito</span>` : destino ? `<button type="button" class="botao botao-leve" data-aplicar="${i}">Mudar</button>` : ""}</li>`; }).join("")}</ul>` : ""}
+        ` : `<p class="frase-vazia">${daSemana.length ? "Monte a sua semana e clique em Analisar: eu olho o equilíbrio entre Reels e carrosséis, os dias e horários, a sequência dos conteúdos e o seu mês." : "Coloque alguns post-its na semana e eu te dou dicas de como deixar mais estratégica."}</p>`}
+      </section>` : ""}`;
+
+    avisoCron(estadoCron.aviso ? estadoCron.aviso.tipo : null, estadoCron.aviso ? estadoCron.aviso.html : "", estadoCron.aviso ? estadoCron.aviso.acao : null);
+
+    const andarSemana = (n) => {
+      if (estadoCron.vista === "semana") estadoCron.semana = isoLocal(maisDias(deISO(iso), 7 * n));
+      else { const d = new Date(mesRef.getFullYear(), mesRef.getMonth() + n, 1); estadoCron.semana = isoLocal(segundaDe(d.getDay() === 1 ? d : maisDias(d, (8 - d.getDay()) % 7))); }
+      if (estadoCron.aviso && estadoCron.aviso.tipo !== "andamento") estadoCron.aviso = null;
+      renderCronograma(area);
+    };
+    $("#cron-antes").addEventListener("click", () => andarSemana(-1));
+    $("#cron-depois").addEventListener("click", () => andarSemana(1));
+    const hoje = $("#cron-hoje");
+    if (hoje) hoje.addEventListener("click", () => { estadoCron.semana = isoLocal(segundaDe(new Date())); renderCronograma(area); });
+    $$("[data-vista]", area).forEach((b) => b.addEventListener("click", () => { estadoCron.vista = b.dataset.vista; renderCronograma(area); }));
+    $$("[data-ir-semana]", area).forEach((b) => b.addEventListener("click", () => { estadoCron.semana = b.dataset.irSemana; estadoCron.vista = "semana"; renderCronograma(area); }));
+    $$("[data-novo]", area).forEach((b) => b.addEventListener("click", () => editarNota(null, { data: b.dataset.novo })));
+    $$(".postit", area).forEach((el) => {
+      const nota = () => dados.cronograma.find((n) => n.id === el.dataset.nota);
+      el.addEventListener("click", (e) => {
+        const seta = e.target.closest("[data-mover]");
+        const n = nota(); if (!n) return;
+        if (seta) { e.stopPropagation(); const novo = isoLocal(maisDias(deISO(n.data), Number(seta.dataset.mover))); moverNota(n.id, novo, null); return; }
+        editarNota(n);
+      });
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter") { const n = nota(); if (n) editarNota(n); } });
+    });
+    const gerar = $("#cron-gerar");
+    if (gerar) gerar.addEventListener("click", () => gerarIdeiasCron(iso, false));
+    const analisar = $("#cron-analisar");
+    if (analisar) analisar.addEventListener("click", () => analisarSemanaCron(iso));
+    $$("[data-ver-ideia]", area).forEach((b) => b.addEventListener("click", () => {
+      const x = ideias.find((i) => i.id === b.dataset.verIdeia);
+      if (x) verIdeiaCron(x, () => colocarIdeia(iso, x.id, null, null));
+    }));
+    $$("[data-colocar-ideia]", area).forEach((s) => s.addEventListener("change", () => { if (s.value) { s.disabled = true; colocarIdeia(iso, s.dataset.colocarIdeia, s.value, null); } }));
+    $$("[data-aplicar]", area).forEach((b) => b.addEventListener("click", () => {
+      const m = analise.mudancas[Number(b.dataset.aplicar)];
+      const destino = dias.find((d) => d.nome === m.para);
+      if (m && destino) { b.disabled = true; moverNota(m.id, destino.iso, null); }
+    }));
+    ligarArrastar(area, iso);
+
+    /* semana nova (atual ou futura) sem ideias: monta sozinha uma vez */
+    if (estadoCron.vista === "semana" && ehFutura && !ideias.length && temIA() && !estadoCron.autoTentado.has(iso) && !avisosMostrados.has("tabela-cronograma")) {
+      estadoCron.autoTentado.add(iso);
+      if (ehSemanaAtual) gerarIdeiasCron(iso, true);
+    }
   }
 
   /* ---------------------------------------------------------------

@@ -379,6 +379,39 @@ create policy "dona apaga marcas_sugeridas" on public.marcas_sugeridas for delet
 revoke all on public.marcas_sugeridas from anon;
 grant select, insert, update, delete on public.marcas_sugeridas to authenticated;
 
+
+
+-- ---------- aba Cronograma ----------
+create table if not exists public.cronograma (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  data         date not null default current_date,
+  ordem        integer not null default 0,
+  titulo       text not null default '',
+  texto        text not null default '',
+  formato      text not null default 'Reels',
+  cor          text not null default 'amarelo',
+  horario      text not null default '',
+  status       text not null default 'ideia',
+  detalhes     jsonb not null default '{}'::jsonb
+);
+
+create index if not exists cronograma_data_idx on public.cronograma (data, ordem);
+
+-- A TRANCA: só você, logada, lê, cria, edita e apaga
+alter table public.cronograma enable row level security;
+drop policy if exists "dona le cronograma" on public.cronograma;
+create policy "dona le cronograma" on public.cronograma for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria cronograma" on public.cronograma;
+create policy "dona cria cronograma" on public.cronograma for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita cronograma" on public.cronograma;
+create policy "dona edita cronograma" on public.cronograma for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga cronograma" on public.cronograma;
+create policy "dona apaga cronograma" on public.cronograma for delete to authenticated using (public.e_a_dona());
+
+revoke all on public.cronograma from anon;
+grant select, insert, update, delete on public.cronograma to authenticated;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
 
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
