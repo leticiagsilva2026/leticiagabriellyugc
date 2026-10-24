@@ -3791,7 +3791,7 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
         { nome: "categoria", rotulo: "Tipo de gasto", tipo: "select", opcoes: CATEGORIAS_GASTO.map(([c]) => [c, c]) },
         { nome: "forma", rotulo: "Como pagou", tipo: "select", opcoes: FORMAS_GASTO.map((f) => [f, f]) },
         { nome: "pago", rotulo: "Já está pago (desmarque se ainda vai pagar)", tipo: "checkbox" },
-        { nome: "fixo", rotulo: "É um gasto fixo de todo mês", tipo: "checkbox" },
+        { nome: "fixo", rotulo: "🔁 É um gasto fixo: repete sozinho todo mês, no mesmo dia (desmarque no mês em que parar)", tipo: "checkbox" },
         { nome: "obs", rotulo: "Anotações", tipo: "textarea" }
       ],
       aoSalvar: async (obj) => {
@@ -3860,23 +3860,35 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
     ajustar();
   }
 
-  async function trazerFixos(ym) {
-    const anterior = andarMes(ym, -1);
-    const fixos = dados.gastos.filter((g) => g.fixo && String(g.data).slice(0, 7) === anterior);
-    const jaTem = dados.gastos.filter((g) => String(g.data).slice(0, 7) === ym).map((g) => normalNome(g.descricao));
-    const novos = fixos.filter((g) => !jaTem.includes(normalNome(g.descricao)));
-    if (!novos.length) { recado(fixos.length ? "Os gastos fixos do mês passado já estão neste mês." : "Não achei gastos marcados como fixos no mês passado.", !fixos.length); return; }
-    if (!confirm(`Trazer ${plural(novos.length, "gasto fixo", "gastos fixos")} do mês passado para ${nomeMesISO(ym).toLowerCase()}? Eles entram como "a pagar".`)) return;
+  /* gastos fixos entram sozinhos em todo mês, no mesmo dia, até o mês atual.
+     Cada gasto fixo é uma "série" (mesmo nome + tipo). Para parar de repetir,
+     é só desmarcar "fixo" no último mês: a série termina ali. */
+  const fixosConferidos = new Set();
+  async function garantirFixos(ym) {
+    const mesAtual = isoLocal(hoje0()).slice(0, 7);
+    if (ym > mesAtual || fixosConferidos.has(ym)) return 0;
+    fixosConferidos.add(ym);
+    const chave = (g) => normalNome(g.descricao) + "|" + (g.categoria || "");
+    const ultimos = {};
+    dados.gastos.forEach((g) => {
+      const mes = String(g.data).slice(0, 7);
+      if (mes >= ym) return;
+      const k = chave(g);
+      if (!ultimos[k] || String(g.data) > String(ultimos[k].data)) ultimos[k] = g;
+    });
+    const jaTem = new Set(dados.gastos.filter((g) => String(g.data).slice(0, 7) === ym).map(chave));
+    const novos = Object.values(ultimos).filter((g) => g.fixo && !jaTem.has(chave(g)));
+    if (!novos.length) return 0;
     const [a, m] = ym.split("-").map(Number);
     const ultimoDia = new Date(a, m, 0).getDate();
+    let criados = 0;
     for (const g of novos) {
       const dia = Math.min(Number(String(g.data).slice(8, 10)) || 1, ultimoDia);
       const linha = await gravar("gastos", { data: `${ym}-${dois(dia)}`, descricao: g.descricao, valor: numero(g.valor), forma: g.forma, categoria: g.categoria, pago: false, fixo: true, obs: g.obs || "" });
-      if (linha) dados.gastos.unshift(linha);
+      if (linha) { dados.gastos.unshift(linha); criados++; } else { fixosConferidos.delete(ym); break; }
     }
-    recado(`${plural(novos.length, "gasto fixo trazido", "gastos fixos trazidos")} ✓`);
-    atualizarLembretes();
-    mostrarAba();
+    if (criados) recado(`🔁 ${plural(criados, "gasto fixo entrou", "gastos fixos entraram")} sozinho${criados > 1 ? "s" : ""} em ${nomeMesISO(ym).split(" ")[0].toLowerCase()} como "a pagar".`);
+    return criados;
   }
 
   async function dicasFinanceiras(ym, contas) {
@@ -3909,11 +3921,12 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
 
   function renderFinanceiro(area) {
     const ym = estadoFin.mes;
+    if (!fixosConferidos.has(ym)) garantirFixos(ym).then((n) => { if (n) { atualizarLembretes(); if (abaAtual() === "financeiro" && estadoFin.mes === ym) renderFinanceiro(area); } }).catch((erro) => console.error(erro));
     const contas = contasDoMes(ym);
     const alerta = alertaFinanceiro(contas);
     const pares = Object.entries(contas.porCategoria).sort((a, b) => b[1] - a[1]);
     const formas = Object.entries(contas.porForma).sort((a, b) => b[1] - a[1]);
-    const lista = contas.gastos.filter((g) => estadoFin.categoria === "todas" || (estadoFin.categoria === "apagar" ? g.pago === false : (CATEGORIAS_GASTO.some((x) => x[0] === g.categoria) ? g.categoria : "Outros") === estadoFin.categoria));
+    const lista = contas.gastos.filter((g) => estadoFin.categoria === "todas" || (estadoFin.categoria === "apagar" ? g.pago === false : (CATEGORIAS_GASTO.some((x) => x[0] === g.categoria) ? g.categoria : "Outros") === estadoFin.categoria)).sort((a, b) => String(a.data).localeCompare(String(b.data)));
     let dicas = null; try { dicas = JSON.parse(dados.config["financeiro_dicas_" + ym] || "null"); } catch (erro) { dicas = null; }
     const usado = contas.ganhos.total > 0 ? Math.min(100, Math.round(contas.proporcao * 100)) : (contas.totalGastos ? 100 : 0);
 
@@ -3926,7 +3939,6 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
             <button type="button" class="botao botao-leve" id="fin-depois" aria-label="Próximo mês">▶</button>
           </div>
           <div class="rot-linha">
-            <button type="button" class="botao botao-leve" id="fin-fixos">🔁 Trazer gastos fixos do mês passado</button>
             <button type="button" class="botao botao-principal fin-botao-ganho" id="fin-add-ganho"><svg class="ic"><use href="#i-mais"/></svg>Adicionar ganho</button>
             <button type="button" class="botao botao-principal" id="fin-add"><svg class="ic"><use href="#i-mais"/></svg>Adicionar gasto</button>
           </div>
@@ -4012,7 +4024,6 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     $("#fin-antes").addEventListener("click", () => { estadoFin.mes = andarMes(ym, -1); renderFinanceiro(area); });
     $("#fin-depois").addEventListener("click", () => { estadoFin.mes = andarMes(ym, 1); renderFinanceiro(area); });
     $("#fin-add").addEventListener("click", () => formGasto(null, ym === isoLocal(hoje0()).slice(0, 7) ? null : { data: ym + "-01" }));
-    $("#fin-fixos").addEventListener("click", () => trazerFixos(ym));
     const novoGanho = () => formGanho(null, ym === isoLocal(hoje0()).slice(0, 7) ? null : { data_receber: ym + "-01" });
     $("#fin-add-ganho").addEventListener("click", novoGanho);
     $("#fin-add-ganho2").addEventListener("click", novoGanho);
@@ -4127,6 +4138,7 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
     if (!error && data === false)
       avisar("dona", `Você entrou com ${sessao.user.email || "um e-mail"}, mas esse e-mail não está liberado como dono do painel. Por isso as listas aparecem vazias e nada salva. Coloque esse e-mail na parte 1 do banco.sql e rode o arquivo de novo no Supabase.`);
   } catch (erro) { /* se a função ainda não existe, os avisos das tabelas já explicam */ }
+  try { await garantirFixos(isoLocal(hoje0()).slice(0, 7)); } catch (erro) { console.error(erro); }
   mostrarAba();
   try { atualizarLembretes(); } catch (erro) { console.error(erro); }
 })();
