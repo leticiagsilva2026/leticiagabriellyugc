@@ -112,7 +112,7 @@
     videos: ["titulo", "link", "nicho", "formato", "marca", "destaque", "ordem", "visivel"],
     marcas: ["nome", "instagram", "email", "telefone", "situacao", "obs", "ultimo_contato"],
     calendario: ["titulo", "marca", "tipo", "data", "status"],
-    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem"],
+    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status", "origem", "contrato_ok"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
@@ -123,9 +123,10 @@
     marcas_sugeridas: ["nichos", "resumo", "itens", "fontes", "sem_busca"],
     cronograma: ["data", "ordem", "titulo", "texto", "formato", "cor", "horario", "status", "detalhes"],
     gastos: ["data", "descricao", "valor", "forma", "categoria", "pago", "fixo"],
-    ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"]
+    ganhos: ["descricao", "tipo", "valor", "forma", "data_trabalho", "data_receber", "recebido", "data_recebido"],
+    tarefas: ["titulo", "tipo", "data", "hora", "prioridade", "tempo_min", "feita", "campanha_id"]
   };
-  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], config: {} };
+  const dados = { videos: [], marcas: [], calendario: [], campanhas: [], visitas: [], eventos: [], roteiros: [], virais: [], tendencias: [], marcasSugeridas: [], cronograma: [], gastos: [], ganhos: [], tarefas: [], config: {} };
   const marcados = new Set();
 
   async function buscar(tabela, montar) {
@@ -157,7 +158,7 @@
 
   async function carregarTudo() {
     const desde = hoje0(); desde.setDate(desde.getDate() - 29);
-    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn] = await Promise.all([
+    const [v, m, c, cp, mc, vi, ev, rt, cf, vr, td, ms, cr, gs, gn, tf] = await Promise.all([
       buscar("videos", (q) => q.select("*").order("ordem", { ascending: true }).order("id", { ascending: true })),
       buscar("marcas", (q) => q.select("*").order("id", { ascending: false })),
       buscar("calendario", (q) => q.select("*").order("data", { ascending: true })),
@@ -172,9 +173,10 @@
       buscar("marcas_sugeridas", (q) => q.select("*").order("created_at", { ascending: false }).limit(100)),
       buscar("cronograma", (q) => q.select("*").order("data", { ascending: true }).order("ordem", { ascending: true }).limit(2000)),
       buscar("gastos", (q) => q.select("*").order("data", { ascending: false }).limit(5000)),
-      buscar("ganhos", (q) => q.select("*").order("created_at", { ascending: false }).limit(5000))
+      buscar("ganhos", (q) => q.select("*").order("created_at", { ascending: false }).limit(5000)),
+      buscar("tarefas", (q) => q.select("*").order("data", { ascending: true }).limit(3000))
     ]);
-    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn;
+    dados.videos = v; dados.marcas = m; dados.calendario = c; dados.campanhas = cp; dados.visitas = vi; dados.eventos = ev; dados.roteiros = rt; dados.virais = vr; dados.tendencias = td; dados.marcasSugeridas = ms; dados.cronograma = cr; dados.gastos = gs; dados.ganhos = gn; dados.tarefas = tf;
     dados.config = {};
     cf.forEach((linha) => { if (linha.chave) dados.config[linha.chave] = linha.valor || ""; });
     marcados.clear();
@@ -294,6 +296,7 @@
      4) MENU E ABAS
      --------------------------------------------------------------- */
   const ABAS = {
+    meudia: ["☀️ Meu Dia", renderMeuDia],
     portfolio: ["Portfólio", renderPortfolio],
     marcas: ["Marcas", renderMarcas],
     achar: ["🎯 Achar marcas", renderAchar],
@@ -320,6 +323,7 @@
     const id = abaAtual();
     $$(".menu nav a").forEach((a) => a.classList.toggle("ativo", a.dataset.aba === id));
     $("#titulo-aba").textContent = ABAS[id][0];
+    document.body.dataset.aba = id;
     document.title = `${ABAS[id][0]} | Painel`;
     fecharMenu();
     const area = $("#area");
@@ -691,14 +695,14 @@
         if (!linha) return false;
         if (m) trocarNaLista(dados.marcas, linha); else dados.marcas.unshift(linha);
         recado("Marca salva");
-        renderMarcas($("#area"));
+        mostrarAba();
         return true;
       },
       aoApagar: m ? async () => {
         if (!(await apagar("marcas", m.id))) return false;
         dados.marcas = dados.marcas.filter((x) => x.id !== m.id);
         recado("Marca apagada");
-        renderMarcas($("#area"));
+        mostrarAba();
         return true;
       } : null
     });
@@ -837,14 +841,14 @@
         if (!linha) return false;
         trocarNaLista(dados.calendario, linha);
         recado("Salvo no calendário");
-        renderCalendario($("#area"));
+        mostrarAba();
         return true;
       },
       aoApagar: c ? async () => {
         if (!(await apagar("calendario", c.id))) return false;
         dados.calendario = dados.calendario.filter((x) => x.id !== c.id);
         recado("Apagado do calendário");
-        renderCalendario($("#area"));
+        mostrarAba();
         return true;
       } : null
     });
@@ -4243,6 +4247,375 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
       }
     }
   }
+
+  /* =================================================================
+     ABA 12: MEU DIA (central do dia: junta o que já existe nas outras
+     abas, sem cadastro duplicado, e calcula as 3 prioridades)
+     Fontes: campanhas (etapa, roteiro, prazo, pagamento, contrato, uso de
+     imagem), calendário, cronograma, ganhos, gastos, marcas e tarefas.
+     Adiar algo que vem de outra aba fica guardado em "configuracoes".
+     ================================================================= */
+  const CHAVE_ADIADOS = "meudia_adiados";
+  const MD_GRUPOS = [
+    ["minhas", "📌", "Minhas tarefas e compromissos"],
+    ["producao", "🎬", "Produção das campanhas"],
+    ["posts", "📱", "Posts e publicações"],
+    ["dinheiro", "💰", "Pagamentos"],
+    ["propostas", "💬", "Propostas aguardando resposta"],
+    ["contratos", "📄", "Contratos para assinar"],
+    ["uso", "🖼️", "Direito de uso de imagem"]
+  ];
+  const MD_CAPACIDADE = 300; /* minutos de trabalho por dia antes de virar "sobrecarregado" */
+  const MD_CHEIO = 180;
+  const estadoMD = { abertos: new Set(), feitosHoje: 0 };
+  const lerAdiados = () => { try { return JSON.parse(dados.config[CHAVE_ADIADOS] || "{}") || {}; } catch (erro) { return {}; } };
+  const diasDe = (iso) => (iso ? diasAte(iso) : null);
+  const somaDias = (iso, n) => isoLocal(maisDias(deISO(iso) || hoje0(), n));
+  const fmtTempo = (min) => { const m = Math.max(0, Math.round(min)); if (m < 60) return `${m} min`; const h = Math.floor(m / 60), r = m % 60; return r ? `${h}h${dois(r)}` : `${h}h`; };
+
+  /* próxima coisa a fazer numa campanha, pela etapa e pela situação do roteiro */
+  function proximaAcao(c) {
+    const etapa = etapaDe(c);
+    if (["Entregue", "Recebido", "Finalizada"].includes(etapa)) return null;
+    const qtd = Math.max(1, numero(c.qtd));
+    const vezes = (base) => Math.min(240, base + (qtd - 1) * Math.round(base / 2));
+    if (etapa === "Edição") return { id: "edicao", titulo: "✂️ Editar e entregar", tempo: vezes(90), muda: { status: "Entregue" }, rotulo: "Entreguei", recado: "Marcado como entregue ✓" };
+    if (etapa === "Gravação") return { id: "gravar", titulo: "🎥 Gravar", tempo: vezes(60), muda: { status: "Edição" }, rotulo: "Gravei", recado: "Gravado ✓ Agora é a edição." };
+    const rot = c.roteiro_status || "nao";
+    if (rot === "nao") return { id: "roteiro", titulo: "📝 Escrever e enviar o roteiro", tempo: vezes(45), muda: { roteiro_status: "enviado", status: "Roteiro" }, rotulo: "Enviei", recado: "Roteiro enviado ✓ Eu te lembro de cobrar a aprovação em 2 dias.", depois: { acao: "aprovacao", dias: 2 } };
+    if (rot === "enviado") return { id: "aprovacao", titulo: "⏳ Aprovação do roteiro", tempo: 10, muda: { roteiro_status: "aprovado", status: "Gravação" }, rotulo: "Aprovado", recado: "Roteiro aprovado ✓ Agora é a gravação." };
+    return { id: "gravar", titulo: "🎥 Gravar", tempo: vezes(60), muda: { status: "Edição" }, rotulo: "Gravei", recado: "Gravado ✓ Agora é a edição." };
+  }
+
+  /* tudo o que pede atenção, vindo das outras abas */
+  function itensMeuDia() {
+    const hoje = isoLocal(hoje0());
+    const itens = [];
+    const atualiza = (tabela, lista, id, valores) => async () => { const linha = await gravar(tabela, valores, id); if (linha) trocarNaLista(lista, linha); return linha; };
+    const nomeCamp = (c) => c.cliente || c.campanha;
+
+    dados.campanhas.forEach((c) => {
+      if (c.ativa === false && etapaDe(c) !== "Entregue") return;
+      const a = proximaAcao(c);
+      if (a) itens.push({
+        chave: `camp-${c.id}-${a.id}`, grupo: "producao", titulo: `${a.titulo}: ${nomeCamp(c)}`, sub: c.campanha + (c.prazo ? ` · entrega ${dataBR(c.prazo).slice(0, 5)}` : ""),
+        data: c.prazo ? String(c.prazo).slice(0, 10) : null, tempo: a.tempo, peso: 16 + Math.min(14, numero(c.valor) / 100), valor: numero(c.valor),
+        concluir: { rotulo: a.rotulo, recado: a.recado, fazer: atualiza("campanhas", dados.campanhas, c.id, a.muda), depois: a.depois ? { chave: `camp-${c.id}-${a.depois.acao}`, dias: a.depois.dias } : null }, abrir: () => formCampanha(c), campanha: c
+      });
+      /* pagamento a receber: quando já entregou ou quando tem dia previsto */
+      if (c.pagamento !== "pago" && numero(c.valor) > 0 && (c.data_pagamento || concluida(c))) itens.push({
+        chave: `pag-${c.id}`, grupo: "dinheiro", titulo: `💰 Receber de ${nomeCamp(c)}`, sub: `${moeda(c.valor)} · ${c.forma_pagamento || ""}`,
+        data: c.data_pagamento ? String(c.data_pagamento).slice(0, 10) : null, tempo: 10, peso: 15 + Math.min(15, numero(c.valor) / 100), valor: numero(c.valor),
+        concluir: { rotulo: "Recebi", recado: "Recebido ✓ Já entrou no Financeiro.", fazer: atualiza("campanhas", dados.campanhas, c.id, Object.assign({ pagamento: "pago", data_pagamento: hoje }, concluida(c) && etapaDe(c) !== "Entregue" ? {} : { status: "Recebido" })) },
+        abrir: () => formCampanha(c), campanha: c
+      });
+      /* contrato: só para o que eu mesma fechei (plataforma já tem contrato) */
+      if (!ehPlataforma(c) && !c.contrato_ok && !(c.anexos || []).some((x) => x.tipo === "contrato") && numero(c.valor) > 0 && c.ativa !== false && etapaDe(c) !== "Finalizada") itens.push({
+        chave: `contrato-${c.id}`, grupo: "contratos", titulo: `📄 Contrato para assinar: ${nomeCamp(c)}`, sub: c.campanha,
+        data: somaDias(diaDoTrabalho(c), 2), tempo: 20, peso: 12, valor: numero(c.valor),
+        concluir: { rotulo: "Assinado", recado: "Contrato marcado como assinado ✓", fazer: atualiza("campanhas", dados.campanhas, c.id, { contrato_ok: true }) },
+        abrir: () => formCampanha(c), campanha: c
+      });
+      const uso = situacaoUso(c);
+      if (uso.tipo === "vencido") itens.push({
+        chave: `uso-${c.id}-${isoLocal(uso.v)}`, grupo: "uso", titulo: `🖼️ Conferir se ${nomeCamp(c)} ainda usa o seu vídeo`, sub: `O uso de imagem venceu em ${dataBR(isoLocal(uso.v))}`,
+        data: isoLocal(uso.v), tempo: 15, peso: 10, valor: 0,
+        concluir: { rotulo: "Conferi", recado: "Anotado: você conferiu ✓", fazer: atualiza("campanhas", dados.campanhas, c.id, { uso_verificado_em: hoje }) },
+        abrir: () => formCampanha(c), campanha: c
+      });
+      else if (uso.tipo === "vence") itens.push({
+        chave: `usovence-${c.id}-${isoLocal(uso.v)}`, grupo: "uso", titulo: `⏰ Uso de imagem de ${nomeCamp(c)} vence ${uso.dias === 1 ? "amanhã" : `em ${uso.dias} dias`}`, sub: "Se quiser, já ofereça a renovação para a marca.",
+        data: somaDias(isoLocal(uso.v), -2), tempo: 10, peso: 6, valor: 0,
+        concluir: { rotulo: "Lembrar no dia", recado: "Eu te lembro no dia do vencimento ✓", adiarAte: isoLocal(uso.v) }, abrir: () => formCampanha(c), campanha: c
+      });
+    });
+
+    dados.calendario.forEach((k) => {
+      if (k.status === "feito" || !k.data) return;
+      const tipo = k.tipo || "gravar";
+      const conf = { postar: ["posts", "📱 Postar", 20, 14], gravar: ["producao", "🎥 Gravar", 60, 14], editar: ["producao", "✂️ Editar", 90, 14] }[tipo] || ["producao", "📌", 30, 10];
+      itens.push({
+        chave: `cal-${k.id}`, grupo: conf[0], titulo: `${conf[1]}: ${k.titulo}`, sub: k.marca ? `${k.marca} · no calendário` : "no calendário",
+        data: String(k.data).slice(0, 10), tempo: conf[2], peso: conf[3], valor: 0,
+        concluir: { rotulo: "Feito", recado: "Feito ✓", fazer: atualiza("calendario", dados.calendario, k.id, { status: "feito" }) }, abrir: () => formCalendario(k)
+      });
+    });
+
+    dados.cronograma.forEach((n) => {
+      if (n.status === "postado" || !n.data) return;
+      itens.push({
+        chave: `cron-${n.id}`, grupo: "posts", titulo: `📱 ${String(nomeFormatoCron(n.formato)).replace(/^\S+\s/, "")}: ${semTravessao(n.titulo)}`, sub: `${nomeStatusCron(n.status)} · no cronograma`,
+        data: String(n.data).slice(0, 10), hora: n.horario || "", tempo: n.status === "ideia" ? 60 : 20, peso: 13, valor: 0,
+        concluir: { rotulo: "Postei", recado: "Postado ✓", fazer: atualiza("cronograma", dados.cronograma, n.id, { status: "postado" }) }, abrir: () => editarNota(n)
+      });
+    });
+
+    dados.ganhos.forEach((g) => {
+      if (g.recebido || !g.data_receber) return;
+      itens.push({
+        chave: `ganho-${g.id}`, grupo: "dinheiro", titulo: `💵 Receber: ${g.descricao}`, sub: `${moeda(g.valor)} · ${g.tipo}`,
+        data: String(g.data_receber).slice(0, 10), tempo: 10, peso: 12 + Math.min(12, numero(g.valor) / 100), valor: numero(g.valor),
+        concluir: { rotulo: "Recebi", recado: "Recebido ✓", fazer: atualiza("ganhos", dados.ganhos, g.id, { recebido: true, data_recebido: hoje }) }, abrir: () => formGanho(g)
+      });
+    });
+
+    dados.gastos.forEach((g) => {
+      if (g.pago !== false || !g.data) return;
+      itens.push({
+        chave: `conta-${g.id}`, grupo: "dinheiro", titulo: `🧾 Pagar: ${g.descricao}`, sub: `${moeda(g.valor)} · ${g.forma}`,
+        data: String(g.data).slice(0, 10), tempo: 5, peso: 18, valor: numero(g.valor),
+        concluir: { rotulo: "Paguei", recado: "Pago ✓", fazer: atualiza("gastos", dados.gastos, g.id, { pago: true }) }, abrir: () => formGasto(g)
+      });
+    });
+
+    dados.marcas.forEach((m) => {
+      if (m.situacao !== "conversando") return;
+      const ultimo = m.ultimo_contato ? String(m.ultimo_contato).slice(0, 10) : null;
+      itens.push({
+        chave: `proposta-${m.id}-${ultimo || ""}`, grupo: "propostas", titulo: `💬 Cobrar resposta: ${m.nome}`, sub: ultimo ? `Último contato em ${dataBR(ultimo)}` : "Sem data do último contato",
+        data: ultimo ? somaDias(ultimo, 3) : hoje, tempo: 10, peso: 10, valor: 0,
+        concluir: { rotulo: "Cobrei", recado: "Anotado o contato de hoje ✓", fazer: atualiza("marcas", dados.marcas, m.id, { ultimo_contato: hoje }) }, abrir: () => formMarca(m)
+      });
+    });
+
+    dados.tarefas.forEach((t) => {
+      if (t.feita) return;
+      const compromisso = t.tipo === "compromisso";
+      const camp = t.campanha_id ? dados.campanhas.find((c) => String(c.id) === String(t.campanha_id)) : null;
+      itens.push({
+        chave: `tarefa-${t.id}`, grupo: "minhas", propria: t, titulo: `${compromisso ? "🗓️" : "✅"} ${t.titulo}`, sub: [camp ? `📋 ${nomeCamp(camp)}` : "", t.obs ? String(t.obs).slice(0, 80) : ""].filter(Boolean).join(" · "),
+        data: t.data ? String(t.data).slice(0, 10) : null, hora: t.hora || "", tempo: numero(t.tempo_min),
+        peso: (t.prioridade === "alta" ? 22 : t.prioridade === "baixa" ? 2 : 11) + (compromisso && t.data && diasDe(t.data) === 0 ? 20 : 0), valor: 0,
+        concluir: { rotulo: compromisso ? "Feito" : "Concluir", recado: "Concluída ✓", fazer: atualiza("tarefas", dados.tarefas, t.id, { feita: true, feita_em: new Date().toISOString() }) },
+        abrir: camp ? () => formCampanha(camp) : () => formTarefa(t), editar: () => formTarefa(t), campanha: camp
+      });
+    });
+
+    /* adiados: o dia passa a ser o do adiamento */
+    const adiados = lerAdiados();
+    itens.forEach((i) => {
+      const ate = adiados[i.chave];
+      if (ate && !i.propria) { i.adiadoAte = ate; if (!i.data || ate > i.data) i.data = ate; }
+      i.dias = diasDe(i.data);
+      i.score = pontuar(i);
+    });
+    return itens;
+  }
+
+  /* urgência + importância + tempo (tarefas rápidas sobem um pouco) */
+  function pontuar(i) {
+    const d = i.dias;
+    const urgencia = d == null ? 4 : d < 0 ? 60 + Math.min(-d, 10) * 4 : d === 0 ? 50 : d === 1 ? 28 : d === 2 ? 18 : 8;
+    const rapido = i.tempo <= 15 ? 6 : i.tempo >= 120 ? -4 : 0;
+    return urgencia + (i.peso || 0) + rapido;
+  }
+  /* aparece na lista de hoje: atrasado, de hoje, próximos 2 dias ou sem data */
+  const visivelHoje = (i) => i.dias == null ? i.grupo !== "uso" : i.dias <= 2 && !(i.adiadoAte && diasDe(i.adiadoAte) > 0);
+
+  function etiquetaPrazo(i) {
+    if (i.dias == null) return `<span class="md-chip">sem data</span>`;
+    if (i.dias < 0) return `<span class="md-chip atrasado">atrasado ${plural(-i.dias, "dia", "dias")}</span>`;
+    if (i.dias === 0) return `<span class="md-chip hoje">hoje${i.hora ? " · " + esc(i.hora) : ""}</span>`;
+    if (i.dias === 1) return `<span class="md-chip">amanhã${i.hora ? " · " + esc(i.hora) : ""}</span>`;
+    return `<span class="md-chip">${dataBR(i.data).slice(0, 5)}</span>`;
+  }
+  const seletorAdiar = (chave) => `<select class="md-adiar" data-adiar="${esc(chave)}" aria-label="Adiar">
+      <option value="">⏭️ Adiar</option><option value="1">Para amanhã</option><option value="3">Em 3 dias</option><option value="7">Próxima semana</option></select>`;
+  function linhaItem(i, destaque, n) {
+    return `<li class="md-item ${destaque ? "md-destaque" : ""} ${i.dias != null && i.dias < 0 ? "md-atrasado" : ""}" data-chave="${esc(i.chave)}">
+      ${destaque ? `<span class="md-numero">${n}</span>` : ""}
+      <div class="md-texto">
+        <button type="button" class="md-titulo" data-abrir>${esc(semTravessao(i.titulo))}</button>
+        ${i.sub ? `<small>${esc(semTravessao(i.sub))}</small>` : ""}
+        <div class="md-chips">${etiquetaPrazo(i)}<span class="md-chip">⏱️ ${fmtTempo(i.tempo)}</span>${i.valor ? `<span class="md-chip">${moeda(i.valor)}</span>` : ""}</div>
+      </div>
+      <div class="md-acoes">
+        <button type="button" class="botao botao-principal md-ok" data-concluir title="${esc(i.concluir.rotulo)}">✓ ${esc(i.concluir.rotulo)}</button>
+        ${seletorAdiar(i.chave)}
+        ${i.campanha || !i.propria ? `<button type="button" class="botao botao-leve" data-abrir>${i.campanha ? "Abrir campanha" : "Abrir"}</button>` : `<button type="button" class="botao botao-leve" data-editar>Editar</button>`}
+      </div>
+    </li>`;
+  }
+
+  /* carga da semana: soma do tempo estimado por dia, a partir de hoje */
+  function cargaDaSemana(itens) {
+    const dias = [];
+    for (let k = 0; k < 7; k++) {
+      const iso = isoLocal(maisDias(hoje0(), k));
+      const doDia = itens.filter((i) => i.data && (k === 0 ? i.dias <= 0 : i.data === iso));
+      dias.push({ iso, k, itens: doDia, min: doDia.reduce((s, i) => s + i.tempo, 0) });
+    }
+    return dias;
+  }
+
+  function formTarefa(t, padrao) {
+    const campanhas = dados.campanhas.filter((c) => c.ativa !== false || (t && String(t.campanha_id) === String(c.id)));
+    formulario({
+      titulo: t ? "Editar" : "Nova tarefa ou compromisso",
+      valores: t ? Object.assign({}, t, { campanha_id: t.campanha_id == null ? "" : String(t.campanha_id), tempo_min: String(t.tempo_min) })
+        : Object.assign({ tipo: "tarefa", prioridade: "media", tempo_min: "30", data: isoLocal(new Date()), campanha_id: "" }, padrao || {}),
+      campos: [
+        { nome: "titulo", rotulo: "O que é", obrigatorio: true, inteira: true },
+        { nome: "tipo", rotulo: "Tipo", tipo: "select", opcoes: [["tarefa", "✅ Tarefa"], ["compromisso", "🗓️ Compromisso pessoal"]] },
+        { nome: "prioridade", rotulo: "Importância", tipo: "select", opcoes: [["alta", "🔴 Alta"], ["media", "🟡 Média"], ["baixa", "🟢 Baixa"]] },
+        { nome: "data", rotulo: "Dia", tipo: "date" },
+        { nome: "hora", rotulo: "Horário (opcional)", dica: "ex: 14h" },
+        { nome: "tempo_min", rotulo: "Tempo que leva", tipo: "select", opcoes: [["10", "10 min"], ["15", "15 min"], ["30", "30 min"], ["45", "45 min"], ["60", "1 hora"], ["90", "1h30"], ["120", "2 horas"], ["180", "3 horas"], ["240", "4 horas"]] },
+        { nome: "campanha_id", rotulo: "Campanha relacionada (opcional)", tipo: "select", opcoes: [["", "Nenhuma"]].concat(campanhas.map((c) => [String(c.id), `${c.cliente || "Sem marca"} · ${c.campanha}`])) },
+        { nome: "obs", rotulo: "Anotações", tipo: "textarea" }
+      ],
+      aoSalvar: async (obj) => {
+        obj.campanha_id = obj.campanha_id ? Number(obj.campanha_id) : null;
+        obj.tempo_min = numero(obj.tempo_min);
+        const linha = await gravar("tarefas", obj, t && t.id);
+        if (!linha) return false;
+        trocarNaLista(dados.tarefas, linha);
+        recado(t ? "Salvo ✓" : "Adicionado ao seu dia ✓");
+        mostrarAba();
+        return true;
+      },
+      aoApagar: t ? async () => {
+        if (!(await apagar("tarefas", t.id))) return false;
+        dados.tarefas = dados.tarefas.filter((x) => x.id !== t.id);
+        recado("Apagado");
+        mostrarAba();
+        return true;
+      } : null
+    });
+  }
+
+  async function adiarItem(i, dias) {
+    const ate = somaDias(isoLocal(hoje0()), dias);
+    if (i.propria) {
+      const linha = await gravar("tarefas", { data: ate }, i.propria.id);
+      if (linha) trocarNaLista(dados.tarefas, linha);
+      return !!linha;
+    }
+    const todos = lerAdiados();
+    const hoje = isoLocal(hoje0());
+    Object.keys(todos).forEach((k) => { if (todos[k] < hoje) delete todos[k]; });
+    todos[i.chave] = ate;
+    return salvarConfig(CHAVE_ADIADOS, JSON.stringify(todos));
+  }
+
+  function renderMeuDia(area) {
+    const itens = itensMeuDia();
+    const hojeLista = itens.filter(visivelHoje).sort((a, b) => b.score - a.score);
+    /* compromisso com dia marcado não disputa prioridade: vai para a agenda do topo */
+    const ehCompromissoDoDia = (i) => i.propria && i.propria.tipo === "compromisso" && i.dias != null && i.dias <= 0;
+    const agenda = hojeLista.filter(ehCompromissoDoDia).sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+    const top = hojeLista.filter((i) => !ehCompromissoDoDia(i)).slice(0, 3);
+    const resto = hojeLista.filter((i) => !top.includes(i) && !ehCompromissoDoDia(i));
+    const atrasados = hojeLista.filter((i) => i.dias != null && i.dias < 0).length;
+    const deHoje = hojeLista.filter((i) => i.dias === 0).length;
+    const tempoHoje = hojeLista.filter((i) => i.dias != null && i.dias <= 0).reduce((s, i) => s + i.tempo, 0);
+    const semana = cargaDaSemana(itens);
+    const maior = Math.max(MD_CAPACIDADE, ...semana.map((d) => d.min));
+    const h = new Date().getHours();
+    const saudacao = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+    const hojeTexto = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+    const grupos = MD_GRUPOS.map(([id, emoji, nome]) => ({ id, emoji, nome, lista: resto.filter((i) => i.grupo === id) })).filter((g) => g.lista.length);
+
+    area.innerHTML = `
+      <section class="cartao md-topo">
+        <div>
+          <h2>${saudacao}, Letícia ${h < 18 ? "☀️" : "🌙"}</h2>
+          <p class="dica">${hojeTexto.charAt(0).toUpperCase() + hojeTexto.slice(1)}</p>
+        </div>
+        <button type="button" class="botao botao-principal" id="md-nova"><svg class="ic"><use href="#i-mais"/></svg>Tarefa ou compromisso</button>
+        <div class="md-resumo">
+          ${atrasados ? `<span class="md-chip atrasado">🔴 ${plural(atrasados, "atrasado", "atrasados")}</span>` : ""}
+          <span class="md-chip hoje">📅 ${plural(deHoje, "coisa para hoje", "coisas para hoje")}</span>
+          <span class="md-chip">⏱️ ${fmtTempo(tempoHoje)} ocupadas hoje</span>
+          ${estadoMD.feitosHoje ? `<span class="md-chip feito">🎉 ${plural(estadoMD.feitosHoje, "concluída", "concluídas")} agora</span>` : ""}
+        </div>
+        ${agenda.length ? `<ul class="md-agenda">${agenda.map((i) => `<li data-chave="${esc(i.chave)}"><span class="md-hora">${esc(i.hora || "hoje")}</span><button type="button" class="md-titulo" data-agenda>${esc(semTravessao(i.titulo))}</button></li>`).join("")}</ul>` : ""}
+      </section>
+
+      <section class="cartao">
+        <h2 class="md-secao">⭐ Suas 3 prioridades</h2>
+        ${top.length ? `<ol class="md-lista">${top.map((i, n) => linhaItem(i, true, n + 1)).join("")}</ol>`
+          : `<p class="frase-vazia">🌿 Nada pendente para hoje. Aproveite o dia!</p>`}
+      </section>
+
+      ${grupos.length ? `<section class="cartao">
+        <h2 class="md-secao">📋 O resto do dia <span class="dica">(${resto.length})</span></h2>
+        ${grupos.map((g) => `<details class="md-grupo" data-grupo="${g.id}" ${estadoMD.abertos.has(g.id) ? "open" : ""}>
+          <summary><span>${g.emoji} ${g.nome}</span><b>${g.lista.length}</b></summary>
+          <ul class="md-lista">${g.lista.map((i) => linhaItem(i, false)).join("")}</ul>
+        </details>`).join("")}
+      </section>` : ""}
+
+      <section class="cartao">
+        <h2 class="md-secao">📅 Sua semana</h2>
+        <div class="md-semana" role="list">
+          ${semana.map((d) => {
+            const nivel = d.min > MD_CAPACIDADE ? "cheio" : d.min > MD_CHEIO ? "medio" : "leve";
+            const nome = d.k === 0 ? "Hoje" : d.k === 1 ? "Amanhã" : deISO(d.iso).toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+            return `<button type="button" class="md-dia ${nivel}" data-dia="${d.iso}" role="listitem" aria-label="${esc(nome)}: ${fmtTempo(d.min)}, ${plural(d.itens.length, "item", "itens")}">
+              <span class="md-barra"><i style="height:${Math.max(d.min ? 6 : 0, (d.min / maior) * 100)}%"></i><em style="bottom:${(MD_CAPACIDADE / maior) * 100}%"></em></span>
+              <b>${d.min ? fmtTempo(d.min) : "livre"}</b>
+              <small>${esc(nome.charAt(0).toUpperCase() + nome.slice(1))}</small>
+            </button>`;
+          }).join("")}
+        </div>
+        <p class="dica md-legenda"><span class="leve">●</span> tranquilo <span class="medio">●</span> cheio (mais de ${fmtTempo(MD_CHEIO)}) <span class="cheio">●</span> sobrecarregado (mais de ${fmtTempo(MD_CAPACIDADE)}). Toque num dia para ver o que tem.</p>
+        ${semana.filter((d) => d.min > MD_CAPACIDADE).length ? `<p class="tend-resumo">⚠️ ${semana.filter((d) => d.min > MD_CAPACIDADE).map((d) => d.k === 0 ? "Hoje" : d.k === 1 ? "Amanhã" : dataBR(d.iso).slice(0, 5)).join(", ")} ${semana.filter((d) => d.min > MD_CAPACIDADE).length > 1 ? "estão sobrecarregados" : "está sobrecarregado"}. Que tal adiar algo para um dia mais leve${semana.find((d) => d.k > 0 && d.min < MD_CHEIO) ? ` (${(() => { const l = semana.find((d) => d.k > 0 && d.min < MD_CHEIO); return l.k === 1 ? "amanhã" : dataBR(l.iso).slice(0, 5); })()} está tranquilo)` : ""}?</p>` : ""}
+      </section>`;
+
+    $("#md-nova").addEventListener("click", () => formTarefa());
+    $$(".md-grupo", area).forEach((d) => d.addEventListener("toggle", () => { if (d.open) estadoMD.abertos.add(d.dataset.grupo); else estadoMD.abertos.delete(d.dataset.grupo); }));
+    const acharItem = (el) => { const li = el.closest("[data-chave]"); return li && itens.find((i) => i.chave === li.dataset.chave); };
+    area.onclick = async (e) => {
+      const ag = e.target.closest("[data-agenda]");
+      if (ag) { const i = acharItem(ag); if (i) i.editar(); return; }
+      const alvo = e.target.closest("[data-concluir], [data-abrir], [data-editar]");
+      if (!alvo || !area.contains(alvo) || !alvo.closest(".md-lista")) return;
+      const i = acharItem(alvo);
+      if (!i) return;
+      if (alvo.hasAttribute("data-editar")) { i.editar(); return; }
+      if (alvo.hasAttribute("data-abrir")) { i.abrir(); return; }
+      alvo.disabled = true;
+      const li = alvo.closest("li");
+      let deu;
+      if (i.concluir.adiarAte) {
+        const todos = lerAdiados(); todos[i.chave] = i.concluir.adiarAte;
+        deu = await salvarConfig(CHAVE_ADIADOS, JSON.stringify(todos));
+      } else {
+        deu = await i.concluir.fazer();
+        /* depois de concluir, a próxima etapa pode esperar alguns dias (ex.: aprovação do roteiro) */
+        if (deu && i.concluir.depois) { const todos = lerAdiados(); todos[i.concluir.depois.chave] = somaDias(isoLocal(hoje0()), i.concluir.depois.dias); await salvarConfig(CHAVE_ADIADOS, JSON.stringify(todos)); }
+      }
+      if (!deu) { alvo.disabled = false; return; }
+      estadoMD.feitosHoje++;
+      li.classList.add("md-saindo");
+      recado(i.concluir.recado);
+      atualizarLembretes();
+      setTimeout(() => { if (abaAtual() === "meudia") renderMeuDia(area); }, 260);
+    };
+    $$(".md-adiar", area).forEach((s) => s.addEventListener("change", async () => {
+      if (!s.value) return;
+      const i = acharItem(s);
+      if (!i) return;
+      s.disabled = true;
+      const dias = Number(s.value);
+      if (await adiarItem(i, dias)) { recado(dias === 1 ? "Adiado para amanhã ⏭️" : `Adiado ${dias === 7 ? "para a próxima semana" : `em ${dias} dias`} ⏭️`); renderMeuDia(area); }
+      else { s.disabled = false; s.value = ""; }
+    }));
+    $$(".md-dia", area).forEach((b) => b.addEventListener("click", () => {
+      const d = semana.find((x) => x.iso === b.dataset.dia);
+      const titulo = d.k === 0 ? "Hoje (com o que está atrasado)" : dataBR(d.iso);
+      abrirModal(`📅 ${titulo} · ${fmtTempo(d.min)}`, d.itens.length ? `<ul class="md-lista md-lista-dia">${d.itens.sort((a, b2) => b2.score - a.score).map((i) => `<li class="md-item" data-chave="${esc(i.chave)}"><div class="md-texto"><button type="button" class="md-titulo" data-ver>${esc(semTravessao(i.titulo))}</button><small>${esc(semTravessao(i.sub || ""))}</small><div class="md-chips">${etiquetaPrazo(i)}<span class="md-chip">⏱️ ${fmtTempo(i.tempo)}</span></div></div></li>`).join("")}</ul>
+        <div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="md-novo-dia"><svg class="ic"><use href="#i-mais"/></svg>Tarefa neste dia</button></div>`
+        : `<p class="frase-vazia">🌿 Dia livre.</p><div class="form-acoes"><span class="espaco"></span><button type="button" class="botao botao-principal" id="md-novo-dia"><svg class="ic"><use href="#i-mais"/></svg>Tarefa neste dia</button></div>`, true);
+      $$("[data-ver]", $("#modal-corpo")).forEach((v) => v.addEventListener("click", () => { const i = acharItem(v); if (i) (i.propria ? i.editar : i.abrir)(); }));
+      $("#md-novo-dia").addEventListener("click", () => formTarefa(null, { data: d.iso }));
+    }));
+  }
+
+  /* quando um formulário aberto pelo Meu Dia fecha, a tela se atualiza sozinha */
+  new MutationObserver(() => { if ($("#modal").hidden && abaAtual() === "meudia") renderMeuDia($("#area")); })
+    .observe($("#modal"), { attributes: true, attributeFilter: ["hidden"] });
 
   /* ---------------------------------------------------------------
      5) COMEÇA

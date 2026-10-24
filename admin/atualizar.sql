@@ -510,4 +510,35 @@ create policy "dona apaga ganhos" on public.ganhos for delete to authenticated u
 revoke all on public.ganhos from anon;
 grant select, insert, update, delete on public.ganhos to authenticated;
 
+-- ---------- Meu Dia: tarefas e compromissos pessoais + contrato assinado ----------
+create table if not exists public.tarefas (
+  id           uuid primary key default gen_random_uuid(),
+  created_at   timestamptz not null default now(),
+  titulo       text not null default '',
+  tipo         text not null default 'tarefa' check (tipo in ('tarefa', 'compromisso')),
+  data         date,
+  hora         text not null default '',
+  prioridade   text not null default 'media' check (prioridade in ('alta', 'media', 'baixa')),
+  tempo_min    integer not null default 30 check (tempo_min >= 0),
+  feita        boolean not null default false,
+  feita_em     timestamptz,
+  campanha_id  bigint references public.campanhas(id) on delete set null,
+  obs          text not null default ''
+);
+create index if not exists tarefas_data_idx on public.tarefas (data);
+alter table public.tarefas enable row level security;
+drop policy if exists "dona le tarefas" on public.tarefas;
+create policy "dona le tarefas" on public.tarefas for select to authenticated using (public.e_a_dona());
+drop policy if exists "dona cria tarefas" on public.tarefas;
+create policy "dona cria tarefas" on public.tarefas for insert to authenticated with check (public.e_a_dona());
+drop policy if exists "dona edita tarefas" on public.tarefas;
+create policy "dona edita tarefas" on public.tarefas for update to authenticated using (public.e_a_dona()) with check (public.e_a_dona());
+drop policy if exists "dona apaga tarefas" on public.tarefas;
+create policy "dona apaga tarefas" on public.tarefas for delete to authenticated using (public.e_a_dona());
+revoke all on public.tarefas from anon;
+grant select, insert, update, delete on public.tarefas to authenticated;
+
+-- campanha fechada direto comigo: marca quando o contrato já foi assinado
+alter table public.campanhas add column if not exists contrato_ok boolean not null default false;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
