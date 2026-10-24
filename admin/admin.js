@@ -112,7 +112,7 @@
     videos: ["titulo", "link", "nicho", "formato", "marca", "destaque", "ordem", "visivel"],
     marcas: ["nome", "instagram", "email", "telefone", "situacao", "obs", "ultimo_contato"],
     calendario: ["titulo", "marca", "tipo", "data", "status"],
-    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos"],
+    campanhas: ["campanha", "cliente", "tipo", "status", "qtd", "valor", "prazo", "pagamento", "ativa", "favorita", "trabalho", "data_trabalho", "forma_pagamento", "uso_meses", "marca_dados", "anexos", "roteiro_status"],
     marcados: ["chave", "marcado"],
     visitas: ["data", "pagina", "origem"],
     eventos: ["data", "tipo", "alvo", "detalhe", "origem", "dispositivo"],
@@ -717,7 +717,7 @@
     }));
     dados.campanhas.filter((c) => c.prazo).forEach((c) => itens.push({
       origem: "camp", id: c.id, data: String(c.prazo).slice(0, 10), tipo: "prazo",
-      texto: `Prazo: ${c.campanha}${c.cliente ? ` · ${c.cliente}` : ""}`, feito: c.status === "Entregue"
+      texto: `Prazo: ${c.campanha}${c.cliente ? ` · ${c.cliente}` : ""}`, feito: concluida(c)
     }));
     return itens.filter((i) => estadoCal.filtro === "todos" || i.tipo === estadoCal.filtro);
   }
@@ -752,7 +752,7 @@
     const hoje = hoje0();
     const atrasados = [];
     dados.calendario.forEach((c) => { const d = deISO(c.data); if (d && d < hoje && c.status !== "feito") atrasados.push({ tipo: nomeTipoCal(c.tipo), texto: c.titulo + (c.marca ? ` · ${c.marca}` : ""), dias: Math.round((hoje - d) / 86400000), origem: "cal", id: c.id }); });
-    dados.campanhas.forEach((c) => { const d = deISO(c.prazo); if (d && d < hoje && c.status !== "Entregue") atrasados.push({ tipo: "Prazo de campanha", texto: c.campanha + (c.cliente ? ` · ${c.cliente}` : ""), dias: Math.round((hoje - d) / 86400000), origem: "camp", id: c.id }); });
+    dados.campanhas.forEach((c) => { const d = deISO(c.prazo); if (d && d < hoje && !concluida(c)) atrasados.push({ tipo: "Prazo de campanha", texto: c.campanha + (c.cliente ? ` · ${c.cliente}` : ""), dias: Math.round((hoje - d) / 86400000), origem: "camp", id: c.id }); });
     atrasados.sort((a, b) => b.dias - a.dias);
 
     area.innerHTML = `
@@ -853,12 +853,17 @@
      contrato, dados da marca, direito de uso de imagem e resumo do mês)
      Os arquivos ficam na pasta privada "arquivos" do Supabase.
      ================================================================= */
-  const FUNIL = ["Briefing", "Roteiro", "Aprovação Roteiro", "Gravação", "Edição", "Aprovado", "Entregue"];
+  const FUNIL = ["Em andamento", "Roteiro", "Gravação", "Edição", "Entregue", "Recebido", "Finalizada"];
+  const ETAPAS_ANTIGAS = { "Briefing": "Em andamento", "Aprovação Roteiro": "Roteiro", "Aprovado": "Entregue" };
+  const etapaDe = (c) => ETAPAS_ANTIGAS[c.status] || c.status || "Em andamento";
+  const concluida = (c) => ["Entregue", "Recebido", "Finalizada"].includes(etapaDe(c));
+  const ETAPA_ROTULO = { "Em andamento": "🟡 Em andamento", "Roteiro": "📝 Roteiro", "Gravação": "🎥 Gravação", "Edição": "✂️ Edição", "Entregue": "📦 Entregue", "Recebido": "💰 Recebido", "Finalizada": "✅ Finalizada" };
+  const ROTEIRO_SITUACAO = [["nao", "Ainda não enviei"], ["enviado", "Enviado para a marca"], ["aprovado", "Aprovado pela marca"], ["sem", "Não precisa de roteiro"]];
   const TIPOS_TRABALHO = ["Conteúdo UGC", "UGC Tech", "Afiliação", "TikTok Shop", "Design no Canva", "Edição de vídeo", "Captação de conteúdo", "Publicidade (no meu perfil)", "Outro"];
   const FORMAS_RECEBER = ["Pix", "Transferência", "Boleto", "Cartão", "Dinheiro", "Comissão", "Permuta (produto)"];
   const MESES_USO = [["0", "Sem direito de uso (só orgânico)"], ["1", "1 mês"], ["3", "3 meses"], ["6", "6 meses"], ["12", "12 meses"], ["24", "24 meses"], ["999", "Para sempre (vitalício)"]];
   const MARCA_CAMPOS = [["razao", "Razão social"], ["cnpj", "CNPJ"], ["endereco", "Endereço"], ["responsavel", "Responsável"], ["email", "E-mail"], ["telefone", "Telefone"]];
-  const NOME_ANEXO = { contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
+  const NOME_ANEXO = { roteiro: "📜 Roteiro", contrato: "📄 Contrato", marca: "🏢 Dados da marca", gerado: "📝 Contrato gerado", outro: "📎 Arquivo" };
   const estadoCamp = { filtro: "todas", busca: "", coluna: null, sentido: 1, mes: isoLocal(hoje0()).slice(0, 7) };
   const COLUNAS = [
     ["favorita", "", "bool"], ["data_trabalho", "Dia", "data"], ["campanha", "Trabalho", "texto"], ["cliente", "Marca", "texto"], ["trabalho", "Tipo", "texto"],
@@ -895,7 +900,7 @@
     if (coluna === "uso") { const va = vencimentoUso(a), vb = vencimentoUso(b); return (va ? va.getTime() : 9e15) - (vb ? vb.getTime() : 9e15); }
     if (coluna === "data_trabalho") { const va = diaDoTrabalho(a), vb = diaDoTrabalho(b); return va.localeCompare(vb); }
     const va = a[coluna], vb = b[coluna];
-    if (tipo === "funil") return FUNIL.indexOf(va) - FUNIL.indexOf(vb);
+    if (tipo === "funil") return FUNIL.indexOf(etapaDe(a)) - FUNIL.indexOf(etapaDe(b));
     if (tipo === "numero") return numero(va) - numero(vb);
     if (tipo === "bool") return (va ? 1 : 0) - (vb ? 1 : 0);
     if (tipo === "data") { if (!va && !vb) return 0; if (!va) return 1; if (!vb) return -1; return String(va).localeCompare(String(vb)); }
@@ -916,7 +921,7 @@
     return lista;
   }
   function avisoPrazo(c) {
-    if (!c.prazo || c.status === "Entregue") return "";
+    if (!c.prazo || concluida(c)) return "";
     const d = diasAte(c.prazo);
     if (d == null) return "";
     if (d < 0) return `<span class="etiqueta-prazo atrasado">atrasado ${plural(-d, "dia", "dias")}</span>`;
@@ -1061,18 +1066,18 @@
     caixa.innerHTML = `<div class="tabela-caixa"><table>
       <thead><tr>${cabecalho}</tr></thead>
       <tbody>${lista.map((c) => {
-        const passo = Math.max(0, FUNIL.indexOf(c.status));
+        const passo = Math.max(0, FUNIL.indexOf(etapaDe(c)));
         const uso = situacaoUso(c);
         const anexos = (c.anexos || []).length;
         return `<tr class="clicavel ${c.favorita ? "favorita" : ""}" data-id="${c.id}">
           <td style="width:36px"><button type="button" class="botao-icone ${c.favorita ? "ligado" : ""}" data-estrela title="${c.favorita ? "Tirar destaque" : "Destacar"}"><svg class="ic"><use href="#i-estrela"/></svg></button></td>
           <td style="white-space:nowrap">${dataBR(diaDoTrabalho(c)).slice(0, 5)}</td>
-          <td><strong>${esc(c.campanha)}</strong>${anexos ? ` <span class="dica" title="${plural(anexos, "arquivo", "arquivos")}">📎${anexos}</span>` : ""}${avisoPrazo(c)}</td>
+          <td><strong>${esc(c.campanha)}</strong>${c.roteiro_status && c.roteiro_status !== "sem" ? `<br><small class="dica">📜 ${c.roteiro_status === "aprovado" ? "roteiro aprovado" : c.roteiro_status === "enviado" ? "roteiro enviado" : "roteiro não enviado"}</small>` : ""}${anexos ? ` <span class="dica" title="${plural(anexos, "arquivo", "arquivos")}">📎${anexos}</span>` : ""}${avisoPrazo(c)}</td>
           <td>${esc(c.cliente)}</td>
           <td><span class="pilula p-conteudo">${esc(c.trabalho || "Conteúdo UGC")}</span></td>
-          <td><span class="pilula p-s${passo}">${esc(c.status)}</span></td>
+          <td><span class="pilula p-s${passo}">${esc(ETAPA_ROTULO[etapaDe(c)] || etapaDe(c))}</span></td>
           <td style="white-space:nowrap">${moeda(c.valor)}</td>
-          <td><span class="pilula ${c.pagamento === "pago" ? "p-pago" : "p-pendente"}">${c.pagamento === "pago" ? "Recebido" : "A receber"}</span><br><small class="dica">${esc(c.forma_pagamento || "")}${c.data_pagamento ? " · " + dataBR(c.data_pagamento).slice(0, 5) : ""}</small></td>
+          <td><span class="pilula ${c.pagamento === "pago" ? "p-pago" : "p-pendente"}">${c.pagamento === "pago" ? "Recebido" : "A receber"}</span>${c.pagamento === "pago" ? "" : ` <button type="button" class="botao botao-leve camp-recebi" data-recebi title="Marcar como recebido hoje">💰 Recebi</button>`}<br><small class="dica">${esc(c.forma_pagamento || "")}${c.data_pagamento ? " · " + dataBR(c.data_pagamento).slice(0, 5) : ""}</small></td>
           <td>${uso.tipo === "sem" ? `<span class="dica">${esc(uso.texto)}</span>` : `<span class="pilula ${uso.tipo === "vencido" ? "p-pendente" : uso.tipo === "vence" ? "p-pendente" : "p-pago"}">${uso.tipo === "vencido" ? "🔔 " : ""}${esc(uso.texto)}</span>`}</td>
         </tr>`;
       }).join("")}</tbody></table></div>`;
@@ -1085,6 +1090,12 @@
       const tr = e.target.closest("tr");
       const c = tr && dados.campanhas.find((x) => String(x.id) === tr.dataset.id);
       if (!c) return;
+      if (e.target.closest("[data-recebi]")) {
+        e.target.disabled = true;
+        const linha = await gravar("campanhas", Object.assign({ pagamento: "pago", data_pagamento: isoLocal(new Date()) }, concluida(c) && etapaDe(c) !== "Entregue" ? {} : { status: "Recebido" }), c.id);
+        if (linha) { trocarNaLista(dados.campanhas, linha); recado("Recebido ✓ Já entrou no Financeiro."); atualizarLembretes(); mostrarAba(); } else e.target.disabled = false;
+        return;
+      }
       if (e.target.closest("[data-estrela]")) {
         const linha = await gravar("campanhas", { favorita: !c.favorita }, c.id);
         if (linha) { trocarNaLista(dados.campanhas, linha); desenharTabelaCamp(); }
@@ -1097,8 +1108,8 @@
   function formCampanha(c) {
     const md = (c && c.marca_dados) || {};
     const valores = c
-      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c) }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
-      : { trabalho: "Conteúdo UGC", status: "Briefing", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
+      ? Object.assign({}, c, { uso_meses: String(numero(c.uso_meses)), data_trabalho: diaDoTrabalho(c), status: etapaDe(c), roteiro_status: c.roteiro_status || "nao" }, ...MARCA_CAMPOS.map(([k]) => ({ ["md_" + k]: md[k] || "" })))
+      : { trabalho: "Conteúdo UGC", status: "Em andamento", roteiro_status: "nao", qtd: 1, valor: 0, pagamento: "pendente", forma_pagamento: "Pix", uso_meses: "0", data_trabalho: isoLocal(new Date()), ativa: true, favorita: false };
     formulario({
       titulo: c ? "Editar trabalho" : "Adicionar trabalho",
       larga: true,
@@ -1108,10 +1119,12 @@
         { nome: "campanha", rotulo: "Nome do trabalho ou campanha", obrigatorio: true, inteira: true },
         { nome: "cliente", rotulo: "Marca", lista: dados.marcas.map((m) => m.nome) },
         { nome: "trabalho", rotulo: "Tipo de trabalho", tipo: "select", opcoes: TIPOS_TRABALHO.map((t) => [t, t]) },
-        { nome: "data_trabalho", rotulo: "Dia do trabalho", tipo: "date", obrigatorio: true, dica: "Define em qual mês ele entra no resumo." },
-        { nome: "status", rotulo: "Etapa", tipo: "select", opcoes: FUNIL.map((s) => [s, s]) },
         { nome: "qtd", rotulo: "Quantidade de entregas (vídeos, posts...)", tipo: "number" },
-        { nome: "prazo", rotulo: "Prazo de entrega", tipo: "date", dica: "Aparece sozinho no calendário." },
+        { tipo: "secao", rotulo: "📅 Datas e andamento" },
+        { nome: "data_trabalho", rotulo: "Dia que fechei a campanha", tipo: "date", obrigatorio: true, dica: "Define em qual mês ela entra no resumo das campanhas." },
+        { nome: "prazo", rotulo: "Previsão de entrega dos conteúdos", tipo: "date", dica: "Aparece sozinho no calendário." },
+        { nome: "status", rotulo: "Como está a campanha", tipo: "select", opcoes: FUNIL.map((s) => [s, ETAPA_ROTULO[s]]), dica: "Em Recebido, o valor entra sozinho no Financeiro." },
+        { nome: "roteiro_status", rotulo: "Roteiro", tipo: "select", opcoes: ROTEIRO_SITUACAO },
         { tipo: "secao", rotulo: "💰 Pagamento" },
         { nome: "valor", rotulo: "Quanto vou ganhar (R$)", tipo: "number", passo: "0.01" },
         { nome: "forma_pagamento", rotulo: "Forma de pagamento", tipo: "select", opcoes: FORMAS_RECEBER.map((f) => [f, f]) },
@@ -1131,6 +1144,10 @@
         MARCA_CAMPOS.forEach(([k]) => { marca[k] = obj["md_" + k] || ""; delete obj["md_" + k]; });
         obj.marca_dados = marca;
         obj.uso_meses = numero(obj.uso_meses);
+        /* recebeu: o pagamento fica como recebido e entra no Financeiro (no dia de hoje, se não tiver outro dia) */
+        if (obj.status === "Recebido") obj.pagamento = "pago";
+        if (obj.pagamento === "pago" && (!obj.data_pagamento || diasAte(obj.data_pagamento) > 0)) obj.data_pagamento = isoLocal(new Date());
+        if (obj.status === "Finalizada") obj.ativa = false;
         const linha = await gravar("campanhas", obj, c && c.id);
         if (!linha) return false;
         if (c) trocarNaLista(dados.campanhas, linha); else dados.campanhas.unshift(linha);
@@ -1157,6 +1174,7 @@
     bloco.innerHTML = c ? `<h3 class="form-secao">📎 Contrato e arquivos</h3><div id="camp-anexos"></div>
       <div class="rot-acoes">
         <label class="botao botao-leve">📄 Anexar contrato<input type="file" data-anexo="contrato" hidden></label>
+        <label class="botao botao-leve">📜 Anexar roteiro<input type="file" data-anexo="roteiro" hidden></label>
         <label class="botao botao-leve">🏢 Anexar dados da marca<input type="file" data-anexo="marca" hidden></label>
         <label class="botao botao-leve">📎 Outro arquivo<input type="file" data-anexo="outro" hidden></label>
         <button type="button" class="botao botao-principal" id="camp-gerar-contrato">📝 Gerar contrato a partir do meu modelo</button>
@@ -3668,22 +3686,37 @@ De 4 a 6 dicas e no máximo 4 mudanças. Português do Brasil, linguagem simples
   const estadoFin = { mes: isoLocal(hoje0()).slice(0, 7), categoria: "todas", dicas: false };
   const LIMITE_ALERTA = 0.8;
 
+  /* ganhos do Financeiro: o que foi RECEBIDO no mês (pelo dia do pagamento) + o que ainda está para receber */
+  function entradasDoMes(ym) {
+    const mesAtual = isoLocal(hoje0()).slice(0, 7);
+    const recebidas = dados.campanhas.filter((c) => c.pagamento === "pago" && String(c.data_pagamento || diaDoTrabalho(c)).slice(0, 7) === ym);
+    const previstas = dados.campanhas.filter((c) => {
+      if (c.pagamento === "pago") return false;
+      const mes = String(c.data_pagamento || c.prazo || diaDoTrabalho(c)).slice(0, 7);
+      return ym === mesAtual ? mes <= ym : mes === ym;
+    });
+    const recebido = recebidas.reduce((s, c) => s + numero(c.valor), 0);
+    const aReceber = previstas.reduce((s, c) => s + numero(c.valor), 0);
+    const porTipo = {};
+    recebidas.forEach((c) => { const t = c.trabalho || "Conteúdo UGC"; porTipo[t] = porTipo[t] || { total: 0, qtd: 0, trabalhos: 0 }; porTipo[t].total += numero(c.valor); porTipo[t].qtd += Math.max(1, numero(c.qtd)); porTipo[t].trabalhos += 1; });
+    return { recebidas, previstas, recebido, aReceber, total: recebido + aReceber, tipos: Object.entries(porTipo).sort((a, b) => b[1].total - a[1].total) };
+  }
   function contasDoMes(ym) {
     const gastos = dados.gastos.filter((g) => String(g.data).slice(0, 7) === ym);
     const totalGastos = gastos.reduce((s, g) => s + numero(g.valor), 0);
     const aPagar = gastos.filter((g) => g.pago === false).reduce((s, g) => s + numero(g.valor), 0);
-    const ganhos = resumoDoMes(ym);
+    const ganhos = entradasDoMes(ym);
     const porCategoria = {};
     gastos.forEach((g) => { const k = CATEGORIAS_GASTO.some((x) => x[0] === g.categoria) ? g.categoria : "Outros"; porCategoria[k] = (porCategoria[k] || 0) + numero(g.valor); });
     const porForma = {};
     gastos.forEach((g) => { porForma[g.forma || "Outro"] = (porForma[g.forma || "Outro"] || 0) + numero(g.valor); });
     const proporcao = ganhos.total > 0 ? totalGastos / ganhos.total : (totalGastos > 0 ? Infinity : 0);
-    return { gastos, totalGastos, aPagar, ganhos, saldo: ganhos.total - totalGastos, porCategoria, porForma, proporcao };
+    return { gastos, totalGastos, aPagar, ganhos, saldo: ganhos.recebido - totalGastos, saldoPrevisto: ganhos.total - totalGastos, porCategoria, porForma, proporcao };
   }
   function alertaFinanceiro(contas) {
     if (!contas.totalGastos) return null;
-    if (contas.proporcao > 1) return { tipo: "perigo", texto: `🚨 Seus gastos (${moeda(contas.totalGastos)}) passaram dos seus ganhos (${moeda(contas.ganhos.total)}) em ${moeda(-contas.saldo)}.` };
-    if (contas.proporcao >= LIMITE_ALERTA) return { tipo: "cuidado", texto: `⚠️ Você já gastou ${Math.round(contas.proporcao * 100)}% do que ganhou no mês. Sobram só ${moeda(contas.saldo)}.` };
+    if (contas.proporcao > 1) return { tipo: "perigo", texto: `🚨 Seus gastos (${moeda(contas.totalGastos)}) passaram dos seus ganhos (${moeda(contas.ganhos.total)}) em ${moeda(-contas.saldoPrevisto)}.` };
+    if (contas.proporcao >= LIMITE_ALERTA) return { tipo: "cuidado", texto: `⚠️ Você já gastou ${Math.round(contas.proporcao * 100)}% do que ganhou no mês. Sobram só ${moeda(contas.saldoPrevisto)}.` };
     return null;
   }
 
@@ -3781,7 +3814,7 @@ Ganhos por tipo de trabalho: ${contas.ganhos.tipos.map(([t, v]) => `${t} ${moeda
 Gastos do mês: ${moeda(contas.totalGastos)} (ainda a pagar ${moeda(contas.aPagar)})
 Gastos por tipo: ${Object.entries(contas.porCategoria).map(([k, v]) => `${k} ${moeda(v)}`).join("; ") || "nenhum"}
 Gastos por forma de pagamento: ${Object.entries(contas.porForma).map(([k, v]) => `${k} ${moeda(v)}`).join("; ") || "nenhum"}
-Mês anterior: ganhos ${moeda(resumoDoMes(andarMes(ym, -1)).total)}, gastos ${moeda(contasDoMes(andarMes(ym, -1)).totalGastos)}`;
+Mês anterior: ganhos ${moeda(entradasDoMes(andarMes(ym, -1)).recebido)}, gastos ${moeda(contasDoMes(andarMes(ym, -1)).totalGastos)}`;
       const json = await perguntarGemini(`Você é uma educadora financeira gentil e prática. Ajude uma mãe creator de conteúdo UGC que mora na roça a organizar o dinheiro do mês, com renda que varia de mês para mês.
 ${resumo}
 
@@ -3821,10 +3854,10 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
           </div>
         </div>
         <div class="faixa-numeros" style="--colunas:4;margin-top:12px">
-          <div><span>💰 Ganhos do mês</span><strong>${moeda(contas.ganhos.total)}</strong><small>recebido ${moeda(contas.ganhos.recebido)} · a receber ${moeda(contas.ganhos.aReceber)}</small></div>
+          <div><span>💰 Recebido no mês</span><strong>${moeda(contas.ganhos.recebido)}</strong><small>+ ${moeda(contas.ganhos.aReceber)} a receber · ${plural(contas.ganhos.recebidas.length, "pagamento", "pagamentos")}</small></div>
           <div><span>💸 Gastos do mês</span><strong>${moeda(contas.totalGastos)}</strong><small>${plural(contas.gastos.length, "gasto", "gastos")}</small></div>
           <div><span>🧾 Ainda vou pagar</span><strong>${moeda(contas.aPagar)}</strong><small>contas marcadas como a pagar</small></div>
-          <div class="${contas.saldo < 0 ? "fin-negativo" : ""}"><span>${contas.saldo < 0 ? "🚨 Faltando" : "🌱 Sobra"}</span><strong>${moeda(Math.abs(contas.saldo))}</strong><small>ganhos menos gastos</small></div>
+          <div class="${contas.saldo < 0 ? "fin-negativo" : ""}"><span>${contas.saldo < 0 ? "🚨 Faltando" : "🌱 Sobra"}</span><strong>${moeda(Math.abs(contas.saldo))}</strong><small>recebido menos gastos${contas.ganhos.aReceber ? ` · quando receber tudo: ${moeda(contas.saldoPrevisto)}` : ""}</small></div>
         </div>
         <div class="fin-medidor" title="Quanto dos ganhos já foi gasto">
           <div class="linha"><span>Quanto dos seus ganhos já foi gasto</span><b>${contas.ganhos.total > 0 ? Math.round(contas.proporcao * 100) + "%" : contas.totalGastos ? "sem ganhos no mês" : "0%"}</b></div>
@@ -3841,8 +3874,9 @@ Português do Brasil, linguagem simples, nunca use travessão.`, 0.5);
         <section class="cartao">
           <h2 class="achar-titulo" style="margin-top:0">💳 Como estou pagando</h2>
           ${formas.length ? `<ul class="camp-tipos">${formas.map(([f, v]) => `<li><div class="linha"><span>${esc(f)}</span><b>${moeda(v)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v / formas[0][1]) * 100)}%"></i></div><small>${Math.round((v / contas.totalGastos) * 100)}% dos gastos</small></li>`).join("")}</ul>` : `<p class="frase-vazia">Nada ainda.</p>`}
-          <h2 class="achar-titulo">💼 De onde vem o dinheiro</h2>
-          ${contas.ganhos.tipos.length ? `<ul class="camp-tipos">${contas.ganhos.tipos.map(([t, v]) => `<li><div class="linha"><span>${esc(t)}</span><b>${moeda(v.total)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v.total / contas.ganhos.tipos[0][1].total) * 100)}%"></i></div></li>`).join("")}</ul>` : `<p class="frase-vazia">Nenhum trabalho neste mês na aba <a href="#campanhas">Campanhas</a>.</p>`}
+          <h2 class="achar-titulo">💼 Dinheiro que entrou</h2>
+          ${contas.ganhos.tipos.length ? `<ul class="camp-tipos">${contas.ganhos.tipos.map(([t, v]) => `<li><div class="linha"><span>${esc(t)}</span><b>${moeda(v.total)}</b></div><div class="trilho"><i style="width:${Math.max(2, (v.total / contas.ganhos.tipos[0][1].total) * 100)}%"></i></div></li>`).join("")}</ul>` : `<p class="frase-vazia">Nada recebido neste mês ainda. Quando você marcar uma campanha como Recebido, ela aparece aqui.</p>`}
+          ${contas.ganhos.recebidas.length || contas.ganhos.previstas.length ? `<ul class="cron-mudancas fin-entradas">${contas.ganhos.recebidas.map((c) => `<li><span>✅ <b>${esc(c.cliente || c.campanha)}</b> <span class="dica">${esc(c.campanha)} · ${dataBR(c.data_pagamento).slice(0, 5)}</span></span><b>${moeda(c.valor)}</b></li>`).join("")}${contas.ganhos.previstas.map((c) => `<li class="fin-prevista"><span>⏳ <b>${esc(c.cliente || c.campanha)}</b> <span class="dica">a receber${c.data_pagamento ? " em " + dataBR(c.data_pagamento).slice(0, 5) : ""}</span></span><b>${moeda(c.valor)}</b></li>`).join("")}</ul>` : ""}
         </section>
       </div>
 

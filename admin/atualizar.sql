@@ -466,4 +466,18 @@ create policy "dona troca arquivos" on storage.objects for update to authenticat
 drop policy if exists "dona apaga arquivos" on storage.objects;
 create policy "dona apaga arquivos" on storage.objects for delete to authenticated using (bucket_id = 'arquivos' and public.e_a_dona());
 
+-- ---------- Campanhas: novas etapas e situação do roteiro ----------
+-- Troca as etapas antigas pelas novas (Briefing vira Em andamento, Aprovação Roteiro vira Roteiro, Aprovado vira Entregue)
+do $$ declare r record; begin
+  for r in select conname from pg_constraint where conrelid = 'public.campanhas'::regclass and contype = 'c' and pg_get_constraintdef(oid) ilike '%status%' loop
+    execute format('alter table public.campanhas drop constraint %I', r.conname);
+  end loop;
+end $$;
+update public.campanhas set status = case status when 'Briefing' then 'Em andamento' when 'Aprovação Roteiro' then 'Roteiro' when 'Aprovado' then 'Entregue' else status end
+  where status in ('Briefing', 'Aprovação Roteiro', 'Aprovado');
+update public.campanhas set status = 'Em andamento' where status not in ('Em andamento', 'Roteiro', 'Gravação', 'Edição', 'Entregue', 'Recebido', 'Finalizada');
+alter table public.campanhas alter column status set default 'Em andamento';
+alter table public.campanhas add constraint campanhas_status_check check (status in ('Em andamento', 'Roteiro', 'Gravação', 'Edição', 'Entregue', 'Recebido', 'Finalizada'));
+alter table public.campanhas add column if not exists roteiro_status text not null default 'nao';
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

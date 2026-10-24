@@ -538,3 +538,7 @@ code { font-size: .78rem; background: var(--gelo); padding: 1px 5px; border-radi
 .lembretes li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: .84rem; padding: 7px 10px; border-radius: 8px; background: var(--amarelo-claro); color: #5a4300; }
 .lembretes li.lembrete-perigo { background: var(--vermelho-claro); color: var(--vermelho); }
 .lembretes li .botao { padding: 4px 10px; flex-shrink: 0; }
+.camp-recebi { padding: 2px 8px; font-size: .72rem; margin-left: 4px; }
+.fin-entradas { margin-top: 12px; }
+.fin-entradas li { font-size: .82rem; }
+.fin-entradas .fin-prevista { opacity: .7; border-style: dashed; }
