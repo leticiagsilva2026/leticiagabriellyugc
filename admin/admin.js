@@ -2057,8 +2057,77 @@ ${blocos}`;
   /* ---- Inteligência artificial: Gemini primeiro, Groq de reserva ----
      Cada modelo do Gemini tem o seu próprio limite grátis: quando um acaba,
      tenta o próximo. Se todos acabarem e houver chave do Groq (também grátis),
-     o Groq responde no lugar. */
-  const limiteDe = (status, motivo) => status === 429 || /quota|exhausted|rate/.test(motivo);
+     o Groq responde no lugar.
+     Para não gastar o limite à toa, o painel lembra (neste navegador) qual
+     modelo já acabou o limite do dia, e só volta a tentar depois que ele zera. */
+  const limiteDe = (status, motivo) => status === 429 || /quota|exhausted|rate.?limit|too many requests/.test(motivo);
+  const CHAVE_PAUSAS = "painel_ia_pausas";
+  function lerPausas() { try { return JSON.parse(localStorage.getItem(CHAVE_PAUSAS) || "{}") || {}; } catch (erro) { return {}; } }
+  function pausaDe(id) { const p = lerPausas()[id]; return p && p.ate > Date.now() ? p : null; }
+  function pausar(id, ate, info) {
+    const todas = lerPausas();
+    Object.keys(todas).forEach((k) => { if (!(todas[k].ate > Date.now())) delete todas[k]; });
+    todas[id] = Object.assign({ ate }, info);
+    try { localStorage.setItem(CHAVE_PAUSAS, JSON.stringify(todas)); } catch (erro) { /* navegador sem armazenamento */ }
+  }
+  /* chave nova = limite novo: esquece as pausas daquele serviço */
+  function esquecerPausas(motor) {
+    const todas = lerPausas();
+    Object.keys(todas).forEach((k) => { if (k.startsWith(motor + ":")) delete todas[k]; });
+    try { localStorage.setItem(CHAVE_PAUSAS, JSON.stringify(todas)); } catch (erro) { /* navegador sem armazenamento */ }
+  }
+  /* o limite do dia do Gemini zera à meia-noite do horário do Pacífico (4h ou 5h no Brasil) */
+  function proximaVoltaGemini() {
+    const partes = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" }).formatToParts(new Date());
+    const v = (t) => Number((partes.find((p) => p.type === t) || {}).value || 0);
+    const passou = ((v("hour") * 60 + v("minute")) * 60 + v("second")) * 1000;
+    return Date.now() + 24 * 3600 * 1000 - passou + 60 * 1000;
+  }
+  /* "1h12m30s", "41.2s", "2m5.3s" -> segundos */
+  function segundosDe(texto) {
+    const m = /(?:(\d+)h)?(?:(\d+)m(?!s))?(?:([\d.]+)s)?/.exec(texto || "");
+    if (!m || !(m[1] || m[2] || m[3])) return null;
+    return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
+  }
+  /* separa: limite por minuto (passa logo), limite do dia, ou modelo sem plano grátis (limit: 0) */
+  function tipoDeLimite(motor, motivo, retryHeader) {
+    if (/limit: 0\b|"quotavalue":"0"/.test(motivo)) return { falha: "sem-gratis" };
+    const dia = motor === "Gemini" ? /perday|per_day|per day/.test(motivo) : /per day|\(tpd\)|\(rpd\)/.test(motivo);
+    const m = /(?:retry in|try again in)\s*([\dhms.]+)/.exec(motivo) || /"retrydelay":"([\d.]+s)"/.exec(motivo);
+    let espera = m ? segundosDe(m[1]) : null;
+    if (espera == null && retryHeader) espera = Number(retryHeader) || null;
+    return { falha: "limite", quando: dia ? "dia" : "minuto", espera };
+  }
+  /* depois de uma falha, decide se vale pular esse modelo nas próximas buscas */
+  function lembrarFalha(motor, modelo, r) {
+    const id = motor + ":" + modelo;
+    if (r.falha === "modelo" || r.falha === "sem-gratis") pausar(id, Date.now() + 3 * 24 * 3600 * 1000, { falha: r.falha, detalhe: r.detalhe });
+    else if (r.falha === "limite" && r.quando === "dia") pausar(id, motor === "Gemini" ? proximaVoltaGemini() : Date.now() + Math.max(60, r.espera || 3600) * 1000, { falha: "limite", quando: "dia", detalhe: r.detalhe });
+    else if (r.falha === "limite" && r.espera > 20) pausar(id, Date.now() + r.espera * 1000, { falha: "limite", quando: "minuto", detalhe: r.detalhe });
+  }
+  /* chama um modelo, respeitando as pausas; se o limite for só por alguns segundos, espera e tenta mais uma vez */
+  async function tentarModelo(motor, modelo, chamar) {
+    const pausa = pausaDe(motor + ":" + modelo);
+    if (pausa) return { falha: pausa.falha, quando: pausa.quando, ate: pausa.ate, detalhe: pausa.detalhe, pulado: true };
+    let r = await chamar();
+    if (r.falha === "limite" && r.quando === "minuto" && (r.espera || 0) <= 20) {
+      await esperar(((r.espera || 5) + 1) * 1000);
+      r = await chamar();
+    }
+    /* "sobrecarregado" (erro 503 do Google) costuma passar em segundos: espera 3s e tenta mais uma vez.
+       Se continuar, pula esse modelo por 2 minutos para não ficar esperando à toa. */
+    if (r.falha === "ocupado") {
+      await esperar(3000);
+      r = await chamar();
+      if (r.falha === "ocupado") pausar(motor + ":" + modelo, Date.now() + 2 * 60 * 1000, { falha: "ocupado", detalhe: r.detalhe });
+    }
+    if (r.falha) {
+      lembrarFalha(motor, modelo, r);
+      const pausa2 = pausaDe(motor + ":" + modelo);
+      if (pausa2) r.ate = pausa2.ate;
+    }
+    return r;
+  }
   async function chamarGemini(modelo, chave, corpoPedido) {
     let resposta, corpo = null;
     try {
@@ -2073,11 +2142,12 @@ ${blocos}`;
       return texto ? { texto, candidato } : { falha: "vazio" };
     }
     const status = resposta.status;
-    const motivo = String((corpo && corpo.error && (corpo.error.status + " " + corpo.error.message)) || "").toLowerCase();
-    const falha = (tipo) => { console.warn(`[IA] Gemini ${modelo}: ${status} ${motivo.slice(0, 300)}`); return { falha: tipo, detalhe: `${status} ${motivo.slice(0, 160)}` }; };
+    const erroApi = (corpo && corpo.error) || {};
+    const motivo = String((erroApi.status || "") + " " + (erroApi.message || "") + " " + JSON.stringify(erroApi.details || "")).toLowerCase();
+    const falha = (tipo, extra) => { console.warn(`[IA] Gemini ${modelo}: ${status} ${motivo.slice(0, 500)}`); return Object.assign({ falha: tipo, detalhe: `${status} ${String(erroApi.message || erroApi.status || "").slice(0, 160)}` }, extra); };
     if (status === 404 || motivo.includes("not found")) return falha("modelo");
     if ((status === 400 && motivo.includes("api key")) || status === 401 || status === 403) return falha("chave");
-    if (limiteDe(status, motivo)) return falha("limite");
+    if (limiteDe(status, motivo)) { const l = tipoDeLimite("Gemini", motivo, resposta.headers.get("retry-after")); return falha(l.falha, l); }
     if (status === 400 && (motivo.includes("search") || motivo.includes("tool") || motivo.includes("grounding"))) return falha("sem-busca");
     if (status >= 500) return falha("ocupado");
     return falha("outro");
@@ -2099,11 +2169,11 @@ ${blocos}`;
     }
     const status = resposta.status;
     const motivo = String((corpo && corpo.error && corpo.error.message) || "").toLowerCase();
-    const falha = (tipo) => { console.warn(`[IA] Groq ${modelo}: ${status} ${motivo.slice(0, 300)}`); return { falha: tipo, detalhe: `${status} ${motivo.slice(0, 160)}` }; };
+    const falha = (tipo, extra) => { console.warn(`[IA] Groq ${modelo}: ${status} ${motivo.slice(0, 300)}`); return Object.assign({ falha: tipo, detalhe: `${status} ${motivo.slice(0, 160)}` }, extra); };
     if (status === 401 || status === 403 || motivo.includes("api key")) return falha("chave");
     if (status === 404 || motivo.includes("does not exist") || motivo.includes("decommissioned")) return falha("modelo");
     if (status === 413 || motivo.includes("too large")) return falha("grande");
-    if (limiteDe(status, motivo)) return falha("limite");
+    if (limiteDe(status, motivo)) { const l = tipoDeLimite("Groq", motivo, resposta.headers.get("retry-after")); return falha(l.falha, l); }
     if (status >= 500) return falha("ocupado");
     return falha("outro");
   }
@@ -2114,16 +2184,41 @@ ${blocos}`;
     try { return JSON.parse(limpo.slice(i, j + 1)); }
     catch (erro) { throw new Error("A resposta veio bagunçada. Clique para tentar de novo."); }
   }
-  /* mensagem com o motivo real de cada serviço (e o detalhe técnico entre colchetes) */
+  const horaCurta = (ms) => {
+    const d = new Date(ms), hoje = new Date();
+    const h = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return d.toDateString() === hoje.toDateString() ? `às ${h}` : `amanhã às ${h}`;
+  };
+  /* uma frase por motor, dizendo o motivo real (limite do minuto, do dia, modelo sem plano grátis...) */
+  function resumoDoMotor(motor, lista) {
+    const de = (f) => lista.filter((t) => t.falha === f);
+    if (de("chave").length) return `a chave do ${motor} não foi aceita (confira na aba 🔥 Virais)`;
+    const limites = de("limite");
+    if (limites.length) {
+      const dia = limites.some((t) => t.quando === "dia");
+      const voltas = limites.map((t) => t.ate).filter(Boolean);
+      const quando = voltas.length ? ` (volta ${horaCurta(Math.min(...voltas))})` : dia ? " (volta amanhã)" : " (volta em 1 ou 2 minutos)";
+      return `o ${motor} usou ${dia ? "todo o limite grátis de hoje" : "o limite grátis por minuto"}${quando}`;
+    }
+    if (de("grande").length) return `o pedido ficou grande demais para o plano grátis do ${motor}`;
+    if (de("sem-gratis").length === lista.length) return `os modelos do ${motor} que eu uso não têm plano grátis para essa chave`;
+    if (de("modelo").length === lista.length) return `os modelos do ${motor} que eu uso saíram do ar`;
+    if (de("rede").length) return `não consegui falar com o ${motor} (confira a internet)`;
+    if (de("ocupado").length) return `o ${motor} está sobrecarregado agora`;
+    return `o ${motor}: ${NOME_FALHA[lista[lista.length - 1].falha] || "deu um erro inesperado"}`;
+  }
   function erroDaIA(tentativas) {
-    const de = (m) => tentativas.filter((t) => t.motor === m).map((t) => t.falha);
-    const gemini = de("Gemini"), groq = de("Groq");
-    if (!chaveGroq() && gemini.length && gemini.every((f) => f === "limite"))
-      return "O Gemini chegou no limite grátis por agora. Você não precisa pagar: o limite volta sozinho (o do dia volta no começo da madrugada). Para não ficar esperando, salve também a chave grátis do Groq na aba 🔥 Virais e eu uso ele de reserva.";
-    if (gemini.includes("chave") && !chaveGroq()) return "A chave do Gemini não foi aceita. Confira se copiou a chave inteira e salve de novo na aba Virais.";
-    if (gemini.length && gemini.every((f) => f === "rede") && (!groq.length || groq.every((f) => f === "rede"))) return "Não consegui falar com a inteligência artificial. Confira a internet e tente de novo.";
-    const dica = gemini.includes("limite") ? " O limite do Gemini volta sozinho, sem pagar nada." : "";
-    return `Não consegui agora (${explicarFalhas(tentativas)}).${dica} Tente de novo em alguns minutos.`;
+    if (!tentativas.length) return "Não deu certo agora. Tente de novo em instantes.";
+    const porMotor = {};
+    tentativas.forEach((t) => { (porMotor[t.motor] = porMotor[t.motor] || []).push(t); });
+    const texto = Object.keys(porMotor).map((m) => resumoDoMotor(m, porMotor[m])).join(" e ");
+    const soLimite = tentativas.some((t) => t.falha === "limite") && tentativas.every((t) => ["limite", "sem-gratis", "modelo", "grande"].includes(t.falha));
+    const dica = !soLimite ? "" : chaveGroq() ? " Não precisa pagar nada: é só esperar."
+      : " Não precisa pagar nada. Para não ficar esperando, salve também a chave grátis do Groq na aba 🔥 Virais e eu uso ele de reserva.";
+    /* o detalhe técnico (em inglês) ajuda a descobrir o motivo exato quando ela manda o print */
+    const tecnico = Object.keys(porMotor).map((m) => porMotor[m].filter((t) => t.detalhe && !t.pulado).pop()).filter(Boolean)
+      .map((t) => `${t.motor} ${t.modelo}: ${t.detalhe.slice(0, 90)}`).join(" | ");
+    return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}.${dica}${tecnico ? ` [${tecnico}]` : ""}`;
   }
 
   /* pergunta e devolve JSON (Gemini, e se acabar o limite, Groq) */
@@ -2131,17 +2226,17 @@ ${blocos}`;
     const tentativas = [];
     if (chaveGemini()) {
       for (const modelo of MODELOS_GEMINI) {
-        const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: temperatura == null ? 0.7 : temperatura } });
+        const r = await tentarModelo("Gemini", modelo, () => chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: temperatura == null ? 0.7 : temperatura } }));
         if (r.texto) return lerJSON(r.texto);
-        tentativas.push({ motor: "Gemini", falha: r.falha, detalhe: r.detalhe });
+        tentativas.push(Object.assign({ motor: "Gemini", modelo }, r));
         if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
     if (chaveGroq()) {
       for (const modelo of MODELOS_GROQ) {
-        const r = await chamarGroq(modelo, prompt, temperatura, true);
+        const r = await tentarModelo("Groq", modelo, () => chamarGroq(modelo, prompt, temperatura, true));
         if (r.texto) return lerJSON(r.texto);
-        tentativas.push({ motor: "Groq", falha: r.falha, detalhe: r.detalhe });
+        tentativas.push(Object.assign({ motor: "Groq", modelo }, r));
         if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
@@ -2556,6 +2651,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
         const { error } = await banco.from("configuracoes").upsert({ chave: CHAVE_GEMINI, valor, updated_at: new Date().toISOString() });
         if (error) throw error;
         dados.config[CHAVE_GEMINI] = valor;
+        esquecerPausas("Gemini");
         recado("Chave do Gemini salva ✓");
         if (estadoVir.aviso && /Gemini/.test(estadoVir.aviso.html)) avisoVir(null);
         renderVirais(area);
@@ -2576,6 +2672,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
       const valor = $("#vir-chave-groq").value.trim();
       if (!valor) { recado("Cole a chave no campo antes de salvar.", true); $("#vir-chave-groq").focus(); return; }
       if (await salvarConfig(CHAVE_GROQ, valor)) {
+        esquecerPausas("Groq");
         recado("Chave do Groq salva ✓");
         if (estadoVir.aviso && /limite|Gemini/.test(estadoVir.aviso.html)) avisoVir(null);
         renderVirais(area);
@@ -2665,6 +2762,7 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
     rede: "não consegui me conectar",
     ocupado: "o serviço estava sobrecarregado",
     modelo: "o modelo não está disponível",
+    "sem-gratis": "esse modelo não tem plano grátis para essa chave",
     vazio: "veio uma resposta vazia",
     outro: "deu um erro inesperado"
   };
@@ -2675,10 +2773,10 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
     return Object.keys(porMotor).map((m) => {
       const lista = porMotor[m];
       if (lista[0] === "sem-chave") return "Groq: a chave não está salva";
-      const principal = ["chave", "limite", "grande", "sem-busca", "rede", "ocupado", "vazio", "outro", "modelo"].find((f) => lista.includes(f)) || lista[0];
+      const resumo = resumoDoMotor(m, tentativas.filter((x) => x.motor === m));
       /* o detalhe técnico (em inglês) ajuda a descobrir o motivo exato quando ela manda o print */
-      const t = tentativas.slice().reverse().find((x) => x.motor === m && x.falha === principal && x.detalhe);
-      return `${m}: ${NOME_FALHA[principal] || principal}${t ? ` [${t.detalhe.slice(0, 110)}]` : ""}`;
+      const t = tentativas.slice().reverse().find((x) => x.motor === m && x.detalhe && !x.pulado);
+      return `${resumo}${t ? ` [${t.detalhe.slice(0, 110)}]` : ""}`;
     }).join("; ");
   }
 
@@ -2688,19 +2786,19 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
     const pedido = `${pergunta}\n\nResponda em português do Brasil, em tópicos curtos, só com o que encontrou na pesquisa (nada inventado).`;
     if (chaveGemini()) {
       for (const modelo of MODELOS_GEMINI) {
-        const r = await chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: pedido }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.4 } });
+        const r = await tentarModelo("Gemini", modelo, () => chamarGemini(modelo, chaveGemini(), { contents: [{ role: "user", parts: [{ text: pedido }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.4 } }));
         if (r.texto) {
           const fontes = ((r.candidato.groundingMetadata && r.candidato.groundingMetadata.groundingChunks) || [])
             .map((c) => c && c.web).filter((w) => w && w.uri).map((w) => ({ titulo: w.title || w.uri, link: w.uri }));
           return { texto: r.texto, fontes: fontesUnicas(fontes), motor: "Gemini" };
         }
-        tentativas.push({ motor: "Gemini", falha: r.falha, detalhe: r.detalhe });
+        tentativas.push(Object.assign({ motor: "Gemini", modelo }, r));
         if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
     if (chaveGroq()) {
       for (const [modelo, extras] of MODELOS_GROQ_BUSCA) {
-        const r = await chamarGroq(modelo, pedido, 0.4, false, extras);
+        const r = await tentarModelo("Groq", modelo, () => chamarGroq(modelo, pedido, 0.4, false, extras));
         if (r.texto) {
           const fontes = [];
           ((r.mensagem && r.mensagem.executed_tools) || []).forEach((ferramenta) => {
@@ -2709,16 +2807,33 @@ Regras gerais: português do Brasil, fala natural e espontânea, nada robotizado
           });
           return { texto: r.texto, fontes: fontesUnicas(fontes), motor: "Groq" };
         }
-        tentativas.push({ motor: "Groq", falha: r.falha, detalhe: r.detalhe });
+        tentativas.push(Object.assign({ motor: "Groq", modelo }, r));
         if (r.falha === "chave" || r.falha === "rede") break;
       }
     }
     return { texto: "", fontes: [], motor: "", motivo: explicarFalhas(tentativas) };
   }
 
+  /* a pesquisa fica guardada por 6 horas neste navegador: se a 2ª etapa falhar e ela
+     clicar de novo, não gasta outra pesquisa (que é a parte que mais consome o limite) */
+  const CHAVE_CACHE_PESQUISA = "painel_pesquisa_cache";
+  async function pesquisarComCache(pergunta) {
+    let cache = {};
+    try { cache = JSON.parse(localStorage.getItem(CHAVE_CACHE_PESQUISA) || "{}") || {}; } catch (erro) { cache = {}; }
+    const guardada = cache[pergunta];
+    if (guardada && Date.now() - guardada.quando < 6 * 3600 * 1000) return guardada.pesquisa;
+    const pesquisa = await pesquisarNaInternet(pergunta);
+    if (pesquisa.texto) {
+      cache[pergunta] = { quando: Date.now(), pesquisa };
+      const chaves = Object.keys(cache).sort((a, b) => cache[b].quando - cache[a].quando).slice(0, 8);
+      try { localStorage.setItem(CHAVE_CACHE_PESQUISA, JSON.stringify(Object.fromEntries(chaves.map((k) => [k, cache[k]])))); } catch (erro) { /* navegador sem armazenamento */ }
+    }
+    return pesquisa;
+  }
+
   /* 2ª etapa: monta a resposta completa (JSON) usando o que a pesquisa achou */
   async function perguntarGeminiComBusca(prompt, pergunta) {
-    const pesquisa = await pesquisarNaInternet(pergunta);
+    const pesquisa = await pesquisarComCache(pergunta);
     const completo = pesquisa.texto
       ? `${prompt}\n\nO QUE A PESQUISA NA INTERNET ENCONTROU AGORA (use isto como base principal, não invente além disso):\n${pesquisa.texto.slice(0, 6000)}`
       : prompt;
